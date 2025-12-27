@@ -66,12 +66,6 @@ ${divider}
 
 ${divider}
 
-📲 𝗖𝗼𝗻𝘁𝗮𝗰𝘁 𝗨𝘀:
-💬 WhatsApp: wa.me/1234567890
-📩 DM us for questions!
-
-${divider}
-
 ⚡ Limited availability - First come, first served!
 🔔 Turn on notifications for more deals!
 
