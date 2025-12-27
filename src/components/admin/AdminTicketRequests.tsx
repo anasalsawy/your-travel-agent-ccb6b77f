@@ -14,11 +14,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
-import { 
-  notifyCustomerTicketIssued, 
-  notifyCustomerTicketPaymentApproved,
-  notifyCustomerTicketPaymentRejected
-} from "@/lib/notifications";
+// Notifications are handled server-side via database triggers
 
 type TicketRequest = Tables<"ticket_requests">;
 
@@ -127,18 +123,11 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
   const handleApprovePayment = async () => {
     if (!selectedRequest) return;
     
+    // Update status - notification is sent via database trigger
     await handleUpdateRequest(selectedRequest.id, {
       payment_status: "completed",
       status: "paid",
       admin_notes: adminNotes || null,
-    });
-
-    // Send customer notification
-    await notifyCustomerTicketPaymentApproved(selectedRequest.contact_email, {
-      requestId: selectedRequest.id,
-      origin: selectedRequest.origin,
-      destination: selectedRequest.destination,
-      amount: Number(selectedRequest.quoted_price),
     });
   };
 
@@ -148,20 +137,12 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
       return;
     }
     
+    // Update status - notification is sent via database trigger
     await handleUpdateRequest(selectedRequest.id, {
       payment_status: "failed",
       status: "quoted", // Reset to quoted so they can re-upload
       proof_upload_url: null, // Clear proof so they can re-upload
       admin_notes: `Payment rejected: ${rejectionReason}${adminNotes ? `\n\nNotes: ${adminNotes}` : ""}`,
-    });
-
-    // Send customer notification
-    await notifyCustomerTicketPaymentRejected(selectedRequest.contact_email, {
-      requestId: selectedRequest.id,
-      origin: selectedRequest.origin,
-      destination: selectedRequest.destination,
-      amount: Number(selectedRequest.quoted_price),
-      rejectionReason,
     });
 
     setRejectionReason("");
@@ -172,18 +153,11 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
       toast({ title: "Error", description: "Please enter ticket information", variant: "destructive" });
       return;
     }
+    // Update status - notification is sent via database trigger
     await handleUpdateRequest(selectedRequest.id, {
       status: "ticketed",
       issued_ticket_info: ticketInfo,
       admin_notes: adminNotes || null,
-    });
-
-    // Send customer notification
-    await notifyCustomerTicketIssued(selectedRequest.contact_email, {
-      origin: selectedRequest.origin,
-      destination: selectedRequest.destination,
-      departureDate: selectedRequest.departure_date,
-      ticketInfo,
     });
   };
 
