@@ -115,20 +115,22 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
-      // Send notifications
-      notifyNewOrder({
-        orderId: order.id,
-        voucherTitle: voucher.title,
-        amount: Number(voucher.sale_price),
-        paymentMethod: "stripe",
-        customerEmail: user.email,
-      });
-      notifyCustomerOrderReceived(user.email, {
-        orderId: order.id,
-        voucherTitle: voucher.title,
-        amount: Number(voucher.sale_price),
-        paymentMethod: "Credit Card",
-      });
+      // Send notifications (await so navigation can't cancel requests)
+      await Promise.allSettled([
+        notifyNewOrder({
+          orderId: order.id,
+          voucherTitle: voucher.title,
+          amount: Number(voucher.sale_price),
+          paymentMethod: "stripe",
+          customerEmail: user.email,
+        }),
+        notifyCustomerOrderReceived(user.email, {
+          orderId: order.id,
+          voucherTitle: voucher.title,
+          amount: Number(voucher.sale_price),
+          paymentMethod: "Credit Card",
+        }),
+      ]);
 
       // In a real app, you'd redirect to Stripe Checkout here
       toast({
@@ -195,25 +197,27 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
-      // Send notifications
-      notifyNewOrder({
-        orderId: order.id,
-        voucherTitle: voucher.title,
-        amount: Number(voucher.sale_price),
-        paymentMethod: "bitcoin",
-        customerEmail: user.email,
-      });
-      notifyPaymentProofUploaded({
-        orderId: order.id,
-        voucherTitle: voucher.title,
-        amount: Number(voucher.sale_price),
-        paymentMethod: "Bitcoin",
-      });
-      notifyCustomerPaymentUnderReview(user.email, {
-        orderId: order.id,
-        voucherTitle: voucher.title,
-        amount: Number(voucher.sale_price),
-      });
+      // Send notifications (await so navigation can't cancel requests)
+      await Promise.allSettled([
+        notifyNewOrder({
+          orderId: order.id,
+          voucherTitle: voucher.title,
+          amount: Number(voucher.sale_price),
+          paymentMethod: "bitcoin",
+          customerEmail: user.email,
+        }),
+        notifyPaymentProofUploaded({
+          orderId: order.id,
+          voucherTitle: voucher.title,
+          amount: Number(voucher.sale_price),
+          paymentMethod: "Bitcoin",
+        }),
+        notifyCustomerPaymentUnderReview(user.email, {
+          orderId: order.id,
+          voucherTitle: voucher.title,
+          amount: Number(voucher.sale_price),
+        }),
+      ]);
 
       toast({
         title: "Payment Submitted!",
@@ -278,25 +282,27 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
-      // Send notifications
-      notifyNewOrder({
-        orderId: order.id,
-        voucherTitle: voucher.title,
-        amount: Number(voucher.sale_price),
-        paymentMethod: "zelle",
-        customerEmail: user.email,
-      });
-      notifyPaymentProofUploaded({
-        orderId: order.id,
-        voucherTitle: voucher.title,
-        amount: Number(voucher.sale_price),
-        paymentMethod: "Zelle",
-      });
-      notifyCustomerPaymentUnderReview(user.email, {
-        orderId: order.id,
-        voucherTitle: voucher.title,
-        amount: Number(voucher.sale_price),
-      });
+      // Send notifications (await so navigation can't cancel requests)
+      await Promise.allSettled([
+        notifyNewOrder({
+          orderId: order.id,
+          voucherTitle: voucher.title,
+          amount: Number(voucher.sale_price),
+          paymentMethod: "zelle",
+          customerEmail: user.email,
+        }),
+        notifyPaymentProofUploaded({
+          orderId: order.id,
+          voucherTitle: voucher.title,
+          amount: Number(voucher.sale_price),
+          paymentMethod: "Zelle",
+        }),
+        notifyCustomerPaymentUnderReview(user.email, {
+          orderId: order.id,
+          voucherTitle: voucher.title,
+          amount: Number(voucher.sale_price),
+        }),
+      ]);
 
       toast({
         title: "Payment Submitted!",
