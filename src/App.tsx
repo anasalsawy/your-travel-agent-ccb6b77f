@@ -12,6 +12,7 @@ import RequestTicket from "./pages/RequestTicket";
 import Checkout from "./pages/Checkout";
 import FAQ from "./pages/FAQ";
 import Admin from "./pages/Admin";
+import AdminDiagnostics from "./pages/AdminDiagnostics";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/checkout/voucher/:id" element={<Checkout />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/diagnostics" element={<AdminDiagnostics />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
