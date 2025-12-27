@@ -104,8 +104,10 @@ export type Database = {
           delivery_status: string | null
           id: string
           order_status: Database["public"]["Enums"]["order_status"] | null
+          payment_attempt_id: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_status: Database["public"]["Enums"]["payment_status"] | null
+          payment_submitted_at: string | null
           proof_upload_url: string | null
           stripe_session_id: string | null
           updated_at: string | null
@@ -123,8 +125,10 @@ export type Database = {
           delivery_status?: string | null
           id?: string
           order_status?: Database["public"]["Enums"]["order_status"] | null
+          payment_attempt_id?: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          payment_submitted_at?: string | null
           proof_upload_url?: string | null
           stripe_session_id?: string | null
           updated_at?: string | null
@@ -142,8 +146,10 @@ export type Database = {
           delivery_status?: string | null
           id?: string
           order_status?: Database["public"]["Enums"]["order_status"] | null
+          payment_attempt_id?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          payment_submitted_at?: string | null
           proof_upload_url?: string | null
           stripe_session_id?: string | null
           updated_at?: string | null
@@ -434,7 +440,13 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "customer" | "staff"
-      order_status: "pending" | "paid" | "delivered" | "cancelled" | "refunded"
+      order_status:
+        | "pending"
+        | "paid"
+        | "delivered"
+        | "cancelled"
+        | "refunded"
+        | "payment_under_review"
       payment_method: "stripe" | "bitcoin" | "zelle"
       payment_status:
         | "pending"
@@ -442,6 +454,7 @@ export type Database = {
         | "completed"
         | "failed"
         | "refunded"
+        | "under_review"
       ticket_request_status:
         | "submitted"
         | "quoted"
@@ -579,7 +592,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "customer", "staff"],
-      order_status: ["pending", "paid", "delivered", "cancelled", "refunded"],
+      order_status: [
+        "pending",
+        "paid",
+        "delivered",
+        "cancelled",
+        "refunded",
+        "payment_under_review",
+      ],
       payment_method: ["stripe", "bitcoin", "zelle"],
       payment_status: [
         "pending",
@@ -587,6 +607,7 @@ export const Constants = {
         "completed",
         "failed",
         "refunded",
+        "under_review",
       ],
       ticket_request_status: [
         "submitted",
