@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, Loader2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Search, Facebook } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { VoucherFormDialog } from "./VoucherFormDialog";
 import type { Tables } from "@/integrations/supabase/types";
@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { FacebookPostDialog } from "./FacebookPostDialog";
 
 type Voucher = Tables<"vouchers">;
 
@@ -27,6 +28,7 @@ export function AdminVouchers() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
   const [deleteVoucher, setDeleteVoucher] = useState<Voucher | null>(null);
+  const [facebookVoucher, setFacebookVoucher] = useState<Voucher | null>(null);
   const { toast } = useToast();
 
   const fetchVouchers = async () => {
@@ -154,14 +156,25 @@ export function AdminVouchers() {
                         variant="ghost"
                         size="icon"
                         onClick={() => { setEditingVoucher(voucher); setIsFormOpen(true); }}
+                        title="Edit voucher"
                       >
                         <Pencil className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => setFacebookVoucher(voucher)}
+                        title="Generate Facebook post"
+                        className="text-[#1877F2] hover:text-[#1877F2] hover:bg-[#1877F2]/10"
+                      >
+                        <Facebook className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="text-destructive hover:text-destructive"
                         onClick={() => setDeleteVoucher(voucher)}
+                        title="Delete voucher"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -203,6 +216,12 @@ export function AdminVouchers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <FacebookPostDialog
+        open={!!facebookVoucher}
+        onOpenChange={() => setFacebookVoucher(null)}
+        voucher={facebookVoucher}
+      />
     </div>
   );
 }
