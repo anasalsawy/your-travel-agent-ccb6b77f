@@ -39,6 +39,7 @@ type NotificationType =
   | "new_ticket_request"
   | "admin_new_ticket_request"
   | "admin_ticket_proof_uploaded"
+  | "ticket_payment_proof_uploaded"
   | "admin_ticket_completed"
   | "admin_ticket_rejected"
   // Legacy/misc
@@ -368,12 +369,18 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
       };
 
     case "admin_ticket_proof_uploaded":
+    case "ticket_payment_proof_uploaded":
       return {
         subject: `Payment Proof - Ticket Request #${requestId}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #dd6b20;">Ticket Payment Proof Uploaded</h1>
             <p>Customer uploaded payment proof for ticket request <strong>#${requestId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+              <p><strong>Method:</strong> ${data.paymentMethod}</p>
+            </div>
             ${data.proofUrl ? `<p><a href="${data.proofUrl}">View Proof</a></p>` : ""}
             <p>Please review and approve the payment.</p>
           </div>
@@ -422,6 +429,7 @@ const ADMIN_NOTIFICATION_TYPES = [
   "new_ticket_request",
   "admin_new_ticket_request",
   "admin_ticket_proof_uploaded",
+  "ticket_payment_proof_uploaded",
   "admin_ticket_completed",
   "admin_ticket_rejected",
   "test_email"

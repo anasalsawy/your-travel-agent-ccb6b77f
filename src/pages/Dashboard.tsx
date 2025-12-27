@@ -12,9 +12,11 @@ import {
   User,
   Calendar,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Eye
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { TicketRequestDetail } from "@/components/dashboard/TicketRequestDetail";
 
 type Order = Tables<"orders"> & { vouchers: Tables<"vouchers"> | null };
 type TicketRequest = Tables<"ticket_requests">;
@@ -25,51 +27,69 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [requests, setRequests] = useState<TicketRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRequest, setSelectedRequest] = useState<TicketRequest | null>(null);
   const navigate = useNavigate();
 
+  const fetchData = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      navigate("/auth?redirect=/dashboard");
+      return;
+    }
+
+    setUser(session.user);
+
+    // Fetch profile
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", session.user.id)
+      .single();
+    
+    if (profileData) setProfile(profileData);
+
+    // Fetch orders
+    const { data: ordersData } = await supabase
+      .from("orders")
+      .select("*, vouchers(*)")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false });
+    
+    if (ordersData) setOrders(ordersData as Order[]);
+
+    // Fetch ticket requests
+    const { data: requestsData } = await supabase
+      .from("ticket_requests")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false });
+    
+    if (requestsData) setRequests(requestsData);
+
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate("/auth?redirect=/dashboard");
-        return;
-      }
-
-      setUser(session.user);
-
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      
-      if (profileData) setProfile(profileData);
-
-      // Fetch orders
-      const { data: ordersData } = await supabase
-        .from("orders")
-        .select("*, vouchers(*)")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false });
-      
-      if (ordersData) setOrders(ordersData as Order[]);
-
-      // Fetch ticket requests
-      const { data: requestsData } = await supabase
-        .from("ticket_requests")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false });
-      
-      if (requestsData) setRequests(requestsData);
-
-      setLoading(false);
-    };
-
     fetchData();
   }, [navigate]);
+
+  const refreshRequests = async () => {
+    const { data: requestsData } = await supabase
+      .from("ticket_requests")
+      .select("*")
+      .eq("user_id", user?.id)
+      .order("created_at", { ascending: false });
+    
+    if (requestsData) {
+      setRequests(requestsData);
+      // Update selected request if it exists
+      if (selectedRequest) {
+        const updated = requestsData.find(r => r.id === selectedRequest.id);
+        if (updated) setSelectedRequest(updated);
+      }
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -233,7 +253,13 @@ export default function DashboardPage() {
             </TabsContent>
 
             <TabsContent value="requests">
-              {requests.length === 0 ? (
+              {selectedRequest ? (
+                <TicketRequestDetail 
+                  request={selectedRequest} 
+                  onBack={() => setSelectedRequest(null)}
+                  onUpdate={refreshRequests}
+                />
+              ) : requests.length === 0 ? (
                 <div className="glass-card p-12 text-center">
                   <Plane className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                   <h3 className="font-semibold text-lg mb-2">No ticket requests</h3>
@@ -245,60 +271,83 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {requests.map((request) => (
-                    <div key={request.id} className="glass-card p-6">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold text-lg">
-                              {request.origin} → {request.destination}
-                            </h3>
-                            <Badge className={getStatusColor(request.status || "submitted")}>
-                              {request.status}
-                            </Badge>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-4 h-4" />
-                              {formatDate(request.departure_date)}
-                              {request.return_date && ` - ${formatDate(request.return_date)}`}
+                  {requests.map((request) => {
+                    const hasQuote = request.status === "quoted" || !!request.quoted_price;
+                    
+                    return (
+                      <div 
+                        key={request.id} 
+                        className={`glass-card p-6 cursor-pointer transition-all hover:border-primary/50 ${
+                          hasQuote ? "border-2 border-accent/30" : ""
+                        }`}
+                        onClick={() => setSelectedRequest(request)}
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="font-semibold text-lg">
+                                {request.origin} → {request.destination}
+                              </h3>
+                              <Badge className={getStatusColor(request.status || "submitted")}>
+                                {request.status}
+                              </Badge>
+                              {hasQuote && request.payment_status !== "completed" && (
+                                <Badge className="bg-accent/20 text-accent animate-pulse">
+                                  Action Required
+                                </Badge>
+                              )}
                             </div>
-                            <span>{request.passengers} pax • {request.cabin_class}</span>
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          {request.quoted_price ? (
-                            <div>
-                              <div className="text-sm text-muted-foreground">Quote</div>
-                              <div className="font-bold text-xl text-gradient">
-                                {formatCurrency(Number(request.quoted_price))}
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-4 h-4" />
+                                {formatDate(request.departure_date)}
+                                {request.return_date && ` - ${formatDate(request.return_date)}`}
                               </div>
+                              <span>{request.passengers} pax • {request.cabin_class}</span>
                             </div>
-                          ) : request.budget ? (
-                            <div>
-                              <div className="text-sm text-muted-foreground">Budget</div>
-                              <div className="font-semibold">{formatCurrency(Number(request.budget))}</div>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
+                          </div>
 
-                      <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          Submitted {formatDate(request.created_at)}
+                          <div className="flex items-center gap-4">
+                            {request.quoted_price ? (
+                              <div className="text-right">
+                                <div className="text-sm text-muted-foreground">Quote</div>
+                                <div className="font-bold text-xl text-gradient">
+                                  {formatCurrency(Number(request.quoted_price))}
+                                </div>
+                              </div>
+                            ) : request.budget ? (
+                              <div className="text-right">
+                                <div className="text-sm text-muted-foreground">Budget</div>
+                                <div className="font-semibold">{formatCurrency(Number(request.budget))}</div>
+                              </div>
+                            ) : null}
+                            <Button variant="ghost" size="icon">
+                              <Eye className="w-5 h-5" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
 
-                      {request.issued_ticket_info && (
-                        <div className="mt-4 p-4 rounded-lg bg-success/10 border border-success/20">
-                          <p className="text-sm font-medium text-success">Ticket Info:</p>
-                          <p className="text-sm text-muted-foreground whitespace-pre-line">{request.issued_ticket_info}</p>
+                        <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            Submitted {formatDate(request.created_at)}
+                          </div>
+                          {request.payment_status === "processing" && (
+                            <Badge variant="outline" className="text-warning">
+                              Payment Under Review
+                            </Badge>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ))}
+
+                        {request.issued_ticket_info && (
+                          <div className="mt-4 p-4 rounded-lg bg-success/10 border border-success/20">
+                            <p className="text-sm font-medium text-success">Ticket Info:</p>
+                            <p className="text-sm text-muted-foreground whitespace-pre-line">{request.issued_ticket_info}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>

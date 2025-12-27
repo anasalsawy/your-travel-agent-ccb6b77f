@@ -10,6 +10,8 @@ type NotificationType =
   | "payment_rejected"
   | "order_delivered"
   | "ticket_issued"
+  | "ticket_payment_proof_uploaded"
+  | "ticket_payment_under_review"
   | "test_email";
 
 interface NotificationData {
@@ -176,6 +178,36 @@ export async function notifyCustomerTicketIssued(
 ) {
   return sendNotification({
     type: "ticket_issued",
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// Ticket Request Payment Notifications
+export async function notifyTicketPaymentProofUploaded(requestData: {
+  requestId: string;
+  origin: string;
+  destination: string;
+  amount: number;
+  paymentMethod: string;
+}) {
+  return sendNotification({
+    type: "ticket_payment_proof_uploaded" as NotificationType,
+    data: requestData,
+  });
+}
+
+export async function notifyCustomerTicketPaymentUnderReview(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    amount: number;
+  }
+) {
+  return sendNotification({
+    type: "ticket_payment_under_review" as NotificationType,
     data: requestData,
     customerEmail,
   });
