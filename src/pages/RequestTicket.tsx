@@ -14,6 +14,7 @@ import { CalendarIcon, Plane, Users, Loader2, Check, HelpCircle } from "lucide-r
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { SupportButtons } from "@/components/SupportButtons";
+import { notifyNewTicketRequest } from "@/lib/notifications";
 
 export default function RequestTicketPage() {
   const [user, setUser] = useState<any>(null);
@@ -84,6 +85,18 @@ export default function RequestTicketPage() {
       });
 
       if (error) throw error;
+
+      // Send admin notification
+      notifyNewTicketRequest({
+        origin,
+        destination,
+        departureDate: format(departureDate, "yyyy-MM-dd"),
+        returnDate: returnDate ? format(returnDate, "yyyy-MM-dd") : undefined,
+        passengers: parseInt(passengers),
+        cabinClass,
+        budget: budget ? parseFloat(budget) : undefined,
+        contactEmail,
+      });
 
       setSubmitted(true);
       toast({
