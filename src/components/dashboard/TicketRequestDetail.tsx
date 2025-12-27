@@ -112,6 +112,7 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
   };
 
   const isQuoteReady = request.status === "quoted" || !!request.quoted_price;
+  const isPaymentRejected = request.payment_status === "failed";
   const canPay = isQuoteReady && request.payment_status !== "completed" && request.payment_status !== "processing";
   const isPaymentPending = request.payment_status === "processing";
 
@@ -320,12 +321,30 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
             </div>
           )}
 
+          {/* Payment Rejected Notice */}
+          {isPaymentRejected && (
+            <div className="mt-4 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+              <p className="text-sm font-medium text-destructive mb-2">⚠️ Payment Verification Failed</p>
+              <p className="text-sm text-muted-foreground mb-3">
+                Your previous payment proof could not be verified. Please review the notes below and re-upload your payment proof.
+              </p>
+              {request.admin_notes && request.admin_notes.includes("Payment rejected") && (
+                <div className="p-3 rounded bg-destructive/5 text-sm">
+                  <strong>Reason:</strong> {request.admin_notes.split("Payment rejected:")[1]?.split("\n")[0] || "See notes above"}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Payment Section */}
           {canPay && (
             <div className="mt-6 space-y-4">
-              <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
-                <p className="text-sm text-accent font-medium">
-                  ✨ To proceed, confirm and pay using one of the options below.
+              <div className={`p-4 rounded-lg border ${isPaymentRejected ? "bg-warning/10 border-warning/30" : "bg-accent/10 border-accent/20"}`}>
+                <p className={`text-sm font-medium ${isPaymentRejected ? "text-warning" : "text-accent"}`}>
+                  {isPaymentRejected 
+                    ? "🔄 Please re-upload your payment proof below."
+                    : "✨ To proceed, confirm and pay using one of the options below."
+                  }
                 </p>
               </div>
 

@@ -12,6 +12,8 @@ type NotificationType =
   | "ticket_issued"
   | "ticket_payment_proof_uploaded"
   | "ticket_payment_under_review"
+  | "ticket_payment_approved"
+  | "ticket_payment_rejected"
   | "test_email";
 
 interface NotificationData {
@@ -208,6 +210,39 @@ export async function notifyCustomerTicketPaymentUnderReview(
 ) {
   return sendNotification({
     type: "ticket_payment_under_review" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+export async function notifyCustomerTicketPaymentApproved(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    amount: number;
+  }
+) {
+  return sendNotification({
+    type: "ticket_payment_approved" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+export async function notifyCustomerTicketPaymentRejected(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    amount: number;
+    rejectionReason: string;
+  }
+) {
+  return sendNotification({
+    type: "ticket_payment_rejected" as NotificationType,
     data: requestData,
     customerEmail,
   });

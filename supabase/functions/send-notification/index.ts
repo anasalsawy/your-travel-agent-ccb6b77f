@@ -32,6 +32,7 @@ type NotificationType =
   | "ticket_quote_updated"
   | "ticket_payment_under_review"
   | "ticket_payment_approved"
+  | "ticket_payment_rejected"
   | "ticket_issued"
   | "ticket_request_rejected"
   | "ticket_request_cancelled"
@@ -309,7 +310,31 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #38a169;">Payment Confirmed!</h1>
             <p>Your payment for ticket request <strong>#${requestId}</strong> has been confirmed.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+            </div>
             <p>We're now booking your ticket and will send you the details soon.</p>
+          </div>
+        `,
+      };
+
+    case "ticket_payment_rejected":
+      return {
+        subject: `Payment Issue - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #e53e3e;">Payment Could Not Be Verified</h1>
+            <p>Unfortunately, we couldn't verify your payment for ticket request <strong>#${requestId}</strong>.</p>
+            <div style="background: #fed7d7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <strong>Reason:</strong> ${data.rejectionReason || "Payment verification failed"}
+            </div>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+            </div>
+            <p><strong>Next Step:</strong> Please log in to your dashboard and re-upload your payment proof.</p>
+            <p>If you believe this is an error, please contact our support team.</p>
           </div>
         `,
       };
