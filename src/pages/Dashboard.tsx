@@ -87,6 +87,15 @@ export default function DashboardPage() {
     });
   };
 
+  const getPaymentMethodLabel = (method: string) => {
+    switch (method) {
+      case "stripe": return "Card";
+      case "bitcoin": return "Bitcoin";
+      case "zelle": return "Zelle";
+      default: return method;
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
@@ -186,7 +195,7 @@ export default function DashboardPage() {
                         <div className="flex flex-wrap items-center gap-4">
                           <div className="text-right">
                             <div className="font-bold">{formatCurrency(Number(order.amount_paid))}</div>
-                            <div className="text-xs text-muted-foreground">{order.payment_method}</div>
+                            <div className="text-xs text-muted-foreground">{getPaymentMethodLabel(order.payment_method)}</div>
                           </div>
                           <Badge className={getStatusColor(order.payment_status || "pending")}>
                             {order.payment_status}
@@ -203,6 +212,13 @@ export default function DashboardPage() {
                           {formatDate(order.created_at)}
                         </div>
                       </div>
+
+                      {order.admin_notes && (
+                        <div className="mt-4 p-4 rounded-lg bg-primary/10 border border-primary/20">
+                          <p className="text-sm font-medium text-primary">Note from Admin:</p>
+                          <p className="text-sm text-muted-foreground">{order.admin_notes}</p>
+                        </div>
+                      )}
 
                       {order.delivery_info && (
                         <div className="mt-4 p-4 rounded-lg bg-success/10 border border-success/20">

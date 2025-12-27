@@ -5,6 +5,7 @@ import { Menu, Plane, User, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { SupportButtons, FacebookLink } from "@/components/SupportButtons";
 
 export function Header() {
   const [isOpen, setIsOpen] = useState(false);
@@ -85,6 +86,8 @@ export function Header() {
 
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center gap-3">
+            <SupportButtons variant="compact" />
+            <div className="w-px h-6 bg-border" />
             {user ? (
               <>
                 {isAdmin && (
@@ -160,6 +163,13 @@ export function Header() {
                       </Button>
                     </>
                   )}
+                </div>
+                <div className="border-t border-border pt-4 mt-4">
+                  <p className="text-xs text-muted-foreground mb-3">Need Help?</p>
+                  <SupportButtons variant="default" />
+                  <div className="mt-4">
+                    <FacebookLink />
+                  </div>
                 </div>
               </nav>
             </SheetContent>

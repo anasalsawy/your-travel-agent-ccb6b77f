@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, CreditCard, Bitcoin, ArrowLeft, Copy, Check, Upload } from "lucide-react";
+import { Loader2, CreditCard, Bitcoin, ArrowLeft, Copy, Check, Upload, DollarSign, HelpCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { SupportButtons } from "@/components/SupportButtons";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Voucher = Tables<"vouchers">;
+type PaymentMethod = "stripe" | "bitcoin" | "zelle";
 
 export default function CheckoutPage() {
   const { id } = useParams();
@@ -19,13 +21,15 @@ export default function CheckoutPage() {
   const [voucher, setVoucher] = useState<Voucher | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "bitcoin">("stripe");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("stripe");
   const [user, setUser] = useState<any>(null);
   const [btcAddress, setBtcAddress] = useState("");
   const [btcRate, setBtcRate] = useState("43500");
+  const [zelleEmail, setZelleEmail] = useState("Amalmsaid4@gmail.com");
   const [copied, setCopied] = useState(false);
   const [txHash, setTxHash] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [zelleConfirmation, setZelleConfirmation] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,17 +54,19 @@ export default function CheckoutPage() {
         }
       }
 
-      // Get BTC settings
+      // Get settings
       const { data: settings } = await supabase
         .from("site_settings")
         .select("*")
-        .in("key", ["btc_address", "btc_rate"]);
+        .in("key", ["btc_address", "btc_rate", "zelle_email"]);
       
       if (settings) {
         const address = settings.find(s => s.key === "btc_address");
         const rate = settings.find(s => s.key === "btc_rate");
+        const zelle = settings.find(s => s.key === "zelle_email");
         if (address?.value) setBtcAddress(address.value);
         if (rate?.value) setBtcRate(rate.value);
+        if (zelle?.value) setZelleEmail(zelle.value);
       }
 
       setLoading(false);
@@ -83,7 +89,7 @@ export default function CheckoutPage() {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    toast({ title: "Copied!", description: "Address copied to clipboard." });
+    toast({ title: "Copied!", description: "Copied to clipboard." });
   };
 
   const handleStripeCheckout = async () => {
@@ -108,7 +114,6 @@ export default function CheckoutPage() {
       if (orderError) throw orderError;
 
       // In a real app, you'd redirect to Stripe Checkout here
-      // For now, we'll simulate a successful payment
       toast({
         title: "Demo Mode",
         description: "Stripe integration requires setup. Order created in pending state.",
@@ -142,7 +147,6 @@ export default function CheckoutPage() {
       let proofUrl = "";
       
       if (proofFile) {
-        // Upload proof file
         const fileExt = proofFile.name.split('.').pop();
         const fileName = `${user.id}/${Date.now()}.${fileExt}`;
         
@@ -156,7 +160,6 @@ export default function CheckoutPage() {
         }
       }
 
-      // Create order
       const { error: orderError } = await supabase
         .from("orders")
         .insert({
@@ -187,6 +190,72 @@ export default function CheckoutPage() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleZelleSubmit = async () => {
+    if (!voucher || !user || !proofFile) {
+      toast({
+        title: "Error",
+        description: "Please upload a screenshot of your Zelle payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setProcessing(true);
+    
+    try {
+      let proofUrl = "";
+      
+      const fileExt = proofFile.name.split('.').pop();
+      const fileName = `${user.id}/zelle-${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("proof-uploads")
+        .upload(fileName, proofFile);
+      
+      if (!uploadError) {
+        const { data } = supabase.storage.from("proof-uploads").getPublicUrl(fileName);
+        proofUrl = data.publicUrl;
+      }
+
+      const deliveryInfo = zelleConfirmation ? `Confirmation: ${zelleConfirmation}` : null;
+
+      const { error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          user_id: user.id,
+          voucher_id: voucher.id,
+          amount_paid: Number(voucher.sale_price),
+          payment_method: "zelle",
+          payment_status: "processing",
+          proof_upload_url: proofUrl,
+          delivery_info: deliveryInfo,
+        });
+
+      if (orderError) throw orderError;
+
+      toast({
+        title: "Payment Submitted!",
+        description: "We'll verify your Zelle payment and deliver the voucher shortly.",
+      });
+
+      navigate("/dashboard");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit payment.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const resetProof = () => {
+    setProofFile(null);
+    setTxHash("");
+    setZelleConfirmation("");
   };
 
   if (loading) {
@@ -258,6 +327,15 @@ export default function CheckoutPage() {
                     <span className="text-gradient">{formatCurrency(Number(voucher.sale_price), voucher.currency || "USD")}</span>
                   </div>
                 </div>
+
+                {/* Support section */}
+                <div className="mt-6 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                  <div className="flex items-center gap-2 mb-3">
+                    <HelpCircle className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium">Need Help?</span>
+                  </div>
+                  <SupportButtons variant="inline" showLabels />
+                </div>
               </div>
 
               {/* Payment Method */}
@@ -266,7 +344,7 @@ export default function CheckoutPage() {
                 
                 <RadioGroup
                   value={paymentMethod}
-                  onValueChange={(v) => setPaymentMethod(v as "stripe" | "bitcoin")}
+                  onValueChange={(v) => { setPaymentMethod(v as PaymentMethod); resetProof(); }}
                   className="space-y-4 mb-6"
                 >
                   <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
@@ -278,6 +356,19 @@ export default function CheckoutPage() {
                       <div>
                         <p className="font-medium">Credit/Debit Card</p>
                         <p className="text-xs text-muted-foreground">Secure payment via Stripe</p>
+                      </div>
+                    </Label>
+                  </div>
+
+                  <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
+                    paymentMethod === "zelle" ? "border-primary bg-primary/5" : "border-border"
+                  }`}>
+                    <RadioGroupItem value="zelle" id="zelle" />
+                    <Label htmlFor="zelle" className="flex items-center gap-3 cursor-pointer flex-1">
+                      <DollarSign className="w-5 h-5 text-[#6D1ED4]" />
+                      <div>
+                        <p className="font-medium">Zelle</p>
+                        <p className="text-xs text-muted-foreground">Send payment via Zelle</p>
                       </div>
                     </Label>
                   </div>
@@ -296,12 +387,80 @@ export default function CheckoutPage() {
                   </div>
                 </RadioGroup>
 
-                {paymentMethod === "stripe" ? (
+                {paymentMethod === "stripe" && (
                   <Button variant="hero" size="lg" className="w-full" onClick={handleStripeCheckout} disabled={processing}>
                     {processing && <Loader2 className="w-4 h-4 animate-spin" />}
                     Pay {formatCurrency(Number(voucher.sale_price), voucher.currency || "USD")}
                   </Button>
-                ) : (
+                )}
+
+                {paymentMethod === "zelle" && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-xl bg-[#6D1ED4]/10 border border-[#6D1ED4]/30 space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Amount to Send</span>
+                        <span className="font-bold text-lg">{formatCurrency(Number(voucher.sale_price), voucher.currency || "USD")}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Send Zelle payment to:</Label>
+                      <div className="flex gap-2">
+                        <Input value={zelleEmail} readOnly className="bg-card font-mono text-sm" />
+                        <Button variant="outline" size="icon" onClick={() => copyToClipboard(zelleEmail)}>
+                          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+                      <p className="font-medium mb-2">Instructions:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-xs">
+                        <li>Open your Zelle app or bank app with Zelle</li>
+                        <li>Send <strong>{formatCurrency(Number(voucher.sale_price))}</strong> to <strong>{zelleEmail}</strong></li>
+                        <li>Take a screenshot of the confirmation</li>
+                        <li>Upload the screenshot below</li>
+                      </ol>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Upload Payment Screenshot *</Label>
+                      <div className="border border-dashed border-border rounded-xl p-4 text-center">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="zelleProofUpload"
+                        />
+                        <label htmlFor="zelleProofUpload" className="cursor-pointer">
+                          <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">
+                            {proofFile ? proofFile.name : "Click to upload screenshot"}
+                          </p>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="zelleConfirmation">Confirmation Code (Optional)</Label>
+                      <Input
+                        id="zelleConfirmation"
+                        placeholder="Enter Zelle confirmation code if available..."
+                        value={zelleConfirmation}
+                        onChange={(e) => setZelleConfirmation(e.target.value)}
+                        className="bg-card"
+                      />
+                    </div>
+
+                    <Button variant="hero" size="lg" className="w-full" onClick={handleZelleSubmit} disabled={processing || !proofFile}>
+                      {processing && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Submit Zelle Payment
+                    </Button>
+                  </div>
+                )}
+
+                {paymentMethod === "bitcoin" && (
                   <div className="space-y-4">
                     <div className="p-4 rounded-xl bg-card/50 space-y-3">
                       <div className="flex justify-between text-sm">

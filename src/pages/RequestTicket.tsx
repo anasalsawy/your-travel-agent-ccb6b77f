@@ -10,9 +10,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-import { CalendarIcon, Plane, Users, Loader2, Check } from "lucide-react";
+import { CalendarIcon, Plane, Users, Loader2, Check, HelpCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { SupportButtons } from "@/components/SupportButtons";
 
 export default function RequestTicketPage() {
   const [user, setUser] = useState<any>(null);
@@ -372,6 +373,18 @@ export default function RequestTicketPage() {
                     You'll need to sign in to submit
                   </p>
                 )}
+              </div>
+
+              {/* Support section */}
+              <div className="mt-8 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                <div className="flex items-center gap-2 mb-3">
+                  <HelpCircle className="w-5 h-5 text-primary" />
+                  <span className="font-medium">Questions about your request?</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Our team is here to help you find the best flight deals. Reach out anytime!
+                </p>
+                <SupportButtons variant="inline" showLabels />
               </div>
             </form>
           </div>

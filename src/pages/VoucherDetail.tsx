@@ -12,8 +12,10 @@ import {
   Mail, 
   AlertTriangle,
   Check,
-  Loader2
+  Loader2,
+  HelpCircle
 } from "lucide-react";
+import { SupportButtons } from "@/components/SupportButtons";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Voucher = Tables<"vouchers">;
@@ -250,6 +252,15 @@ export default function VoucherDetailPage() {
                       This voucher is subject to airline terms. Review conditions before purchase.
                     </p>
                   </div>
+                </div>
+
+                {/* Support section */}
+                <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
+                  <div className="flex items-center gap-2 mb-3">
+                    <HelpCircle className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium">Need Help?</span>
+                  </div>
+                  <SupportButtons variant="inline" showLabels />
                 </div>
               </div>
             </div>

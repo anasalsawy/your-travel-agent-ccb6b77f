@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Plane, Mail, Shield, Lock } from "lucide-react";
+import { SupportButtons, FacebookLink } from "@/components/SupportButtons";
 
 export function Footer() {
   return (
@@ -16,9 +17,10 @@ export function Footer() {
                 Your Travel Agent
               </span>
             </Link>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm mb-4">
               Your trusted source for verified travel vouchers and discounted flight tickets.
             </p>
+            <FacebookLink />
           </div>
 
           {/* Quick Links */}
@@ -65,10 +67,10 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Trust */}
+          {/* Support */}
           <div>
-            <h4 className="font-display font-semibold mb-4">Trust & Security</h4>
-            <div className="space-y-3">
+            <h4 className="font-display font-semibold mb-4">Get Support</h4>
+            <div className="space-y-3 mb-6">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Shield className="w-4 h-4 text-success" />
                 <span>Verified Balances</span>
@@ -82,6 +84,7 @@ export function Footer() {
                 <span>Fast Delivery</span>
               </div>
             </div>
+            <SupportButtons variant="inline" />
           </div>
         </div>
 
