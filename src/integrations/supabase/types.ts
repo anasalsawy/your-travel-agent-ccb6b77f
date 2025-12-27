@@ -99,6 +99,7 @@ export type Database = {
           btc_address: string | null
           btc_amount: string | null
           created_at: string | null
+          customer_email: string | null
           delivery_info: string | null
           delivery_status: string | null
           id: string
@@ -117,6 +118,7 @@ export type Database = {
           btc_address?: string | null
           btc_amount?: string | null
           created_at?: string | null
+          customer_email?: string | null
           delivery_info?: string | null
           delivery_status?: string | null
           id?: string
@@ -135,6 +137,7 @@ export type Database = {
           btc_address?: string | null
           btc_amount?: string | null
           created_at?: string | null
+          customer_email?: string | null
           delivery_info?: string | null
           delivery_status?: string | null
           id?: string

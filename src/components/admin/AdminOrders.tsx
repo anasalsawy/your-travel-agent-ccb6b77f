@@ -7,10 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Search, Eye, Check, X, ExternalLink } from "lucide-react";
+import { Loader2, Search, Eye, Check, X, ExternalLink, Image, Download, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
-import { notifyCustomerOrderDelivered } from "@/lib/notifications";
+import { 
+  notifyCustomerOrderDelivered,
+  notifyCustomerPaymentApproved,
+  notifyCustomerPaymentRejected
+} from "@/lib/notifications";
 
 type Order = Tables<"orders"> & { 
   vouchers: Tables<"vouchers"> | null;
@@ -98,6 +102,15 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       order_status: "paid",
       admin_notes: adminNotes || null,
     });
+    
+    // Send customer approval notification (trigger will also send, but this is immediate)
+    const customerEmail = order.customer_email;
+    if (customerEmail) {
+      notifyCustomerPaymentApproved(customerEmail, {
+        orderId: order.id,
+        amount: Number(order.amount_paid),
+      });
+    }
   };
 
   const handleReject = async (order: Order) => {
@@ -110,6 +123,16 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       order_status: "cancelled",
       admin_notes: adminNotes,
     });
+    
+    // Send customer rejection notification
+    const customerEmail = order.customer_email;
+    if (customerEmail) {
+      notifyCustomerPaymentRejected(customerEmail, {
+        orderId: order.id,
+        amount: Number(order.amount_paid),
+        rejectionReason: adminNotes,
+      });
+    }
   };
 
   const handleMarkDelivered = async (order: Order) => {
@@ -262,6 +285,7 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
                     <div className="text-xs text-muted-foreground font-mono">{order.id.slice(0, 8)}</div>
                   </td>
                   <td className="p-4">
+                    <div className="text-sm">{order.customer_email || "—"}</div>
                     <div className="text-xs text-muted-foreground font-mono">{order.user_id?.slice(0, 8) || "—"}</div>
                   </td>
                   <td className="p-4 font-semibold">{formatCurrency(Number(order.amount_paid))}</td>
@@ -332,6 +356,17 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
                 </div>
               </div>
 
+              {/* Customer Email */}
+              {selectedOrder.customer_email && (
+                <div className="p-4 rounded-lg bg-muted/50">
+                  <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                    <Mail className="w-4 h-4" />
+                    Customer Email
+                  </div>
+                  <div className="font-medium">{selectedOrder.customer_email}</div>
+                </div>
+              )}
+
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="p-4 rounded-lg bg-muted/50">
                   <div className="text-sm text-muted-foreground mb-1">Payment Status</div>
@@ -349,22 +384,49 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
 
               {selectedOrder.proof_upload_url && (
                 <div className="p-4 rounded-lg bg-muted/50">
-                  <div className="text-sm text-muted-foreground mb-2">Payment Proof</div>
+                  <div className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
+                    <Image className="w-4 h-4" />
+                    Payment Proof
+                  </div>
                   {loadingProof ? (
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Loading proof...
                     </div>
                   ) : proofSignedUrl ? (
-                    <a
-                      href={proofSignedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-primary hover:underline"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      View Proof (expires in 1 hour)
-                    </a>
+                    <div className="space-y-3">
+                      {/* Thumbnail preview */}
+                      <div className="border border-border rounded-lg overflow-hidden bg-card">
+                        <img 
+                          src={proofSignedUrl} 
+                          alt="Payment proof"
+                          className="max-h-48 w-auto object-contain mx-auto"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <a
+                          href={proofSignedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-primary hover:underline text-sm"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Open Full Size
+                        </a>
+                        <a
+                          href={proofSignedUrl}
+                          download
+                          className="flex items-center gap-2 text-primary hover:underline text-sm"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download
+                        </a>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Link expires in 1 hour</p>
+                    </div>
                   ) : selectedOrder.proof_upload_url.startsWith("http") ? (
                     <a
                       href={selectedOrder.proof_upload_url}
@@ -376,9 +438,12 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
                       View Proof
                     </a>
                   ) : (
-                    <code className="text-xs bg-card p-2 rounded block break-all">
-                      {selectedOrder.proof_upload_url}
-                    </code>
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">Transaction Hash / Reference:</p>
+                      <code className="text-xs bg-card p-2 rounded block break-all">
+                        {selectedOrder.proof_upload_url}
+                      </code>
+                    </div>
                   )}
                 </div>
               )}

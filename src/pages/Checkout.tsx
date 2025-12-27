@@ -99,7 +99,7 @@ export default function CheckoutPage() {
     setProcessing(true);
     
     try {
-      // Create order
+      // Create order with customer email
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
@@ -108,6 +108,7 @@ export default function CheckoutPage() {
           amount_paid: Number(voucher.sale_price),
           payment_method: "stripe",
           payment_status: "pending",
+          customer_email: user.email,
         })
         .select()
         .single();
@@ -187,6 +188,7 @@ export default function CheckoutPage() {
           btc_address: btcAddress,
           btc_amount: btcAmount,
           proof_upload_url: proofUrl || txHash,
+          customer_email: user.email,
         })
         .select()
         .single();
@@ -269,6 +271,7 @@ export default function CheckoutPage() {
           payment_status: "processing",
           proof_upload_url: proofUrl,
           delivery_info: deliveryInfo,
+          customer_email: user.email,
         })
         .select()
         .single();
