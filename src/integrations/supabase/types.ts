@@ -59,6 +59,39 @@ export type Database = {
           },
         ]
       }
+      notification_log: {
+        Row: {
+          created_at: string
+          error: string | null
+          event_type: string
+          id: string
+          payload: Json | null
+          recipient: string | null
+          record_id: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          event_type: string
+          id?: string
+          payload?: Json | null
+          recipient?: string | null
+          record_id?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json | null
+          recipient?: string | null
+          record_id?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           admin_notes: string | null
