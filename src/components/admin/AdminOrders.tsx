@@ -24,7 +24,33 @@ export function AdminOrders() {
   const [adminNotes, setAdminNotes] = useState("");
   const [deliveryInfo, setDeliveryInfo] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [proofSignedUrl, setProofSignedUrl] = useState<string | null>(null);
+  const [loadingProof, setLoadingProof] = useState(false);
   const { toast } = useToast();
+
+  const getSignedProofUrl = async (filePath: string) => {
+    setLoadingProof(true);
+    try {
+      // Check if it's a file path (not a URL or tx hash)
+      if (!filePath.startsWith("http") && filePath.includes("/")) {
+        const { data, error } = await supabase.storage
+          .from("proof-uploads")
+          .createSignedUrl(filePath, 3600); // 1 hour expiry
+        
+        if (data && !error) {
+          setProofSignedUrl(data.signedUrl);
+        } else {
+          setProofSignedUrl(null);
+        }
+      } else {
+        // It's either a URL or a tx hash, keep as is
+        setProofSignedUrl(null);
+      }
+    } catch {
+      setProofSignedUrl(null);
+    }
+    setLoadingProof(false);
+  };
 
   const fetchOrders = async () => {
     const { data, error } = await supabase
@@ -241,6 +267,10 @@ export function AdminOrders() {
                         setSelectedOrder(order);
                         setAdminNotes(order.admin_notes || "");
                         setDeliveryInfo(order.delivery_info || "");
+                        setProofSignedUrl(null);
+                        if (order.proof_upload_url) {
+                          getSignedProofUrl(order.proof_upload_url);
+                        }
                       }}
                     >
                       <Eye className="w-4 h-4" />
@@ -298,7 +328,22 @@ export function AdminOrders() {
               {selectedOrder.proof_upload_url && (
                 <div className="p-4 rounded-lg bg-muted/50">
                   <div className="text-sm text-muted-foreground mb-2">Payment Proof</div>
-                  {selectedOrder.proof_upload_url.startsWith("http") ? (
+                  {loadingProof ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading proof...
+                    </div>
+                  ) : proofSignedUrl ? (
+                    <a
+                      href={proofSignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-primary hover:underline"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      View Proof (expires in 1 hour)
+                    </a>
+                  ) : selectedOrder.proof_upload_url.startsWith("http") ? (
                     <a
                       href={selectedOrder.proof_upload_url}
                       target="_blank"
