@@ -237,6 +237,13 @@ const handler = async (req: Request): Promise<Response> => {
     const isAdminNotification = adminNotificationTypes.includes(type);
     const recipient = isAdminNotification ? adminEmail : customerEmail;
 
+    // Derive a record_id for logging (orderId / ticket request id)
+    const recordId =
+      (data?.orderId as string | undefined) ||
+      (data?.ticketRequestId as string | undefined) ||
+      (data?.requestId as string | undefined) ||
+      null;
+
     console.log("Is admin notification:", isAdminNotification);
     console.log("Recipient:", recipient);
 
@@ -245,6 +252,14 @@ const handler = async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({ error: "No recipient email provided", type }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Required debug logging for customer emails: log(event_type, recipient_email, record_id)
+    if (!isAdminNotification) {
+      console.log(
+        "CUSTOMER_EMAIL_ATTEMPT",
+        JSON.stringify({ event_type: type, recipient_email: recipient, record_id: recordId })
       );
     }
 

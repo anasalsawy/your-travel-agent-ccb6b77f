@@ -79,6 +79,29 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
     fetchOrders();
   }, []);
 
+  const resolveOrderCustomerEmail = async (order: Order): Promise<string | null> => {
+    if (order.customer_email) return order.customer_email;
+
+    if (!order.user_id) return null;
+
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", order.user_id)
+      .maybeSingle();
+
+    if (error) return null;
+
+    const email = profile?.email || null;
+
+    // Backfill missing customer_email on the order so future notifications never miss it.
+    if (email) {
+      await supabase.from("orders").update({ customer_email: email }).eq("id", order.id);
+    }
+
+    return email;
+  };
+
   const handleUpdateOrder = async (orderId: string, updates: Partial<Tables<"orders">>) => {
     setUpdating(true);
     const { error } = await supabase
@@ -102,15 +125,22 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       order_status: "paid",
       admin_notes: adminNotes || null,
     });
-    
-    // Send customer approval notification (trigger will also send, but this is immediate)
-    const customerEmail = order.customer_email;
-    if (customerEmail) {
-      notifyCustomerPaymentApproved(customerEmail, {
-        orderId: order.id,
-        amount: Number(order.amount_paid),
+
+    const customerEmail = await resolveOrderCustomerEmail(order);
+
+    if (!customerEmail) {
+      toast({
+        title: "Customer email missing",
+        description: "Cannot send approval email because this order has no customer email.",
+        variant: "destructive",
       });
+      return;
     }
+
+    await notifyCustomerPaymentApproved(customerEmail, {
+      orderId: order.id,
+      amount: Number(order.amount_paid),
+    });
   };
 
   const handleReject = async (order: Order) => {
@@ -123,16 +153,23 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       order_status: "cancelled",
       admin_notes: adminNotes,
     });
-    
-    // Send customer rejection notification
-    const customerEmail = order.customer_email;
-    if (customerEmail) {
-      notifyCustomerPaymentRejected(customerEmail, {
-        orderId: order.id,
-        amount: Number(order.amount_paid),
-        rejectionReason: adminNotes,
+
+    const customerEmail = await resolveOrderCustomerEmail(order);
+
+    if (!customerEmail) {
+      toast({
+        title: "Customer email missing",
+        description: "Cannot send rejection email because this order has no customer email.",
+        variant: "destructive",
       });
+      return;
     }
+
+    await notifyCustomerPaymentRejected(customerEmail, {
+      orderId: order.id,
+      amount: Number(order.amount_paid),
+      rejectionReason: adminNotes,
+    });
   };
 
   const handleMarkDelivered = async (order: Order) => {
@@ -140,13 +177,8 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       toast({ title: "Error", description: "Please provide delivery information", variant: "destructive" });
       return;
     }
-    
-    // Get customer email from profile
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", order.user_id)
-      .single();
+
+    const customerEmail = await resolveOrderCustomerEmail(order);
 
     await handleUpdateOrder(order.id, {
       order_status: "delivered",
@@ -154,14 +186,20 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       delivery_info: deliveryInfo,
     });
 
-    // Send customer notification
-    if (profile?.email) {
-      notifyCustomerOrderDelivered(profile.email, {
-        orderId: order.id,
-        voucherTitle: order.vouchers?.title || "Voucher",
-        deliveryInfo,
+    if (!customerEmail) {
+      toast({
+        title: "Customer email missing",
+        description: "Order marked delivered, but no customer email was found to notify.",
+        variant: "destructive",
       });
+      return;
     }
+
+    await notifyCustomerOrderDelivered(customerEmail, {
+      orderId: order.id,
+      voucherTitle: order.vouchers?.title || "Voucher",
+      deliveryInfo,
+    });
   };
 
   const formatCurrency = (amount: number) => {
