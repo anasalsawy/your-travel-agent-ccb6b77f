@@ -60,7 +60,7 @@ export function FacebookPostDialog({ open, onOpenChange, voucher }: FacebookPost
           <Textarea
             value={postText}
             readOnly
-            className="min-h-[280px] font-mono text-sm bg-muted/50 resize-none"
+            className="min-h-[400px] font-mono text-sm bg-muted/50 resize-none leading-relaxed"
           />
 
           <Button onClick={handleCopy} className="w-full gap-2">
