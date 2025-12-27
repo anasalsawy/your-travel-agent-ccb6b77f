@@ -10,7 +10,7 @@ import { Loader2, CreditCard, Bitcoin, ArrowLeft, Copy, Check, Upload, DollarSig
 import { useToast } from "@/hooks/use-toast";
 import { SupportButtons } from "@/components/SupportButtons";
 import type { Tables } from "@/integrations/supabase/types";
-import { notifyNewOrder, notifyPaymentProofUploaded, notifyCustomerOrderReceived, notifyCustomerPaymentUnderReview } from "@/lib/notifications";
+// Notifications are now handled by database triggers - no client-side calls needed
 
 type Voucher = Tables<"vouchers">;
 type PaymentMethod = "stripe" | "bitcoin" | "zelle";
@@ -115,22 +115,7 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
-      // Send notifications (await so navigation can't cancel requests)
-      await Promise.allSettled([
-        notifyNewOrder({
-          orderId: order.id,
-          voucherTitle: voucher.title,
-          amount: Number(voucher.sale_price),
-          paymentMethod: "stripe",
-          customerEmail: user.email,
-        }),
-        notifyCustomerOrderReceived(user.email, {
-          orderId: order.id,
-          voucherTitle: voucher.title,
-          amount: Number(voucher.sale_price),
-          paymentMethod: "Credit Card",
-        }),
-      ]);
+      // Notifications are handled by database triggers
 
       // In a real app, you'd redirect to Stripe Checkout here
       toast({
@@ -186,7 +171,9 @@ export default function CheckoutPage() {
           voucher_id: voucher.id,
           amount_paid: Number(voucher.sale_price),
           payment_method: "bitcoin",
-          payment_status: "processing",
+          payment_status: "under_review",
+          order_status: "payment_under_review",
+          payment_submitted_at: new Date().toISOString(),
           btc_address: btcAddress,
           btc_amount: btcAmount,
           proof_upload_url: proofUrl || txHash,
@@ -197,34 +184,14 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
-      // Send notifications (await so navigation can't cancel requests)
-      await Promise.allSettled([
-        notifyNewOrder({
-          orderId: order.id,
-          voucherTitle: voucher.title,
-          amount: Number(voucher.sale_price),
-          paymentMethod: "bitcoin",
-          customerEmail: user.email,
-        }),
-        notifyPaymentProofUploaded({
-          orderId: order.id,
-          voucherTitle: voucher.title,
-          amount: Number(voucher.sale_price),
-          paymentMethod: "Bitcoin",
-        }),
-        notifyCustomerPaymentUnderReview(user.email, {
-          orderId: order.id,
-          voucherTitle: voucher.title,
-          amount: Number(voucher.sale_price),
-        }),
-      ]);
+      // Notifications are handled by database triggers
 
       toast({
         title: "Payment Submitted!",
-        description: "We'll verify your payment and deliver the voucher shortly.",
+        description: "Your payment is now under review. We'll notify you once verified.",
       });
 
-      navigate("/dashboard");
+      navigate("/dashboard?payment_submitted=true");
     } catch (error: any) {
       toast({
         title: "Error",
@@ -272,7 +239,9 @@ export default function CheckoutPage() {
           voucher_id: voucher.id,
           amount_paid: Number(voucher.sale_price),
           payment_method: "zelle",
-          payment_status: "processing",
+          payment_status: "under_review",
+          order_status: "payment_under_review",
+          payment_submitted_at: new Date().toISOString(),
           proof_upload_url: proofUrl,
           delivery_info: deliveryInfo,
           customer_email: user.email,
@@ -282,34 +251,14 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
-      // Send notifications (await so navigation can't cancel requests)
-      await Promise.allSettled([
-        notifyNewOrder({
-          orderId: order.id,
-          voucherTitle: voucher.title,
-          amount: Number(voucher.sale_price),
-          paymentMethod: "zelle",
-          customerEmail: user.email,
-        }),
-        notifyPaymentProofUploaded({
-          orderId: order.id,
-          voucherTitle: voucher.title,
-          amount: Number(voucher.sale_price),
-          paymentMethod: "Zelle",
-        }),
-        notifyCustomerPaymentUnderReview(user.email, {
-          orderId: order.id,
-          voucherTitle: voucher.title,
-          amount: Number(voucher.sale_price),
-        }),
-      ]);
+      // Notifications are handled by database triggers
 
       toast({
         title: "Payment Submitted!",
-        description: "We'll verify your Zelle payment and deliver the voucher shortly.",
+        description: "Your payment is now under review. We'll notify you once verified.",
       });
 
-      navigate("/dashboard");
+      navigate("/dashboard?payment_submitted=true");
     } catch (error: any) {
       toast({
         title: "Error",

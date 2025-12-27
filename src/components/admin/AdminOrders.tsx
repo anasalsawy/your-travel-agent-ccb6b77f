@@ -229,6 +229,9 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       case "pending":
       case "processing":
         return "bg-warning/20 text-warning";
+      case "under_review":
+      case "payment_under_review":
+        return "bg-primary/20 text-primary";
       case "cancelled":
       case "failed":
         return "bg-destructive/20 text-destructive";
@@ -256,7 +259,7 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
     return matchesSearch && matchesStatus;
   });
 
-  const pendingCount = orders.filter(o => o.payment_status === "processing").length;
+  const pendingCount = orders.filter(o => o.payment_status === "processing" || o.payment_status === "under_review").length;
 
   if (loading) {
     return (
@@ -269,9 +272,9 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
   return (
     <div className="space-y-6">
       {pendingCount > 0 && (
-        <div className="p-4 rounded-xl bg-warning/10 border border-warning/30">
-          <p className="text-warning font-medium">
-            ⚠️ {pendingCount} order(s) pending payment verification
+        <div className="p-4 rounded-xl bg-primary/10 border border-primary/30">
+          <p className="text-primary font-medium">
+            🔍 {pendingCount} order(s) awaiting payment review
           </p>
         </div>
       )}
@@ -292,6 +295,7 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Orders</SelectItem>
+            <SelectItem value="under_review">Under Review</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="processing">Processing</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
@@ -508,7 +512,7 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
                 />
               </div>
 
-              {isAdmin && selectedOrder.payment_status === "processing" && (
+              {isAdmin && (selectedOrder.payment_status === "processing" || selectedOrder.payment_status === "under_review") && (
                 <div className="flex gap-3">
                   <Button
                     variant="hero"

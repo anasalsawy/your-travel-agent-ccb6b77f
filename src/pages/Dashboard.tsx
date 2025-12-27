@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,9 @@ export default function DashboardPage() {
   const [requests, setRequests] = useState<TicketRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<TicketRequest | null>(null);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const paymentSubmitted = searchParams.get("payment_submitted") === "true";
 
   const fetchData = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -128,12 +130,22 @@ export default function DashboardPage() {
       case "submitted":
       case "quoted":
         return "bg-warning/20 text-warning";
+      case "under_review":
+      case "payment_under_review":
+        return "bg-primary/20 text-primary";
       case "cancelled":
       case "failed":
         return "bg-destructive/20 text-destructive";
       default:
         return "bg-muted text-muted-foreground";
     }
+  };
+
+  const getStatusLabel = (status: string) => {
+    if (status === "under_review" || status === "payment_under_review") {
+      return "Under Review";
+    }
+    return status;
   };
 
   if (loading) {
@@ -150,6 +162,19 @@ export default function DashboardPage() {
     <Layout>
       <div className="min-h-screen bg-gradient-dark py-8 md:py-12">
         <div className="container mx-auto px-4">
+          {/* Payment Submitted Banner */}
+          {paymentSubmitted && (
+            <div className="mb-6 p-4 rounded-xl bg-success/10 border border-success/30 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
+                <Package className="w-5 h-5 text-success" />
+              </div>
+              <div>
+                <p className="font-semibold text-success">Payment Submitted Successfully!</p>
+                <p className="text-sm text-muted-foreground">Your payment is now under review. We'll notify you once verified.</p>
+              </div>
+            </div>
+          )}
+
           {/* Header */}
           <div className="mb-8">
             <h1 className="font-display text-3xl md:text-4xl font-bold mb-2">
@@ -218,10 +243,10 @@ export default function DashboardPage() {
                             <div className="text-xs text-muted-foreground">{getPaymentMethodLabel(order.payment_method)}</div>
                           </div>
                           <Badge className={getStatusColor(order.payment_status || "pending")}>
-                            {order.payment_status}
+                            {getStatusLabel(order.payment_status || "pending")}
                           </Badge>
                           <Badge className={getStatusColor(order.order_status || "pending")}>
-                            {order.order_status}
+                            {getStatusLabel(order.order_status || "pending")}
                           </Badge>
                         </div>
                       </div>
