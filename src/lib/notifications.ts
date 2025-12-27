@@ -6,6 +6,8 @@ type NotificationType =
   | "new_ticket_request"
   | "order_received"
   | "payment_under_review"
+  | "payment_approved"
+  | "payment_rejected"
   | "order_delivered"
   | "ticket_issued"
   | "test_email";
@@ -114,6 +116,35 @@ export async function notifyCustomerPaymentUnderReview(
 ) {
   return sendNotification({
     type: "payment_under_review",
+    data: orderData,
+    customerEmail,
+  });
+}
+
+export async function notifyCustomerPaymentApproved(
+  customerEmail: string,
+  orderData: {
+    orderId: string;
+    amount: number;
+  }
+) {
+  return sendNotification({
+    type: "payment_approved",
+    data: orderData,
+    customerEmail,
+  });
+}
+
+export async function notifyCustomerPaymentRejected(
+  customerEmail: string,
+  orderData: {
+    orderId: string;
+    amount: number;
+    rejectionReason: string;
+  }
+) {
+  return sendNotification({
+    type: "payment_rejected",
     data: orderData,
     customerEmail,
   });

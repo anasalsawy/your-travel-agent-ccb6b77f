@@ -14,6 +14,8 @@ type NotificationType =
   | "new_ticket_request"
   | "order_received"
   | "payment_under_review"
+  | "payment_approved"
+  | "payment_rejected"
   | "order_delivered"
   | "ticket_issued"
   | "test_email";
@@ -25,7 +27,7 @@ interface NotificationRequest {
 }
 
 function getEmailContent(type: NotificationType, data: Record<string, any>): { subject: string; html: string } {
-  const formatCurrency = (amount: number) => `$${amount.toLocaleString()}`;
+  const formatCurrency = (amount: number) => `$${amount?.toLocaleString() || '0'}`;
   
   switch (type) {
     // Test email
@@ -55,10 +57,10 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
           <p>A new order has been placed.</p>
           <ul>
             <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle}</li>
+            <li><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</li>
             <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
             <li><strong>Payment Method:</strong> ${data.paymentMethod}</li>
-            <li><strong>Customer Email:</strong> ${data.customerEmail}</li>
+            <li><strong>Customer Email:</strong> ${data.customerEmail || 'N/A'}</li>
           </ul>
           <p>Please review this order in the admin dashboard.</p>
         `,
@@ -72,7 +74,7 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
           <p>A customer has uploaded payment proof for their order.</p>
           <ul>
             <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle}</li>
+            <li><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</li>
             <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
             <li><strong>Payment Method:</strong> ${data.paymentMethod}</li>
           </ul>
@@ -107,7 +109,7 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
           <p>We have received your order and it is being processed.</p>
           <ul>
             <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle}</li>
+            <li><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</li>
             <li><strong>Amount Paid:</strong> ${formatCurrency(data.amount)}</li>
             <li><strong>Payment Method:</strong> ${data.paymentMethod}</li>
           </ul>
@@ -124,22 +126,52 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
           <p>Thank you for submitting your payment proof. Our team is reviewing it.</p>
           <ul>
             <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle}</li>
+            <li><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</li>
             <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
           </ul>
           <p>We typically process payments within 24 hours. You will receive another email once your payment is confirmed.</p>
         `,
       };
     
+    case "payment_approved":
+      return {
+        subject: `Payment Approved - Order ${data.orderId?.slice(0, 8)}`,
+        html: `
+          <h2>Payment Approved! 🎉</h2>
+          <p>Great news! Your payment has been verified and approved.</p>
+          <ul>
+            <li><strong>Order ID:</strong> ${data.orderId}</li>
+            <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
+          </ul>
+          <p>Your order is now being processed for delivery. You will receive another email once your voucher has been delivered.</p>
+          <p>Thank you for your purchase!</p>
+        `,
+      };
+    
+    case "payment_rejected":
+      return {
+        subject: `Payment Issue - Order ${data.orderId?.slice(0, 8)}`,
+        html: `
+          <h2>Payment Issue</h2>
+          <p>Unfortunately, we were unable to verify your payment for the following order:</p>
+          <ul>
+            <li><strong>Order ID:</strong> ${data.orderId}</li>
+            <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
+          </ul>
+          ${data.rejectionReason ? `<p><strong>Reason:</strong> ${data.rejectionReason}</p>` : ''}
+          <p>If you believe this is an error, please contact our support team with your payment proof and order details.</p>
+          <p>We apologize for any inconvenience.</p>
+        `,
+      };
+    
     case "order_delivered":
       return {
-        subject: `Order Delivered - ${data.voucherTitle}`,
+        subject: `Order Delivered - Your Voucher is Ready!`,
         html: `
-          <h2>Your Order Has Been Delivered!</h2>
+          <h2>Your Order Has Been Delivered! 🎉</h2>
           <p>Great news! Your order has been processed and delivered.</p>
           <ul>
             <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle}</li>
           </ul>
           ${data.deliveryInfo ? `<p><strong>Delivery Details:</strong></p><p>${data.deliveryInfo}</p>` : ''}
           <p>Thank you for your business! If you have any issues, please contact our support team.</p>
@@ -150,7 +182,7 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
       return {
         subject: `Your Ticket Has Been Issued!`,
         html: `
-          <h2>Your Flight Ticket is Ready!</h2>
+          <h2>Your Flight Ticket is Ready! ✈️</h2>
           <p>Great news! Your flight ticket has been issued.</p>
           <ul>
             <li><strong>Route:</strong> ${data.origin} → ${data.destination}</li>
@@ -201,16 +233,17 @@ const handler = async (req: Request): Promise<Response> => {
     console.log("Email subject:", subject);
     
     // Determine recipient based on notification type
-    const isAdminNotification = ["new_order", "payment_proof_uploaded", "new_ticket_request", "test_email"].includes(type);
+    const adminNotificationTypes = ["new_order", "payment_proof_uploaded", "new_ticket_request", "test_email"];
+    const isAdminNotification = adminNotificationTypes.includes(type);
     const recipient = isAdminNotification ? adminEmail : customerEmail;
 
     console.log("Is admin notification:", isAdminNotification);
     console.log("Recipient:", recipient);
 
     if (!recipient) {
-      console.error("No recipient email provided");
+      console.error("No recipient email provided for type:", type);
       return new Response(
-        JSON.stringify({ error: "No recipient email provided" }),
+        JSON.stringify({ error: "No recipient email provided", type }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
@@ -244,10 +277,10 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log("Email sent successfully!");
+    console.log("Email sent successfully to:", recipient);
 
     return new Response(
-      JSON.stringify({ success: true, emailResponse }),
+      JSON.stringify({ success: true, emailResponse, recipient }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
