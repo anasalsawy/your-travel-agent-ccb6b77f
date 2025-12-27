@@ -155,8 +155,8 @@ export default function CheckoutPage() {
           .upload(fileName, proofFile);
         
         if (!uploadError) {
-          const { data } = supabase.storage.from("proof-uploads").getPublicUrl(fileName);
-          proofUrl = data.publicUrl;
+          // Store file path instead of public URL for private bucket
+          proofUrl = fileName;
         }
       }
 
@@ -215,8 +215,8 @@ export default function CheckoutPage() {
         .upload(fileName, proofFile);
       
       if (!uploadError) {
-        const { data } = supabase.storage.from("proof-uploads").getPublicUrl(fileName);
-        proofUrl = data.publicUrl;
+        // Store file path instead of public URL for private bucket
+        proofUrl = fileName;
       }
 
       const deliveryInfo = zelleConfirmation ? `Confirmation: ${zelleConfirmation}` : null;
