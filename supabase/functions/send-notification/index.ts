@@ -15,7 +15,8 @@ type NotificationType =
   | "order_received"
   | "payment_under_review"
   | "order_delivered"
-  | "ticket_issued";
+  | "ticket_issued"
+  | "test_email";
 
 interface NotificationRequest {
   type: NotificationType;
@@ -27,6 +28,24 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
   const formatCurrency = (amount: number) => `$${amount.toLocaleString()}`;
   
   switch (type) {
+    // Test email
+    case "test_email":
+      return {
+        subject: `Test Email - FlyDealz Notifications`,
+        html: `
+          <h2>Test Email Successful!</h2>
+          <p>If you're seeing this, your email notifications are working correctly.</p>
+          <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+          <p>You will receive notifications for:</p>
+          <ul>
+            <li>New orders</li>
+            <li>Payment proof uploads</li>
+            <li>New ticket requests</li>
+          </ul>
+          <p>This is a test email from FlyDealz.</p>
+        `,
+      };
+
     // Admin notifications
     case "new_order":
       return {
@@ -151,20 +170,42 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
 }
 
 const handler = async (req: Request): Promise<Response> => {
+  console.log("=== send-notification function called ===");
+  console.log("Method:", req.method);
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { type, data, customerEmail }: NotificationRequest = await req.json();
+    // Log environment check
+    console.log("RESEND_API_KEY exists:", !!RESEND_API_KEY);
+    console.log("ADMIN_EMAIL:", adminEmail);
+
+    if (!RESEND_API_KEY) {
+      console.error("RESEND_API_KEY is not set");
+      return new Response(
+        JSON.stringify({ error: "RESEND_API_KEY is not configured" }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const body = await req.json();
+    console.log("Request body:", JSON.stringify(body));
     
-    console.log(`Sending notification: ${type}`, { data, customerEmail });
+    const { type, data, customerEmail }: NotificationRequest = body;
+    
+    console.log(`Processing notification type: ${type}`);
 
     const { subject, html } = getEmailContent(type, data);
+    console.log("Email subject:", subject);
     
     // Determine recipient based on notification type
-    const isAdminNotification = ["new_order", "payment_proof_uploaded", "new_ticket_request"].includes(type);
+    const isAdminNotification = ["new_order", "payment_proof_uploaded", "new_ticket_request", "test_email"].includes(type);
     const recipient = isAdminNotification ? adminEmail : customerEmail;
+
+    console.log("Is admin notification:", isAdminNotification);
+    console.log("Recipient:", recipient);
 
     if (!recipient) {
       console.error("No recipient email provided");
@@ -174,6 +215,8 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    console.log("Sending email via Resend API...");
+    
     // Send email using Resend API directly
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -190,6 +233,8 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     const emailResponse = await res.json();
+    console.log("Resend API response status:", res.status);
+    console.log("Resend API response:", JSON.stringify(emailResponse));
 
     if (!res.ok) {
       console.error("Resend API error:", emailResponse);
@@ -199,14 +244,15 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log("Email sent successfully:", emailResponse);
+    console.log("Email sent successfully!");
 
     return new Response(
       JSON.stringify({ success: true, emailResponse }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
-    console.error("Error sending notification:", error);
+    console.error("Error in send-notification function:", error);
+    console.error("Error stack:", error.stack);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }

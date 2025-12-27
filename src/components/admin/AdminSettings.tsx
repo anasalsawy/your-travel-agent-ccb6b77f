@@ -3,12 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Save, Bitcoin, DollarSign } from "lucide-react";
+import { Loader2, Save, Bitcoin, DollarSign, Mail, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { sendTestEmail } from "@/lib/notifications";
 
 export function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const { toast } = useToast();
 
   const [settings, setSettings] = useState({
@@ -64,6 +66,35 @@ export function AdminSettings() {
     }
   };
 
+  const handleSendTestEmail = async () => {
+    setSendingTestEmail(true);
+    
+    try {
+      const result = await sendTestEmail();
+      
+      if (result.success) {
+        toast({ 
+          title: "Test Email Sent!", 
+          description: "Check your admin email inbox (and spam folder) for the test email." 
+        });
+      } else {
+        toast({ 
+          title: "Failed to Send Test Email", 
+          description: result.error || "Unknown error occurred",
+          variant: "destructive" 
+        });
+      }
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to send test email",
+        variant: "destructive" 
+      });
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -74,6 +105,40 @@ export function AdminSettings() {
 
   return (
     <div className="max-w-2xl space-y-8">
+      {/* Email Notifications */}
+      <div className="glass-card p-6 md:p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Mail className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-semibold">Email Notifications</h2>
+            <p className="text-sm text-muted-foreground">Test your email notification system</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Click the button below to send a test email to the admin email address. 
+            This verifies that your email notifications are working correctly.
+          </p>
+          
+          <Button 
+            onClick={handleSendTestEmail} 
+            disabled={sendingTestEmail}
+            className="gap-2"
+          >
+            {sendingTestEmail ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+            Send Test Email
+          </Button>
+        </div>
+      </div>
+
+      {/* Bitcoin Settings */}
       <div className="glass-card p-6 md:p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
@@ -118,6 +183,7 @@ export function AdminSettings() {
         </div>
       </div>
 
+      {/* Zelle Settings */}
       <div className="glass-card p-6 md:p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-lg bg-[#6D1ED4]/10 flex items-center justify-center">
