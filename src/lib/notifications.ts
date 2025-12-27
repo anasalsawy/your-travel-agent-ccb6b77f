@@ -7,7 +7,8 @@ type NotificationType =
   | "order_received"
   | "payment_under_review"
   | "order_delivered"
-  | "ticket_issued";
+  | "ticket_issued"
+  | "test_email";
 
 interface NotificationData {
   type: NotificationType;
@@ -15,23 +16,33 @@ interface NotificationData {
   customerEmail?: string;
 }
 
-export async function sendNotification({ type, data, customerEmail }: NotificationData): Promise<boolean> {
+export async function sendNotification({ type, data, customerEmail }: NotificationData): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase.functions.invoke("send-notification", {
+    console.log(`[Notifications] Sending ${type} notification...`);
+    
+    const { data: responseData, error } = await supabase.functions.invoke("send-notification", {
       body: { type, data, customerEmail },
     });
 
     if (error) {
-      console.error("Failed to send notification:", error);
-      return false;
+      console.error("[Notifications] Edge function error:", error);
+      return { success: false, error: error.message };
     }
 
-    console.log(`Notification sent: ${type}`);
-    return true;
-  } catch (error) {
-    console.error("Error sending notification:", error);
-    return false;
+    console.log(`[Notifications] ${type} notification sent successfully:`, responseData);
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Notifications] Exception sending notification:", error);
+    return { success: false, error: error.message };
   }
+}
+
+// Test email
+export async function sendTestEmail() {
+  return sendNotification({
+    type: "test_email",
+    data: { timestamp: new Date().toISOString() },
+  });
 }
 
 // Admin notifications
