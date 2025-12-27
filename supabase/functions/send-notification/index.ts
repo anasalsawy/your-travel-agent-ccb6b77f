@@ -2,203 +2,433 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const adminEmail = Deno.env.get("ADMIN_EMAIL");
+const FROM_EMAIL = "Your Travel Agent <no-reply@your-travel-agent.net>";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// All notification types
 type NotificationType = 
-  | "new_order" 
-  | "payment_proof_uploaded" 
-  | "new_ticket_request"
+  // Order customer notifications
   | "order_received"
-  | "payment_under_review"
+  | "payment_instructions"
+  | "payment_proof_received"
   | "payment_approved"
   | "payment_rejected"
   | "order_delivered"
+  | "order_cancelled"
+  // Order admin notifications
+  | "new_order"
+  | "admin_new_order"
+  | "payment_proof_uploaded"
+  | "admin_proof_uploaded"
+  | "admin_order_delivered"
+  | "admin_order_cancelled"
+  // Ticket request customer notifications
+  | "ticket_request_received"
+  | "ticket_quote_ready"
+  | "ticket_quote_updated"
+  | "ticket_payment_under_review"
+  | "ticket_payment_approved"
   | "ticket_issued"
+  | "ticket_request_rejected"
+  | "ticket_request_cancelled"
+  // Ticket request admin notifications
+  | "new_ticket_request"
+  | "admin_new_ticket_request"
+  | "admin_ticket_proof_uploaded"
+  | "admin_ticket_completed"
+  | "admin_ticket_rejected"
+  // Legacy/misc
+  | "payment_under_review"
   | "test_email";
 
 interface NotificationRequest {
   type: NotificationType;
   data: Record<string, any>;
   customerEmail?: string;
+  entityType?: string;
+  entityId?: string;
 }
 
 function getEmailContent(type: NotificationType, data: Record<string, any>): { subject: string; html: string } {
   const formatCurrency = (amount: number) => `$${amount?.toLocaleString() || '0'}`;
+  const orderId = data.orderId ? String(data.orderId).substring(0, 8) : "";
+  const requestId = data.requestId ? String(data.requestId).substring(0, 8) : "";
   
   switch (type) {
-    // Test email
+    // ========== TEST EMAIL ==========
     case "test_email":
       return {
-        subject: `Test Email - FlyDealz Notifications`,
+        subject: `Test Email - Your Travel Agent`,
         html: `
-          <h2>Test Email Successful!</h2>
-          <p>If you're seeing this, your email notifications are working correctly.</p>
-          <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-          <p>You will receive notifications for:</p>
-          <ul>
-            <li>New orders</li>
-            <li>Payment proof uploads</li>
-            <li>New ticket requests</li>
-          </ul>
-          <p>This is a test email from FlyDealz.</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>Test Email Successful!</h2>
+            <p>If you're seeing this, your email notifications are working correctly.</p>
+            <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+          </div>
         `,
       };
 
-    // Admin notifications
+    // ========== ORDER CUSTOMER EMAILS ==========
+    case "order_received":
+      return {
+        subject: `Order Confirmed - #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">Thank You for Your Order!</h1>
+            <p>Your order <strong>#${orderId}</strong> has been received and is being processed.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+              <p><strong>Payment Method:</strong> ${data.paymentMethod}</p>
+            </div>
+            <p>We'll notify you once your payment is confirmed.</p>
+            <p style="color: #718096; font-size: 14px;">If you have any questions, please reply to this email.</p>
+          </div>
+        `,
+      };
+
+    case "payment_instructions":
+      const instructions = data.paymentMethod === "bitcoin" 
+        ? `<p><strong>Bitcoin Address:</strong> ${data.btcAddress || "Will be provided shortly"}</p><p><strong>Amount:</strong> ${data.btcAmount || "TBD"} BTC</p>`
+        : `<p>Please send your Zelle payment to our registered account.</p><p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>`;
+      return {
+        subject: `Payment Instructions - Order #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">Payment Instructions</h1>
+            <p>Here are the payment details for your order <strong>#${orderId}</strong>:</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              ${instructions}
+            </div>
+            <p>After completing payment, please upload your proof of payment in your dashboard.</p>
+          </div>
+        `,
+      };
+
+    case "payment_proof_received":
+    case "payment_under_review":
+      return {
+        subject: `Payment Under Review - Order #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">Payment Proof Received</h1>
+            <p>We've received your payment proof for order <strong>#${orderId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+            </div>
+            <p>Our team is reviewing your payment. This typically takes 1-2 business hours.</p>
+          </div>
+        `,
+      };
+
+    case "payment_approved":
+      return {
+        subject: `Payment Confirmed - Order #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Payment Confirmed! 🎉</h1>
+            <p>Great news! Your payment for order <strong>#${orderId}</strong> has been confirmed.</p>
+            <p>We're now processing your order and will deliver your voucher shortly.</p>
+          </div>
+        `,
+      };
+
+    case "payment_rejected":
+      return {
+        subject: `Payment Issue - Order #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #e53e3e;">Payment Issue</h1>
+            <p>Unfortunately, we couldn't verify your payment for order <strong>#${orderId}</strong>.</p>
+            ${data.rejectionReason ? `<div style="background: #fed7d7; padding: 15px; border-radius: 8px; margin: 20px 0;"><strong>Reason:</strong> ${data.rejectionReason}</div>` : ""}
+            <p>Please submit a new payment proof or contact us for assistance.</p>
+          </div>
+        `,
+      };
+
+    case "order_delivered":
+      return {
+        subject: `Order Delivered - #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Your Order Has Been Delivered! 🎉</h1>
+            <p>Your voucher for order <strong>#${orderId}</strong> is ready.</p>
+            ${data.deliveryInfo ? `<div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;"><strong>Delivery Details:</strong><br>${data.deliveryInfo}</div>` : ""}
+            <p>Thank you for choosing Your Travel Agent!</p>
+          </div>
+        `,
+      };
+
+    case "order_cancelled":
+      return {
+        subject: `Order Cancelled - #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #718096;">Order Cancelled</h1>
+            <p>Your order <strong>#${orderId}</strong> has been cancelled.</p>
+            ${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ""}
+            <p>If you have any questions, please contact us.</p>
+          </div>
+        `,
+      };
+
+    // ========== ORDER ADMIN EMAILS ==========
     case "new_order":
+    case "admin_new_order":
       return {
-        subject: `New Order Received - ${data.voucherTitle || 'Voucher Order'}`,
+        subject: `New Order Received - #${orderId}`,
         html: `
-          <h2>New Order Received</h2>
-          <p>A new order has been placed.</p>
-          <ul>
-            <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</li>
-            <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
-            <li><strong>Payment Method:</strong> ${data.paymentMethod}</li>
-            <li><strong>Customer Email:</strong> ${data.customerEmail || 'N/A'}</li>
-          </ul>
-          <p>Please review this order in the admin dashboard.</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">New Order Received</h1>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px;">
+              <p><strong>Order ID:</strong> ${data.orderId}</p>
+              <p><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+              <p><strong>Payment Method:</strong> ${data.paymentMethod}</p>
+              <p><strong>Customer:</strong> ${data.customerEmail || "N/A"}</p>
+            </div>
+            <p>Please review this order in the admin dashboard.</p>
+          </div>
         `,
       };
-    
+
     case "payment_proof_uploaded":
+    case "admin_proof_uploaded":
       return {
-        subject: `Payment Proof Uploaded - Order ${data.orderId?.slice(0, 8)}`,
+        subject: `Payment Proof Uploaded - Order #${orderId}`,
         html: `
-          <h2>Payment Proof Uploaded</h2>
-          <p>A customer has uploaded payment proof for their order.</p>
-          <ul>
-            <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</li>
-            <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
-            <li><strong>Payment Method:</strong> ${data.paymentMethod}</li>
-          </ul>
-          <p>Please verify the payment and update the order status.</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dd6b20;">Payment Proof Uploaded</h1>
+            <p>A customer has uploaded payment proof for order <strong>#${orderId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px;">
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+              <p><strong>Method:</strong> ${data.paymentMethod}</p>
+              ${data.proofUrl ? `<p><strong>Proof:</strong> <a href="${data.proofUrl}">View</a></p>` : ""}
+            </div>
+            <p>Please review and approve/reject the payment.</p>
+          </div>
         `,
       };
-    
+
+    case "admin_order_delivered":
+      return {
+        subject: `Order Delivered - #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Order Delivered</h1>
+            <p>Order <strong>#${orderId}</strong> has been marked as delivered.</p>
+          </div>
+        `,
+      };
+
+    case "admin_order_cancelled":
+      return {
+        subject: `Order Cancelled - #${orderId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #e53e3e;">Order Cancelled</h1>
+            <p>Order <strong>#${orderId}</strong> has been cancelled.</p>
+            ${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ""}
+          </div>
+        `,
+      };
+
+    // ========== TICKET REQUEST CUSTOMER EMAILS ==========
+    case "ticket_request_received":
+      return {
+        subject: `Ticket Request Received - #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">Ticket Request Received!</h1>
+            <p>Thank you for your ticket request <strong>#${requestId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Departure:</strong> ${data.departureDate}</p>
+              ${data.returnDate ? `<p><strong>Return:</strong> ${data.returnDate}</p>` : ""}
+              <p><strong>Passengers:</strong> ${data.passengers || 1}</p>
+              <p><strong>Class:</strong> ${data.cabinClass || "Economy"}</p>
+            </div>
+            <p>Our team will review your request and send you a quote shortly.</p>
+          </div>
+        `,
+      };
+
+    case "ticket_quote_ready":
+      return {
+        subject: `Your Ticket Quote is Ready - #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Your Quote is Ready!</h1>
+            <p>Great news! We have a quote for your ticket request <strong>#${requestId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p style="font-size: 24px; color: #1a365d;"><strong>Price: ${formatCurrency(data.quotedPrice)}</strong></p>
+            </div>
+            <p>Log in to your dashboard to review and proceed with payment.</p>
+          </div>
+        `,
+      };
+
+    case "ticket_quote_updated":
+      return {
+        subject: `Quote Updated - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dd6b20;">Quote Updated</h1>
+            <p>The quote for your ticket request <strong>#${requestId}</strong> has been updated.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p style="font-size: 24px; color: #1a365d;"><strong>New Price: ${formatCurrency(data.quotedPrice)}</strong></p>
+            </div>
+            <p>Please review the updated quote in your dashboard.</p>
+          </div>
+        `,
+      };
+
+    case "ticket_payment_under_review":
+      return {
+        subject: `Payment Under Review - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">Payment Under Review</h1>
+            <p>We've received your payment proof for ticket request <strong>#${requestId}</strong>.</p>
+            <p>Our team is reviewing your payment and will process your ticket shortly.</p>
+          </div>
+        `,
+      };
+
+    case "ticket_payment_approved":
+      return {
+        subject: `Payment Confirmed - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Payment Confirmed!</h1>
+            <p>Your payment for ticket request <strong>#${requestId}</strong> has been confirmed.</p>
+            <p>We're now booking your ticket and will send you the details soon.</p>
+          </div>
+        `,
+      };
+
+    case "ticket_issued":
+      return {
+        subject: `Your Ticket is Ready! - #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Your Ticket Has Been Issued! ✈️</h1>
+            <p>Your ticket for request <strong>#${requestId}</strong> is ready.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Departure:</strong> ${data.departureDate}</p>
+            </div>
+            ${data.issuedTicketInfo ? `<div style="background: #e6fffa; padding: 20px; border-radius: 8px; margin: 20px 0;"><strong>Ticket Details:</strong><br>${data.issuedTicketInfo}</div>` : ""}
+            <p>Check your dashboard for full details. Have a great trip!</p>
+          </div>
+        `,
+      };
+
+    case "ticket_request_rejected":
+    case "ticket_request_cancelled":
+      return {
+        subject: `Ticket Request Cancelled - #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #e53e3e;">Request Cancelled</h1>
+            <p>Unfortunately, your ticket request <strong>#${requestId}</strong> has been cancelled.</p>
+            ${data.reason ? `<div style="background: #fed7d7; padding: 15px; border-radius: 8px; margin: 20px 0;"><strong>Reason:</strong> ${data.reason}</div>` : ""}
+            <p>If you have questions, please contact us.</p>
+          </div>
+        `,
+      };
+
+    // ========== TICKET REQUEST ADMIN EMAILS ==========
     case "new_ticket_request":
+    case "admin_new_ticket_request":
       return {
         subject: `New Ticket Request - ${data.origin} to ${data.destination}`,
         html: `
-          <h2>New Ticket Request</h2>
-          <p>A new flight ticket request has been submitted.</p>
-          <ul>
-            <li><strong>Route:</strong> ${data.origin} → ${data.destination}</li>
-            <li><strong>Travel Date:</strong> ${data.departureDate}${data.returnDate ? ` - ${data.returnDate}` : ''}</li>
-            <li><strong>Passengers:</strong> ${data.passengers}</li>
-            <li><strong>Class:</strong> ${data.cabinClass}</li>
-            <li><strong>Budget:</strong> ${data.budget ? formatCurrency(data.budget) : 'Not specified'}</li>
-            <li><strong>Customer:</strong> ${data.contactEmail}</li>
-          </ul>
-          <p>Please review and send a quote.</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">New Ticket Request</h1>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px;">
+              <p><strong>Request ID:</strong> ${data.requestId || 'N/A'}</p>
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Departure:</strong> ${data.departureDate}</p>
+              ${data.returnDate ? `<p><strong>Return:</strong> ${data.returnDate}</p>` : ""}
+              <p><strong>Passengers:</strong> ${data.passengers || 1}</p>
+              <p><strong>Class:</strong> ${data.cabinClass || "Economy"}</p>
+              <p><strong>Budget:</strong> ${data.budget ? formatCurrency(data.budget) : "Not specified"}</p>
+              <p><strong>Customer:</strong> ${data.contactEmail}</p>
+            </div>
+            <p>Please review and send a quote.</p>
+          </div>
         `,
       };
 
-    // Customer notifications
-    case "order_received":
+    case "admin_ticket_proof_uploaded":
       return {
-        subject: `Order Confirmed - Thank you for your purchase!`,
+        subject: `Payment Proof - Ticket Request #${requestId}`,
         html: `
-          <h2>Thank You for Your Order!</h2>
-          <p>We have received your order and it is being processed.</p>
-          <ul>
-            <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</li>
-            <li><strong>Amount Paid:</strong> ${formatCurrency(data.amount)}</li>
-            <li><strong>Payment Method:</strong> ${data.paymentMethod}</li>
-          </ul>
-          <p>We will notify you once your payment is verified and your order is ready for delivery.</p>
-          <p>If you have any questions, please contact our support team.</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dd6b20;">Ticket Payment Proof Uploaded</h1>
+            <p>Customer uploaded payment proof for ticket request <strong>#${requestId}</strong>.</p>
+            ${data.proofUrl ? `<p><a href="${data.proofUrl}">View Proof</a></p>` : ""}
+            <p>Please review and approve the payment.</p>
+          </div>
         `,
       };
-    
-    case "payment_under_review":
+
+    case "admin_ticket_completed":
       return {
-        subject: `Payment Under Review - Order ${data.orderId?.slice(0, 8)}`,
+        subject: `Ticket Completed - #${requestId}`,
         html: `
-          <h2>Payment Under Review</h2>
-          <p>Thank you for submitting your payment proof. Our team is reviewing it.</p>
-          <ul>
-            <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Voucher:</strong> ${data.voucherTitle || 'N/A'}</li>
-            <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
-          </ul>
-          <p>We typically process payments within 24 hours. You will receive another email once your payment is confirmed.</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Ticket Request Completed</h1>
+            <p>Ticket request <strong>#${requestId}</strong> has been marked as completed.</p>
+          </div>
         `,
       };
-    
-    case "payment_approved":
+
+    case "admin_ticket_rejected":
       return {
-        subject: `Payment Approved - Order ${data.orderId?.slice(0, 8)}`,
+        subject: `Ticket Request Cancelled - #${requestId}`,
         html: `
-          <h2>Payment Approved! 🎉</h2>
-          <p>Great news! Your payment has been verified and approved.</p>
-          <ul>
-            <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
-          </ul>
-          <p>Your order is now being processed for delivery. You will receive another email once your voucher has been delivered.</p>
-          <p>Thank you for your purchase!</p>
-        `,
-      };
-    
-    case "payment_rejected":
-      return {
-        subject: `Payment Issue - Order ${data.orderId?.slice(0, 8)}`,
-        html: `
-          <h2>Payment Issue</h2>
-          <p>Unfortunately, we were unable to verify your payment for the following order:</p>
-          <ul>
-            <li><strong>Order ID:</strong> ${data.orderId}</li>
-            <li><strong>Amount:</strong> ${formatCurrency(data.amount)}</li>
-          </ul>
-          ${data.rejectionReason ? `<p><strong>Reason:</strong> ${data.rejectionReason}</p>` : ''}
-          <p>If you believe this is an error, please contact our support team with your payment proof and order details.</p>
-          <p>We apologize for any inconvenience.</p>
-        `,
-      };
-    
-    case "order_delivered":
-      return {
-        subject: `Order Delivered - Your Voucher is Ready!`,
-        html: `
-          <h2>Your Order Has Been Delivered! 🎉</h2>
-          <p>Great news! Your order has been processed and delivered.</p>
-          <ul>
-            <li><strong>Order ID:</strong> ${data.orderId}</li>
-          </ul>
-          ${data.deliveryInfo ? `<p><strong>Delivery Details:</strong></p><p>${data.deliveryInfo}</p>` : ''}
-          <p>Thank you for your business! If you have any issues, please contact our support team.</p>
-        `,
-      };
-    
-    case "ticket_issued":
-      return {
-        subject: `Your Ticket Has Been Issued!`,
-        html: `
-          <h2>Your Flight Ticket is Ready! ✈️</h2>
-          <p>Great news! Your flight ticket has been issued.</p>
-          <ul>
-            <li><strong>Route:</strong> ${data.origin} → ${data.destination}</li>
-            <li><strong>Travel Date:</strong> ${data.departureDate}</li>
-          </ul>
-          ${data.ticketInfo ? `<p><strong>Ticket Details:</strong></p><p>${data.ticketInfo}</p>` : ''}
-          <p>Thank you for booking with us! Have a great trip!</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #e53e3e;">Ticket Request Cancelled</h1>
+            <p>Ticket request <strong>#${requestId}</strong> has been cancelled.</p>
+            ${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ""}
+          </div>
         `,
       };
 
     default:
       return {
-        subject: "Notification",
-        html: "<p>You have a new notification.</p>",
+        subject: "Notification - Your Travel Agent",
+        html: `<p>You have a new notification from Your Travel Agent.</p>`,
       };
   }
+}
+
+// Admin notification types
+const ADMIN_NOTIFICATION_TYPES = [
+  "new_order", 
+  "admin_new_order",
+  "payment_proof_uploaded", 
+  "admin_proof_uploaded",
+  "admin_order_delivered",
+  "admin_order_cancelled",
+  "new_ticket_request",
+  "admin_new_ticket_request",
+  "admin_ticket_proof_uploaded",
+  "admin_ticket_completed",
+  "admin_ticket_rejected",
+  "test_email"
+];
+
+function isAdminNotification(type: NotificationType): boolean {
+  return ADMIN_NOTIFICATION_TYPES.includes(type);
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -210,7 +440,6 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    // Log environment check
     console.log("RESEND_API_KEY exists:", !!RESEND_API_KEY);
     console.log("ADMIN_EMAIL:", adminEmail);
 
@@ -225,47 +454,51 @@ const handler = async (req: Request): Promise<Response> => {
     const body = await req.json();
     console.log("Request body:", JSON.stringify(body));
     
-    const { type, data, customerEmail }: NotificationRequest = body;
+    const { type, data, customerEmail, entityType, entityId }: NotificationRequest = body;
     
     console.log(`Processing notification type: ${type}`);
 
     const { subject, html } = getEmailContent(type, data);
     console.log("Email subject:", subject);
     
-    // Determine recipient based on notification type
-    const adminNotificationTypes = ["new_order", "payment_proof_uploaded", "new_ticket_request", "test_email"];
-    const isAdminNotification = adminNotificationTypes.includes(type);
-    const recipient = isAdminNotification ? adminEmail : customerEmail;
+    // Determine recipient
+    const isAdmin = isAdminNotification(type);
+    const recipient = isAdmin ? adminEmail : customerEmail;
 
-    // Derive a record_id for logging (orderId / ticket request id)
-    const recordId =
-      (data?.orderId as string | undefined) ||
-      (data?.ticketRequestId as string | undefined) ||
-      (data?.requestId as string | undefined) ||
-      null;
+    // Derive record_id for logging
+    const recordId = entityId || data?.orderId || data?.requestId || data?.ticketRequestId || null;
+    const derivedEntityType = entityType || (data?.orderId ? "order" : "ticket_request");
 
-    console.log("Is admin notification:", isAdminNotification);
+    console.log("Is admin notification:", isAdmin);
     console.log("Recipient:", recipient);
+    console.log("Entity type:", derivedEntityType);
+    console.log("Entity ID:", recordId);
 
     if (!recipient) {
       console.error("No recipient email provided for type:", type);
+      console.log("NOTIFICATION_SKIP", JSON.stringify({
+        event_type: type,
+        entity_type: derivedEntityType,
+        entity_id: recordId,
+        reason: "no_recipient"
+      }));
       return new Response(
         JSON.stringify({ error: "No recipient email provided", type }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    // Required debug logging for customer emails: log(event_type, recipient_email, record_id)
-    if (!isAdminNotification) {
-      console.log(
-        "CUSTOMER_EMAIL_ATTEMPT",
-        JSON.stringify({ event_type: type, recipient_email: recipient, record_id: recordId })
-      );
-    }
+    // Log every notification attempt
+    console.log("NOTIFICATION_ATTEMPT", JSON.stringify({
+      event_type: type,
+      entity_type: derivedEntityType,
+      entity_id: recordId,
+      recipient: recipient,
+      is_admin: isAdmin
+    }));
 
     console.log("Sending email via Resend API...");
     
-    // Send email using Resend API directly
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -273,7 +506,7 @@ const handler = async (req: Request): Promise<Response> => {
         Authorization: `Bearer ${RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: "Your Travel Agent <no-reply@your-travel-agent.net>",
+        from: FROM_EMAIL,
         to: [recipient],
         subject,
         html,
@@ -286,6 +519,13 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!res.ok) {
       console.error("Resend API error:", emailResponse);
+      console.log("NOTIFICATION_FAILED", JSON.stringify({
+        event_type: type,
+        entity_type: derivedEntityType,
+        entity_id: recordId,
+        recipient: recipient,
+        error: JSON.stringify(emailResponse)
+      }));
       return new Response(
         JSON.stringify({ error: emailResponse }),
         { status: res.status, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -293,6 +533,13 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log("Email sent successfully to:", recipient);
+    console.log("NOTIFICATION_SUCCESS", JSON.stringify({
+      event_type: type,
+      entity_type: derivedEntityType,
+      entity_id: recordId,
+      recipient: recipient,
+      resend_id: emailResponse.id
+    }));
 
     return new Response(
       JSON.stringify({ success: true, emailResponse, recipient }),
