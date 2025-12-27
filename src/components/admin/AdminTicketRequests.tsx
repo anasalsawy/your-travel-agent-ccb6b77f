@@ -13,7 +13,11 @@ import type { Tables } from "@/integrations/supabase/types";
 
 type TicketRequest = Tables<"ticket_requests">;
 
-export function AdminTicketRequests() {
+interface AdminTicketRequestsProps {
+  isAdmin?: boolean;
+}
+
+export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProps) {
   const [requests, setRequests] = useState<TicketRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -351,7 +355,7 @@ export function AdminTicketRequests() {
                 />
               </div>
 
-              {selectedRequest.status === "submitted" && (
+              {isAdmin && selectedRequest.status === "submitted" && (
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <Label>Quote Amount (USD)</Label>

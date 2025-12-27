@@ -10,7 +10,7 @@ import { SupportButtons, FacebookLink } from "@/components/SupportButtons";
 export function Header() {
   const [isOpen, setIsOpen] = useState(false);
   const [user, setUser] = useState<SupabaseUser | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -18,28 +18,27 @@ export function Header() {
     supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        checkAdminRole(session.user.id);
+        checkStaffOrAdminRole(session.user.id);
       } else {
-        setIsAdmin(false);
+        setIsStaffOrAdmin(false);
       }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        checkAdminRole(session.user.id);
+        checkStaffOrAdminRole(session.user.id);
       }
     });
   }, []);
 
-  const checkAdminRole = async (userId: string) => {
+  const checkStaffOrAdminRole = async (userId: string) => {
     const { data } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_id", userId)
-      .eq("role", "admin")
-      .single();
-    setIsAdmin(!!data);
+      .in("role", ["admin", "staff"]);
+    setIsStaffOrAdmin((data?.length || 0) > 0);
   };
 
   const handleLogout = async () => {
@@ -90,7 +89,7 @@ export function Header() {
             <div className="w-px h-6 bg-border" />
             {user ? (
               <>
-                {isAdmin && (
+                {isStaffOrAdmin && (
                   <Button variant="ghost" size="sm" asChild>
                     <Link to="/admin">Admin</Link>
                   </Button>
@@ -141,7 +140,7 @@ export function Header() {
                 <div className="border-t border-border pt-4 mt-4 flex flex-col gap-3">
                   {user ? (
                     <>
-                      {isAdmin && (
+                      {isStaffOrAdmin && (
                         <Button variant="outline" asChild onClick={() => setIsOpen(false)}>
                           <Link to="/admin">Admin Dashboard</Link>
                         </Button>
