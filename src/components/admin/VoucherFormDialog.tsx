@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,9 +6,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, Copy, Check, ChevronDown, Facebook } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { generateFacebookPost } from "@/lib/facebook-post-generator";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Voucher = Tables<"vouchers">;
@@ -22,6 +24,8 @@ interface VoucherFormDialogProps {
 
 export function VoucherFormDialog({ open, onOpenChange, voucher, onSuccess }: VoucherFormDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [fbPostOpen, setFbPostOpen] = useState(false);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -94,6 +98,38 @@ export function VoucherFormDialog({ open, onOpenChange, voucher, onSuccess }: Vo
     if (face && sale) {
       const discount = ((face - sale) / face * 100).toFixed(1);
       setFormData(prev => ({ ...prev, discount_percent: discount }));
+    }
+  };
+
+  // Generate Facebook post dynamically based on current form data
+  const facebookPost = useMemo(() => {
+    if (!formData.airline || !formData.face_value || !formData.sale_price) {
+      return "";
+    }
+    
+    const mockVoucher = {
+      id: voucher?.id || "preview",
+      airline: formData.airline,
+      title: formData.title,
+      type: formData.type,
+      face_value: formData.face_value,
+      sale_price: formData.sale_price,
+      discount_percent: formData.discount_percent,
+      expiry_date: formData.expiry_date || null,
+      currency: formData.currency,
+    };
+    
+    return generateFacebookPost(mockVoucher as any);
+  }, [formData, voucher?.id]);
+
+  const handleCopyFacebookPost = async () => {
+    try {
+      await navigator.clipboard.writeText(facebookPost);
+      setCopied(true);
+      toast({ title: "Copied!", description: "Facebook post copied to clipboard" });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "Error", description: "Failed to copy to clipboard", variant: "destructive" });
     }
   };
 
@@ -353,6 +389,55 @@ export function VoucherFormDialog({ open, onOpenChange, voucher, onSuccess }: Vo
               <Label htmlFor="is_transferable">Transferable</Label>
             </div>
           </div>
+
+          {/* Facebook Post Generator */}
+          {formData.airline && formData.face_value && formData.sale_price && (
+            <Collapsible open={fbPostOpen} onOpenChange={setFbPostOpen}>
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-between gap-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <Facebook className="w-4 h-4 text-[#1877F2]" />
+                    Facebook Post Generator
+                  </div>
+                  <ChevronDown className={`w-4 h-4 transition-transform ${fbPostOpen ? "rotate-180" : ""}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-3 space-y-3">
+                <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                  <Textarea
+                    value={facebookPost}
+                    readOnly
+                    className="min-h-[300px] font-mono text-xs bg-transparent border-0 resize-none leading-relaxed focus-visible:ring-0"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full gap-2"
+                  onClick={handleCopyFacebookPost}
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4 text-success" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copy Facebook Post
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  Updates automatically as you edit the voucher details
+                </p>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
 
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
