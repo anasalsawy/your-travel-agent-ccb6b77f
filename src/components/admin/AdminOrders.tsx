@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Search, Eye, Check, X, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
+import { notifyCustomerOrderDelivered } from "@/lib/notifications";
 
 type Order = Tables<"orders"> & { 
   vouchers: Tables<"vouchers"> | null;
@@ -116,11 +117,28 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       toast({ title: "Error", description: "Please provide delivery information", variant: "destructive" });
       return;
     }
+    
+    // Get customer email from profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", order.user_id)
+      .single();
+
     await handleUpdateOrder(order.id, {
       order_status: "delivered",
       delivery_status: "delivered",
       delivery_info: deliveryInfo,
     });
+
+    // Send customer notification
+    if (profile?.email) {
+      notifyCustomerOrderDelivered(profile.email, {
+        orderId: order.id,
+        voucherTitle: order.vouchers?.title || "Voucher",
+        deliveryInfo,
+      });
+    }
   };
 
   const formatCurrency = (amount: number) => {

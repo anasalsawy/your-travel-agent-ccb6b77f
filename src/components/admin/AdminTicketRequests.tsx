@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Search, Eye, DollarSign, Plane, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
+import { notifyCustomerTicketIssued } from "@/lib/notifications";
 
 type TicketRequest = Tables<"ticket_requests">;
 
@@ -85,6 +86,14 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
       status: "ticketed",
       issued_ticket_info: ticketInfo,
       admin_notes: adminNotes || null,
+    });
+
+    // Send customer notification
+    notifyCustomerTicketIssued(selectedRequest.contact_email, {
+      origin: selectedRequest.origin,
+      destination: selectedRequest.destination,
+      departureDate: selectedRequest.departure_date,
+      ticketInfo,
     });
   };
 

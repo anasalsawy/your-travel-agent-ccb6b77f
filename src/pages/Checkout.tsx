@@ -10,6 +10,7 @@ import { Loader2, CreditCard, Bitcoin, ArrowLeft, Copy, Check, Upload, DollarSig
 import { useToast } from "@/hooks/use-toast";
 import { SupportButtons } from "@/components/SupportButtons";
 import type { Tables } from "@/integrations/supabase/types";
+import { notifyNewOrder, notifyPaymentProofUploaded, notifyCustomerOrderReceived, notifyCustomerPaymentUnderReview } from "@/lib/notifications";
 
 type Voucher = Tables<"vouchers">;
 type PaymentMethod = "stripe" | "bitcoin" | "zelle";
@@ -113,6 +114,21 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
+      // Send notifications
+      notifyNewOrder({
+        orderId: order.id,
+        voucherTitle: voucher.title,
+        amount: Number(voucher.sale_price),
+        paymentMethod: "stripe",
+        customerEmail: user.email,
+      });
+      notifyCustomerOrderReceived(user.email, {
+        orderId: order.id,
+        voucherTitle: voucher.title,
+        amount: Number(voucher.sale_price),
+        paymentMethod: "Credit Card",
+      });
+
       // In a real app, you'd redirect to Stripe Checkout here
       toast({
         title: "Demo Mode",
@@ -160,7 +176,7 @@ export default function CheckoutPage() {
         }
       }
 
-      const { error: orderError } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
           user_id: user.id,
@@ -171,9 +187,31 @@ export default function CheckoutPage() {
           btc_address: btcAddress,
           btc_amount: btcAmount,
           proof_upload_url: proofUrl || txHash,
-        });
+        })
+        .select()
+        .single();
 
       if (orderError) throw orderError;
+
+      // Send notifications
+      notifyNewOrder({
+        orderId: order.id,
+        voucherTitle: voucher.title,
+        amount: Number(voucher.sale_price),
+        paymentMethod: "bitcoin",
+        customerEmail: user.email,
+      });
+      notifyPaymentProofUploaded({
+        orderId: order.id,
+        voucherTitle: voucher.title,
+        amount: Number(voucher.sale_price),
+        paymentMethod: "Bitcoin",
+      });
+      notifyCustomerPaymentUnderReview(user.email, {
+        orderId: order.id,
+        voucherTitle: voucher.title,
+        amount: Number(voucher.sale_price),
+      });
 
       toast({
         title: "Payment Submitted!",
@@ -221,7 +259,7 @@ export default function CheckoutPage() {
 
       const deliveryInfo = zelleConfirmation ? `Confirmation: ${zelleConfirmation}` : null;
 
-      const { error: orderError } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
           user_id: user.id,
@@ -231,9 +269,31 @@ export default function CheckoutPage() {
           payment_status: "processing",
           proof_upload_url: proofUrl,
           delivery_info: deliveryInfo,
-        });
+        })
+        .select()
+        .single();
 
       if (orderError) throw orderError;
+
+      // Send notifications
+      notifyNewOrder({
+        orderId: order.id,
+        voucherTitle: voucher.title,
+        amount: Number(voucher.sale_price),
+        paymentMethod: "zelle",
+        customerEmail: user.email,
+      });
+      notifyPaymentProofUploaded({
+        orderId: order.id,
+        voucherTitle: voucher.title,
+        amount: Number(voucher.sale_price),
+        paymentMethod: "Zelle",
+      });
+      notifyCustomerPaymentUnderReview(user.email, {
+        orderId: order.id,
+        voucherTitle: voucher.title,
+        amount: Number(voucher.sale_price),
+      });
 
       toast({
         title: "Payment Submitted!",
