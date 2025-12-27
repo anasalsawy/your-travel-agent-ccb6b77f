@@ -3,19 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
 import { AdminSettings } from "@/components/admin/AdminSettings";
+import { AdminUsers } from "@/components/admin/AdminUsers";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkAdmin = async () => {
+    const checkAccess = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
@@ -23,23 +25,33 @@ export default function AdminPage() {
         return;
       }
 
-      const { data } = await supabase
+      // Check for admin role
+      const { data: adminRole } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", session.user.id)
         .eq("role", "admin")
-        .single();
+        .maybeSingle();
 
-      if (!data) {
+      // Check for staff role
+      const { data: staffRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .eq("role", "staff")
+        .maybeSingle();
+
+      if (!adminRole && !staffRole) {
         navigate("/dashboard");
         return;
       }
 
-      setIsAdmin(true);
+      setIsAdmin(!!adminRole);
+      setIsStaff(!!staffRole);
       setLoading(false);
     };
 
-    checkAdmin();
+    checkAccess();
   }, [navigate]);
 
   if (loading) {
@@ -52,7 +64,7 @@ export default function AdminPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (!isAdmin && !isStaff) {
     return null;
   }
 
@@ -62,10 +74,12 @@ export default function AdminPage() {
         <div className="container mx-auto px-4">
           <div className="mb-8">
             <h1 className="font-display text-3xl md:text-4xl font-bold mb-2">
-              Admin <span className="text-gradient">Dashboard</span>
+              {isAdmin ? "Admin" : "Staff"} <span className="text-gradient">Dashboard</span>
             </h1>
             <p className="text-muted-foreground">
-              Manage vouchers, orders, and ticket requests
+              {isAdmin 
+                ? "Manage vouchers, orders, ticket requests, and settings" 
+                : "Manage vouchers, orders, and ticket requests"}
             </p>
           </div>
 
@@ -83,10 +97,18 @@ export default function AdminPage() {
                 <Plane className="w-4 h-4" />
                 Ticket Requests
               </TabsTrigger>
-              <TabsTrigger value="settings" className="gap-2">
-                <Settings className="w-4 h-4" />
-                Settings
-              </TabsTrigger>
+              {isAdmin && (
+                <>
+                  <TabsTrigger value="users" className="gap-2">
+                    <Users className="w-4 h-4" />
+                    Users
+                  </TabsTrigger>
+                  <TabsTrigger value="settings" className="gap-2">
+                    <Settings className="w-4 h-4" />
+                    Settings
+                  </TabsTrigger>
+                </>
+              )}
             </TabsList>
 
             <TabsContent value="vouchers">
@@ -94,16 +116,24 @@ export default function AdminPage() {
             </TabsContent>
 
             <TabsContent value="orders">
-              <AdminOrders />
+              <AdminOrders isAdmin={isAdmin} />
             </TabsContent>
 
             <TabsContent value="requests">
-              <AdminTicketRequests />
+              <AdminTicketRequests isAdmin={isAdmin} />
             </TabsContent>
 
-            <TabsContent value="settings">
-              <AdminSettings />
-            </TabsContent>
+            {isAdmin && (
+              <>
+                <TabsContent value="users">
+                  <AdminUsers />
+                </TabsContent>
+
+                <TabsContent value="settings">
+                  <AdminSettings />
+                </TabsContent>
+              </>
+            )}
           </Tabs>
         </div>
       </div>

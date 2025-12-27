@@ -15,7 +15,11 @@ type Order = Tables<"orders"> & {
   vouchers: Tables<"vouchers"> | null;
 };
 
-export function AdminOrders() {
+interface AdminOrdersProps {
+  isAdmin?: boolean;
+}
+
+export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -383,7 +387,7 @@ export function AdminOrders() {
                 />
               </div>
 
-              {selectedOrder.payment_status === "processing" && (
+              {isAdmin && selectedOrder.payment_status === "processing" && (
                 <div className="flex gap-3">
                   <Button
                     variant="hero"
