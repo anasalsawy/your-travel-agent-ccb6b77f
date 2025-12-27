@@ -12,7 +12,7 @@ export function generateFacebookPost(voucher: Voucher, baseUrl: string = window.
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return "No expiry";
+    if (!dateString) return null;
     return new Date(dateString).toLocaleDateString("en-US", {
       month: "long",
       day: "numeric",
@@ -22,24 +22,60 @@ export function generateFacebookPost(voucher: Voucher, baseUrl: string = window.
 
   const faceValue = formatCurrency(Number(voucher.face_value), voucher.currency || "USD");
   const salePrice = formatCurrency(Number(voucher.sale_price), voucher.currency || "USD");
+  const savings = formatCurrency(Number(voucher.face_value) - Number(voucher.sale_price), voucher.currency || "USD");
   const discount = Number(voucher.discount_percent);
   const voucherUrl = `${baseUrl}/vouchers/${voucher.id}`;
-  const expiryText = voucher.expiry_date ? `Expires: ${formatDate(voucher.expiry_date)}` : "No expiration date";
+  const expiryDate = formatDate(voucher.expiry_date);
 
   const typeLabel = voucher.type === "gift_card" ? "Gift Card" : 
-                    voucher.type === "certificate" ? "Certificate" : "Voucher";
+                    voucher.type === "certificate" ? "Travel Certificate" : "Travel Voucher";
 
-  const post = `✈️ ${voucher.airline} ${typeLabel} - ${discount}% OFF! ✈️
+  const typeEmoji = voucher.type === "gift_card" ? "🎁" : 
+                    voucher.type === "certificate" ? "📜" : "🎫";
 
-💰 Face Value: ${faceValue}
-🏷️ Sale Price: ${salePrice}
-📉 You Save: ${discount}%
+  const divider = "━━━━━━━━━━━━━━━━━━━━";
 
-📅 ${expiryText}
+  const post = `✈️ ${voucher.airline.toUpperCase()} ${typeLabel.toUpperCase()} ✈️
+${typeEmoji} ${discount}% OFF - LIMITED TIME! ${typeEmoji}
 
-🔗 Get it now: ${voucherUrl}
+${divider}
 
-#AirlineVoucher #TravelDeals #${voucher.airline.replace(/\s+/g, "")} #SaveOnTravel #FlightDeals`;
+📋 𝗩𝗼𝘂𝗰𝗵𝗲𝗿 𝗗𝗲𝘁𝗮𝗶𝗹𝘀:
+
+🏷️ Type: ${typeLabel}
+✈️ Airline: ${voucher.airline}
+💵 Face Value: ${faceValue}
+💰 Sale Price: ${salePrice}
+📉 Discount: ${discount}% OFF
+💸 You Save: ${savings}
+${expiryDate ? `📅 Expires: ${expiryDate}` : `✨ No Expiration Date!`}
+
+${divider}
+
+🔥 𝗪𝗵𝘆 𝗕𝘂𝘆 𝗙𝗿𝗼𝗺 𝗨𝘀?
+
+✅ Verified & Guaranteed
+✅ Instant Delivery
+✅ Secure Payment
+✅ 100% Legit Vouchers
+
+${divider}
+
+🛒 𝗚𝗲𝘁 𝗜𝘁 𝗡𝗼𝘄:
+🔗 ${voucherUrl}
+
+${divider}
+
+📲 𝗖𝗼𝗻𝘁𝗮𝗰𝘁 𝗨𝘀:
+💬 WhatsApp: wa.me/1234567890
+📩 DM us for questions!
+
+${divider}
+
+⚡ Limited availability - First come, first served!
+🔔 Turn on notifications for more deals!
+
+#${voucher.airline.replace(/\s+/g, "")} #TravelVoucher #FlightDeals #TravelDeals #CheapFlights #AirlineVoucher #TravelSavings #Wanderlust #TravelHacks`;
 
   return post;
 }
