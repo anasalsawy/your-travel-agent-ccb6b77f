@@ -43,6 +43,15 @@ type NotificationType =
   | "ticket_payment_proof_uploaded"
   | "admin_ticket_completed"
   | "admin_ticket_rejected"
+  // Split payment notifications
+  | "deposit_under_review"
+  | "deposit_approved"
+  | "deposit_rejected"
+  | "ticket_issued_balance_due"
+  | "balance_under_review"
+  | "balance_approved"
+  | "balance_rejected"
+  | "balance_past_due"
   // Legacy/misc
   | "payment_under_review"
   | "test_email";
@@ -435,6 +444,152 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
         `,
       };
 
+    // ========== SPLIT PAYMENT EMAILS ==========
+    case "deposit_under_review":
+      return {
+        subject: `Deposit Payment Under Review - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">Deposit Payment Under Review</h1>
+            <p>We've received your deposit payment for ticket request <strong>#${requestId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Deposit Amount:</strong> ${formatCurrency(data.depositAmount)}</p>
+            </div>
+            <p>Our team is reviewing your deposit. We'll notify you once it's approved.</p>
+          </div>
+        `,
+      };
+
+    case "deposit_approved":
+      return {
+        subject: `Deposit Approved - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Deposit Approved! ✅</h1>
+            <p>Great news! Your deposit for ticket request <strong>#${requestId}</strong> has been approved.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Deposit Paid:</strong> ${formatCurrency(data.depositAmount)}</p>
+            </div>
+            <p>We're now processing your ticket. You'll receive your ticket details and balance payment instructions soon.</p>
+          </div>
+        `,
+      };
+
+    case "deposit_rejected":
+      return {
+        subject: `Deposit Issue - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #e53e3e;">Deposit Could Not Be Verified</h1>
+            <p>Unfortunately, we couldn't verify your deposit for ticket request <strong>#${requestId}</strong>.</p>
+            <div style="background: #fed7d7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <strong>Reason:</strong> ${data.rejectionReason || "Deposit verification failed"}
+            </div>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Deposit Amount:</strong> ${formatCurrency(data.depositAmount)}</p>
+            </div>
+            <p><strong>Next Step:</strong> Please log in to your dashboard and re-upload your deposit proof.</p>
+          </div>
+        `,
+      };
+
+    case "ticket_issued_balance_due":
+      return {
+        subject: `Ticket Issued - Balance Due ${data.balanceDueDate} - #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Your Ticket Has Been Issued! ✈️</h1>
+            <p>Your ticket for request <strong>#${requestId}</strong> is ready.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Departure:</strong> ${data.departureDate}</p>
+            </div>
+            ${data.ticketInfo ? `<div style="background: #e6fffa; padding: 20px; border-radius: 8px; margin: 20px 0;"><strong>Ticket Details:</strong><br>${data.ticketInfo}</div>` : ""}
+            <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #f59e0b;">
+              <h2 style="color: #92400e; margin-top: 0;">⚠️ Balance Payment Required</h2>
+              <p style="font-size: 24px; color: #92400e; margin: 10px 0;"><strong>${formatCurrency(data.balanceAmount)}</strong></p>
+              <p style="color: #92400e;"><strong>Due Date: ${data.balanceDueDate}</strong></p>
+              <p style="font-size: 14px; color: #78350f;">Please log in to your dashboard and complete the balance payment before your departure.</p>
+            </div>
+          </div>
+        `,
+      };
+
+    case "balance_under_review":
+      return {
+        subject: `Balance Payment Under Review - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">Balance Payment Under Review</h1>
+            <p>We've received your balance payment for ticket request <strong>#${requestId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Balance Amount:</strong> ${formatCurrency(data.balanceAmount)}</p>
+            </div>
+            <p>Our team is reviewing your payment. We'll notify you once it's confirmed.</p>
+          </div>
+        `,
+      };
+
+    case "balance_approved":
+      return {
+        subject: `Balance Confirmed - Ticket #${requestId} Fully Paid!`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Balance Payment Confirmed! 🎉</h1>
+            <p>Your balance payment for ticket request <strong>#${requestId}</strong> has been confirmed.</p>
+            <div style="background: #d1fae5; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #10b981;">
+              <p style="font-size: 18px; color: #065f46; margin: 0;"><strong>✅ Your ticket is now fully paid!</strong></p>
+            </div>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Balance Paid:</strong> ${formatCurrency(data.balanceAmount)}</p>
+            </div>
+            <p>Thank you for your payment. Have a great trip!</p>
+          </div>
+        `,
+      };
+
+    case "balance_rejected":
+      return {
+        subject: `Balance Payment Issue - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #e53e3e;">Balance Payment Could Not Be Verified</h1>
+            <p>Unfortunately, we couldn't verify your balance payment for ticket request <strong>#${requestId}</strong>.</p>
+            <div style="background: #fed7d7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <strong>Reason:</strong> ${data.rejectionReason || "Balance verification failed"}
+            </div>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Balance Amount:</strong> ${formatCurrency(data.balanceAmount)}</p>
+            </div>
+            <p><strong>Next Step:</strong> Please log in to your dashboard and re-upload your balance payment proof.</p>
+          </div>
+        `,
+      };
+
+    case "balance_past_due":
+      return {
+        subject: `⚠️ URGENT: Balance Payment Overdue - Ticket #${requestId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dc2626;">⚠️ Balance Payment Overdue</h1>
+            <p>The balance payment for ticket request <strong>#${requestId}</strong> is now past due.</p>
+            <div style="background: #fef2f2; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #dc2626;">
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p style="font-size: 24px; color: #dc2626;"><strong>Amount Due: ${formatCurrency(data.balanceAmount)}</strong></p>
+              <p style="color: #dc2626;"><strong>Original Due Date: ${data.balanceDueDate}</strong></p>
+            </div>
+            <p style="color: #dc2626; font-weight: bold;">Please complete your payment immediately to avoid ticket cancellation.</p>
+            <p>Log in to your dashboard to submit payment proof.</p>
+          </div>
+        `,
+      };
+
     default:
       return {
         subject: "Notification - Your Travel Agent",
@@ -460,8 +615,18 @@ const ADMIN_NOTIFICATION_TYPES = [
   "test_email"
 ];
 
-function isAdminNotification(type: NotificationType): boolean {
-  return ADMIN_NOTIFICATION_TYPES.includes(type);
+// Split payment admin notifications (when no customerEmail provided)
+const SPLIT_PAYMENT_ADMIN_TYPES = [
+  "deposit_under_review",
+  "balance_under_review",
+  "balance_past_due"
+];
+
+function isAdminNotification(type: NotificationType, hasCustomerEmail: boolean): boolean {
+  if (ADMIN_NOTIFICATION_TYPES.includes(type)) return true;
+  // Split payment types go to admin if no customer email provided
+  if (SPLIT_PAYMENT_ADMIN_TYPES.includes(type) && !hasCustomerEmail) return true;
+  return false;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -495,7 +660,7 @@ const handler = async (req: Request): Promise<Response> => {
     console.log("Email subject:", subject);
     
     // Determine recipient
-    const isAdmin = isAdminNotification(type);
+    const isAdmin = isAdminNotification(type, !!customerEmail);
     const recipient = isAdmin ? adminEmail : customerEmail;
 
     // Derive record_id for logging

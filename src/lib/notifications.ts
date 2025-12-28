@@ -14,7 +14,16 @@ type NotificationType =
   | "ticket_payment_under_review"
   | "ticket_payment_approved"
   | "ticket_payment_rejected"
-  | "test_email";
+  | "test_email"
+  // Split payment notification types
+  | "deposit_under_review"
+  | "deposit_approved"
+  | "deposit_rejected"
+  | "ticket_issued_balance_due"
+  | "balance_under_review"
+  | "balance_approved"
+  | "balance_rejected"
+  | "balance_past_due";
 
 interface NotificationData {
   type: NotificationType;
@@ -243,6 +252,183 @@ export async function notifyCustomerTicketPaymentRejected(
 ) {
   return sendNotification({
     type: "ticket_payment_rejected" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// ========== SPLIT PAYMENT NOTIFICATIONS ==========
+
+// Deposit under review (admin)
+export async function notifyDepositProofUploaded(requestData: {
+  requestId: string;
+  origin: string;
+  destination: string;
+  depositAmount: number;
+  paymentMethod: string;
+}) {
+  return sendNotification({
+    type: "deposit_under_review" as NotificationType,
+    data: requestData,
+  });
+}
+
+// Deposit under review (customer)
+export async function notifyCustomerDepositUnderReview(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    depositAmount: number;
+  }
+) {
+  return sendNotification({
+    type: "deposit_under_review" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// Deposit approved (customer)
+export async function notifyCustomerDepositApproved(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    depositAmount: number;
+  }
+) {
+  return sendNotification({
+    type: "deposit_approved" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// Deposit rejected (customer)
+export async function notifyCustomerDepositRejected(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    depositAmount: number;
+    rejectionReason: string;
+  }
+) {
+  return sendNotification({
+    type: "deposit_rejected" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// Ticket issued with balance due (customer)
+export async function notifyCustomerTicketIssuedBalanceDue(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    departureDate: string;
+    balanceAmount: number;
+    balanceDueDate: string;
+    ticketInfo?: string;
+  }
+) {
+  return sendNotification({
+    type: "ticket_issued_balance_due" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// Balance under review (admin)
+export async function notifyBalanceProofUploaded(requestData: {
+  requestId: string;
+  origin: string;
+  destination: string;
+  balanceAmount: number;
+  paymentMethod: string;
+}) {
+  return sendNotification({
+    type: "balance_under_review" as NotificationType,
+    data: requestData,
+  });
+}
+
+// Balance under review (customer)
+export async function notifyCustomerBalanceUnderReview(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    balanceAmount: number;
+  }
+) {
+  return sendNotification({
+    type: "balance_under_review" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// Balance approved (customer)
+export async function notifyCustomerBalanceApproved(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    balanceAmount: number;
+  }
+) {
+  return sendNotification({
+    type: "balance_approved" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// Balance rejected (customer)
+export async function notifyCustomerBalanceRejected(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    balanceAmount: number;
+    rejectionReason: string;
+  }
+) {
+  return sendNotification({
+    type: "balance_rejected" as NotificationType,
+    data: requestData,
+    customerEmail,
+  });
+}
+
+// Balance past due (admin + customer)
+export async function notifyBalancePastDue(
+  customerEmail: string,
+  requestData: {
+    requestId: string;
+    origin: string;
+    destination: string;
+    balanceAmount: number;
+    balanceDueDate: string;
+  }
+) {
+  // Send to both admin and customer
+  await sendNotification({
+    type: "balance_past_due" as NotificationType,
+    data: requestData,
+  });
+  return sendNotification({
+    type: "balance_past_due" as NotificationType,
     data: requestData,
     customerEmail,
   });
