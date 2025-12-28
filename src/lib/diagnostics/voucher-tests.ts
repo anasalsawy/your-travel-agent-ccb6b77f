@@ -335,8 +335,17 @@ export const zelleFlowTest: TestConfig = {
       );
       const unexpectedDupes = Object.entries(eventCounts).filter(
         ([event, count]) => {
-          // Some events may legitimately fire more than once (e.g., resubmit)
-          if (event === "payment_under_review") return count > 2;
+          // Some events may legitimately fire more than once (e.g., resubmit flow)
+          // - customer sees 2 "under review" emails across 2 proofs
+          // - admin sees 2 "proof uploaded" emails across 2 proofs
+          // - customer may see 2 "proof received" emails across 2 proofs
+          if (
+            event === "payment_under_review" ||
+            event === "admin_proof_uploaded" ||
+            event === "payment_proof_received"
+          ) {
+            return count > 2;
+          }
           return count > 1;
         }
       );
