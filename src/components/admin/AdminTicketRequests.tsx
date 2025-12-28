@@ -443,11 +443,18 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
                     <td className="p-4"><Badge className={getStatusColor(stage)}>{stage === "payment_review" ? "⚡ Payment Review" : request.status}</Badge></td>
                     <td className="p-4"><span className="text-sm font-medium">{getNextActionLabel(request)}</span></td>
                     <td className="p-4">
-                      <Button variant="ghost" size="icon" onClick={() => {
-                        setSelectedRequest(request);
-                        setQuotedPrice(request.quoted_price ? String(request.quoted_price) : "");
-                        setAdminNotes(request.admin_notes || "");
-                        setTicketInfo(request.issued_ticket_info || "");
+                      <Button variant="ghost" size="icon" onClick={async () => {
+                        // Fetch fresh data to ensure we have latest proof URLs
+                        const { data: freshData } = await supabase
+                          .from("ticket_requests")
+                          .select("*")
+                          .eq("id", request.id)
+                          .single();
+                        const req = (freshData || request) as TicketRequest;
+                        setSelectedRequest(req);
+                        setQuotedPrice(req.quoted_price ? String(req.quoted_price) : "");
+                        setAdminNotes(req.admin_notes || "");
+                        setTicketInfo(req.issued_ticket_info || "");
                         setRejectionReason("");
                       }}><Eye className="w-4 h-4" /></Button>
                     </td>
