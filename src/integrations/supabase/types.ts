@@ -282,6 +282,10 @@ export type Database = {
       ticket_requests: {
         Row: {
           admin_notes: string | null
+          balance_amount: number | null
+          balance_due_date: string | null
+          balance_proof_url: string | null
+          balance_status: string
           btc_address: string | null
           btc_amount: string | null
           budget: number | null
@@ -290,6 +294,9 @@ export type Database = {
           contact_phone: string | null
           created_at: string | null
           departure_date: string
+          deposit_amount: number | null
+          deposit_proof_url: string | null
+          deposit_status: string
           destination: string
           flexibility: string | null
           id: string
@@ -297,6 +304,7 @@ export type Database = {
           origin: string
           passengers: number | null
           payment_method: Database["public"]["Enums"]["payment_method"] | null
+          payment_plan: string
           payment_status: Database["public"]["Enums"]["payment_status"] | null
           preferred_airline: string | null
           proof_upload_url: string | null
@@ -311,6 +319,10 @@ export type Database = {
         }
         Insert: {
           admin_notes?: string | null
+          balance_amount?: number | null
+          balance_due_date?: string | null
+          balance_proof_url?: string | null
+          balance_status?: string
           btc_address?: string | null
           btc_amount?: string | null
           budget?: number | null
@@ -319,6 +331,9 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string | null
           departure_date: string
+          deposit_amount?: number | null
+          deposit_proof_url?: string | null
+          deposit_status?: string
           destination: string
           flexibility?: string | null
           id?: string
@@ -326,6 +341,7 @@ export type Database = {
           origin: string
           passengers?: number | null
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
+          payment_plan?: string
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
           preferred_airline?: string | null
           proof_upload_url?: string | null
@@ -340,6 +356,10 @@ export type Database = {
         }
         Update: {
           admin_notes?: string | null
+          balance_amount?: number | null
+          balance_due_date?: string | null
+          balance_proof_url?: string | null
+          balance_status?: string
           btc_address?: string | null
           btc_amount?: string | null
           budget?: number | null
@@ -348,6 +368,9 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string | null
           departure_date?: string
+          deposit_amount?: number | null
+          deposit_proof_url?: string | null
+          deposit_status?: string
           destination?: string
           flexibility?: string | null
           id?: string
@@ -355,6 +378,7 @@ export type Database = {
           origin?: string
           passengers?: number | null
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
+          payment_plan?: string
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
           preferred_airline?: string | null
           proof_upload_url?: string | null
