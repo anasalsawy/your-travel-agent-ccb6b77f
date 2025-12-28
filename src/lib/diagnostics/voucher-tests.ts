@@ -6,6 +6,12 @@ import {
   getNotificationsByRecord,
 } from "./helpers";
 
+// Helper to get current user ID
+const getCurrentUserId = async (): Promise<string | null> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id || null;
+};
+
 // ============================================================================
 // ZELLE FLOW TEST - Full workflow including reject and resubmit
 // ============================================================================
@@ -22,6 +28,17 @@ export const zelleFlowTest: TestConfig = {
 
     // Step 1: Get voucher
     const step1 = addStep({ name: "Get available voucher", status: "running" });
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      updateStep(step1, {
+        status: "fail",
+        expected: "User authenticated",
+        actual: "No authenticated user",
+        error: "Must be logged in as admin to run tests",
+      });
+      throw new Error("Not authenticated");
+    }
+    
     const voucher = await getTestVoucher();
     if (!voucher) {
       updateStep(step1, {
@@ -44,6 +61,7 @@ export const zelleFlowTest: TestConfig = {
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert({
+        user_id: userId,
         voucher_id: voucher.id,
         amount_paid: Number(voucher.sale_price),
         payment_method: "zelle",
@@ -354,8 +372,18 @@ export const bitcoinFlowTest: TestConfig = {
     const { addStep, updateStep, getTestVoucher, cleanupOrder, waitForTrigger } =
       helpers;
 
-    // Step 1: Get voucher
+// Step 1: Get voucher
     const step1 = addStep({ name: "Get available voucher", status: "running" });
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      updateStep(step1, {
+        status: "fail",
+        expected: "User authenticated",
+        actual: "No authenticated user",
+      });
+      throw new Error("Not authenticated");
+    }
+    
     const voucher = await getTestVoucher();
     if (!voucher) {
       updateStep(step1, {
@@ -377,6 +405,7 @@ export const bitcoinFlowTest: TestConfig = {
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert({
+        user_id: userId,
         voucher_id: voucher.id,
         amount_paid: Number(voucher.sale_price),
         payment_method: "bitcoin",
@@ -519,8 +548,18 @@ export const stripeFlowTest: TestConfig = {
     const { addStep, updateStep, getTestVoucher, cleanupOrder, waitForTrigger } =
       helpers;
 
-    // Step 1: Get voucher
+// Step 1: Get voucher
     const step1 = addStep({ name: "Get available voucher", status: "running" });
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      updateStep(step1, {
+        status: "fail",
+        expected: "User authenticated",
+        actual: "No authenticated user",
+      });
+      throw new Error("Not authenticated");
+    }
+    
     const voucher = await getTestVoucher();
     if (!voucher) {
       updateStep(step1, {
@@ -546,6 +585,7 @@ export const stripeFlowTest: TestConfig = {
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert({
+        user_id: userId,
         voucher_id: voucher.id,
         amount_paid: Number(voucher.sale_price),
         payment_method: "stripe",
@@ -674,8 +714,14 @@ export const paymentIdempotencyTest: TestConfig = {
     const { addStep, updateStep, getTestVoucher, cleanupOrder, waitForTrigger } =
       helpers;
 
-    // Step 1: Get voucher
+// Step 1: Get voucher
     const step1 = addStep({ name: "Get available voucher", status: "running" });
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      updateStep(step1, { status: "fail", error: "Not authenticated" });
+      throw new Error("Not authenticated");
+    }
+    
     const voucher = await getTestVoucher();
     if (!voucher) {
       updateStep(step1, { status: "fail", error: "No vouchers" });
@@ -692,6 +738,7 @@ export const paymentIdempotencyTest: TestConfig = {
     const { data: order, error } = await supabase
       .from("orders")
       .insert({
+        user_id: userId,
         voucher_id: voucher.id,
         amount_paid: Number(voucher.sale_price),
         payment_method: "zelle",
