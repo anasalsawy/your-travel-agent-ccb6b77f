@@ -145,20 +145,27 @@ export default function AdminDiagnosticsPage() {
         },
       }));
 
+      let stepCounter = 0;
+
       const helpers: TestHelpers = {
         addStep: (step) => {
-          let stepIndex = 0;
+          const stepIndex = stepCounter;
+          stepCounter += 1;
+
           setTestResults((prev) => {
             const currentSteps = prev[testId]?.steps || [];
-            stepIndex = currentSteps.length;
             return {
               ...prev,
               [testId]: {
                 ...prev[testId],
-                steps: [...currentSteps, { ...step, status: step.status || "running" }],
+                steps: [
+                  ...currentSteps,
+                  { ...step, status: step.status || "running" },
+                ],
               },
             };
           });
+
           return stepIndex;
         },
         updateStep: (index, updates) => {
@@ -166,7 +173,9 @@ export default function AdminDiagnosticsPage() {
             ...prev,
             [testId]: {
               ...prev[testId],
-              steps: prev[testId].steps.map((s, i) => (i === index ? { ...s, ...updates } : s)),
+              steps: prev[testId].steps.map((s, i) =>
+                i === index ? { ...s, ...updates } : s
+              ),
             },
           }));
         },
