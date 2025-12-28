@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { ShieldCheck, Calendar, ArrowRight } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
-type Voucher = Tables<"vouchers">;
+// Public voucher type excludes sensitive redemption_notes field
+type Voucher = Omit<Tables<"vouchers">, "redemption_notes">;
 
 interface VoucherCardProps {
   voucher: Voucher;

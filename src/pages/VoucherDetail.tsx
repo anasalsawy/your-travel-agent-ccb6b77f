@@ -18,7 +18,8 @@ import {
 import { SupportButtons } from "@/components/SupportButtons";
 import type { Tables } from "@/integrations/supabase/types";
 
-type Voucher = Tables<"vouchers">;
+// Public voucher type excludes sensitive redemption_notes field
+type Voucher = Omit<Tables<"vouchers">, "redemption_notes">;
 
 export default function VoucherDetailPage() {
   const { id } = useParams();
@@ -27,13 +28,16 @@ export default function VoucherDetailPage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
 
+  // Define safe columns that can be publicly displayed (excludes redemption_notes for security)
+  const SAFE_VOUCHER_COLUMNS = "id,airline,title,type,face_value,sale_price,discount_percent,currency,expiry_date,verified_balance,is_refundable,is_transferable,redemption_method,delivery_method,verification_method,terms,status,image_url,created_at,updated_at";
+
   useEffect(() => {
     const fetchVoucher = async () => {
       if (!id) return;
       
       const { data, error } = await supabase
         .from("vouchers")
-        .select("*")
+        .select(SAFE_VOUCHER_COLUMNS)
         .eq("id", id)
         .single();
       
@@ -171,7 +175,7 @@ export default function VoucherDetailPage() {
                     </div>
                     <div>
                       <p className="font-medium">Instructions</p>
-                      <p className="text-sm text-muted-foreground">{voucher.redemption_notes || "Apply voucher code during checkout."}</p>
+                      <p className="text-sm text-muted-foreground">Detailed redemption instructions will be provided after purchase.</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
