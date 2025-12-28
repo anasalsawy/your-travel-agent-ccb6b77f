@@ -20,6 +20,8 @@ import {
   Mail,
   Bitcoin,
   DollarSign,
+  ChevronDown,
+  Copy,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -45,6 +47,7 @@ export default function AdminDiagnosticsPage() {
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
   const [runningTests, setRunningTests] = useState<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState(false);
+  const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -92,6 +95,41 @@ export default function AdminDiagnosticsPage() {
     checkAdmin();
   }, [navigate, allTests]);
 
+  const toggleExpanded = useCallback((testId: string) => {
+    setExpandedTests((prev) => {
+      const next = new Set(prev);
+      if (next.has(testId)) next.delete(testId);
+      else next.add(testId);
+      return next;
+    });
+  }, []);
+
+  const copyResultToClipboard = useCallback(
+    async (testId: string) => {
+      const result = testResults[testId];
+      if (!result) return;
+
+      const payload = {
+        testId,
+        name: result.name,
+        status: result.status,
+        steps: result.steps,
+      };
+
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+        toast({ title: "Copied", description: "Diagnostics details copied." });
+      } catch (e: any) {
+        toast({
+          title: "Copy failed",
+          description: e?.message || "Could not copy to clipboard.",
+          variant: "destructive",
+        });
+      }
+    },
+    [testResults, toast]
+  );
+
   const runTest = useCallback(
     async (test: TestConfig) => {
       const testId = test.id;
@@ -117,10 +155,7 @@ export default function AdminDiagnosticsPage() {
               ...prev,
               [testId]: {
                 ...prev[testId],
-                steps: [
-                  ...currentSteps,
-                  { ...step, status: step.status || "running" },
-                ],
+                steps: [...currentSteps, { ...step, status: step.status || "running" }],
               },
             };
           });
@@ -131,9 +166,7 @@ export default function AdminDiagnosticsPage() {
             ...prev,
             [testId]: {
               ...prev[testId],
-              steps: prev[testId].steps.map((s, i) =>
-                i === index ? { ...s, ...updates } : s
-              ),
+              steps: prev[testId].steps.map((s, i) => (i === index ? { ...s, ...updates } : s)),
             },
           }));
         },
@@ -148,6 +181,15 @@ export default function AdminDiagnosticsPage() {
 
         setTestResults((prev) => {
           const allPassed = prev[testId].steps.every((s) => s.status === "pass");
+
+          if (!allPassed) {
+            setExpandedTests((expandedPrev) => {
+              const next = new Set(expandedPrev);
+              next.add(testId);
+              return next;
+            });
+          }
+
           return {
             ...prev,
             [testId]: {
@@ -174,6 +216,12 @@ export default function AdminDiagnosticsPage() {
             ],
           },
         }));
+
+        setExpandedTests((prev) => {
+          const next = new Set(prev);
+          next.add(testId);
+          return next;
+        });
       } finally {
         setRunningTests((prev) => {
           const next = new Set(prev);
@@ -416,8 +464,32 @@ export default function AdminDiagnosticsPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                onClick={() => toggleExpanded(test.id)}
+                                className="gap-1"
+                                aria-label="Toggle test details"
+                              >
+                                <ChevronDown
+                                  className={
+                                    expandedTests.has(test.id)
+                                      ? "w-4 h-4 rotate-180 transition-transform"
+                                      : "w-4 h-4 transition-transform"
+                                  }
+                                />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => copyResultToClipboard(test.id)}
+                                aria-label="Copy test details"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => runTest(test)}
                                 disabled={isRunning || runningAll}
+                                aria-label="Run test"
                               >
                                 {isRunning ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -428,69 +500,69 @@ export default function AdminDiagnosticsPage() {
                             </div>
                           </CardHeader>
 
-                          {result?.steps.length > 0 && (
+                          {(expandedTests.has(test.id) || result?.status === "fail") && (
                             <CardContent className="border-t border-border pt-4">
-                              <div className="space-y-2">
-                                {result.steps.map((step, stepIndex) => (
-                                  <div
-                                    key={stepIndex}
-                                    className={`p-3 rounded-lg border text-sm ${
-                                      step.status === "pass"
-                                        ? "border-success/30 bg-success/5"
-                                        : step.status === "fail"
-                                        ? "border-destructive/30 bg-destructive/5"
-                                        : step.status === "running"
-                                        ? "border-primary/30 bg-primary/5"
-                                        : "border-border bg-muted/20"
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2 mb-1">
-                                      {step.status === "pass" && (
-                                        <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />
-                                      )}
-                                      {step.status === "fail" && (
-                                        <XCircle className="w-4 h-4 text-destructive flex-shrink-0" />
-                                      )}
-                                      {step.status === "running" && (
-                                        <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
-                                      )}
-                                      {step.status === "pending" && (
-                                        <ClipboardList className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                      )}
-                                      <span className="font-medium">
-                                        {step.name}
-                                      </span>
-                                    </div>
-                                    {(step.expected || step.actual) && (
-                                      <div className="ml-6 text-xs space-y-0.5">
-                                        {step.expected && (
-                                          <p className="text-muted-foreground">
-                                            <span className="text-foreground">
-                                              Expected:
-                                            </span>{" "}
-                                            {step.expected}
-                                          </p>
+                              {result?.steps.length ? (
+                                <div className="space-y-2">
+                                  {result.steps.map((step, stepIndex) => (
+                                    <div
+                                      key={stepIndex}
+                                      className={`p-3 rounded-lg border text-sm ${
+                                        step.status === "pass"
+                                          ? "border-success/30 bg-success/5"
+                                          : step.status === "fail"
+                                          ? "border-destructive/30 bg-destructive/5"
+                                          : step.status === "running"
+                                          ? "border-primary/30 bg-primary/5"
+                                          : "border-border bg-muted/20"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 mb-1">
+                                        {step.status === "pass" && (
+                                          <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />
                                         )}
-                                        {step.actual && (
-                                          <p className="text-muted-foreground">
-                                            <span className="text-foreground">
-                                              Actual:
-                                            </span>{" "}
-                                            {step.actual}
-                                          </p>
+                                        {step.status === "fail" && (
+                                          <XCircle className="w-4 h-4 text-destructive flex-shrink-0" />
                                         )}
+                                        {step.status === "running" && (
+                                          <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                                        )}
+                                        {step.status === "pending" && (
+                                          <ClipboardList className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                        )}
+                                        <span className="font-medium">{step.name}</span>
                                       </div>
-                                    )}
-                                    {step.error && (
-                                      <p className="ml-6 text-xs text-destructive mt-1">
-                                        Error: {step.error}
-                                      </p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
+                                      {(step.expected || step.actual) && (
+                                        <div className="ml-6 text-xs space-y-0.5">
+                                          {step.expected && (
+                                            <p className="text-muted-foreground">
+                                              <span className="text-foreground">Expected:</span>{" "}
+                                              {step.expected}
+                                            </p>
+                                          )}
+                                          {step.actual && (
+                                            <p className="text-muted-foreground">
+                                              <span className="text-foreground">Actual:</span>{" "}
+                                              {step.actual}
+                                            </p>
+                                          )}
+                                        </div>
+                                      )}
+                                      {step.error && (
+                                        <p className="ml-6 text-xs text-destructive mt-1">
+                                          Error: {step.error}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-sm text-muted-foreground">
+                                  No step details were captured for this run.
+                                </div>
+                              )}
 
-                              {result.endTime && result.startTime && (
+                              {result?.endTime && result.startTime && (
                                 <p className="text-xs text-muted-foreground mt-3">
                                   Completed in{" "}
                                   {(
