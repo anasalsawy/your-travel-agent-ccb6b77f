@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Save, Bitcoin, DollarSign, Mail, Send } from "lucide-react";
+import { Loader2, Save, Bitcoin, DollarSign, Mail, Send, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { sendTestEmail } from "@/lib/notifications";
 
@@ -17,6 +18,7 @@ export function AdminSettings() {
     btc_address: "",
     btc_rate: "",
     zelle_email: "",
+    enable_split_payments: false,
   });
 
   useEffect(() => {
@@ -24,7 +26,7 @@ export function AdminSettings() {
       const { data, error } = await supabase
         .from("site_settings")
         .select("*")
-        .in("key", ["btc_address", "btc_rate", "zelle_email"]);
+        .in("key", ["btc_address", "btc_rate", "zelle_email", "enable_split_payments"]);
 
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -32,11 +34,13 @@ export function AdminSettings() {
         const btcAddress = data.find(s => s.key === "btc_address")?.value || "";
         const btcRate = data.find(s => s.key === "btc_rate")?.value || "";
         const zelleEmail = data.find(s => s.key === "zelle_email")?.value || "";
+        const splitPayments = data.find(s => s.key === "enable_split_payments")?.value === "true";
         
         setSettings({
           btc_address: btcAddress,
           btc_rate: btcRate,
           zelle_email: zelleEmail,
+          enable_split_payments: splitPayments,
         });
       }
       setLoading(false);
@@ -49,8 +53,14 @@ export function AdminSettings() {
     setSaving(true);
 
     try {
-      // Update each setting
-      for (const [key, value] of Object.entries(settings)) {
+      const settingsToSave = {
+        btc_address: settings.btc_address,
+        btc_rate: settings.btc_rate,
+        zelle_email: settings.zelle_email,
+        enable_split_payments: settings.enable_split_payments ? "true" : "false",
+      };
+
+      for (const [key, value] of Object.entries(settingsToSave)) {
         const { error } = await supabase
           .from("site_settings")
           .upsert({ key, value }, { onConflict: "key" });
@@ -105,6 +115,48 @@ export function AdminSettings() {
 
   return (
     <div className="max-w-2xl space-y-8">
+      {/* Split Payments Feature Flag */}
+      <div className="glass-card p-6 md:p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
+            <CreditCard className="w-5 h-5 text-accent" />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-semibold">Split Payments</h2>
+            <p className="text-sm text-muted-foreground">Allow customers to pay ticket requests in installments</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
+            <div className="space-y-1">
+              <Label htmlFor="split-payments" className="font-medium">Enable Split Payments</Label>
+              <p className="text-sm text-muted-foreground">
+                When enabled, customers can choose to pay 50% deposit now and the remaining balance 3 days before departure.
+              </p>
+            </div>
+            <Switch
+              id="split-payments"
+              checked={settings.enable_split_payments}
+              onCheckedChange={(checked) => setSettings(prev => ({ ...prev, enable_split_payments: checked }))}
+            />
+          </div>
+          
+          {settings.enable_split_payments && (
+            <div className="p-4 rounded-lg bg-accent/10 border border-accent/30">
+              <p className="text-sm text-accent font-medium mb-2">✓ Split Payments Active</p>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                <li>• Customers see "Pay in Full" or "Pay Deposit (50%)" options</li>
+                <li>• Deposit payment triggers admin review</li>
+                <li>• After deposit approval, ticket can be issued with balance due</li>
+                <li>• Balance due date is set to 3 days before departure</li>
+                <li>• Separate email notifications for deposit and balance payments</li>
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Email Notifications */}
       <div className="glass-card p-6 md:p-8">
         <div className="flex items-center gap-3 mb-6">
