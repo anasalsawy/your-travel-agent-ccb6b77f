@@ -109,9 +109,10 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
     });
   };
 
-  // Calculate deposit amount (50% of quoted price)
+  // Use stored deposit/balance amounts (set by admin when quoting), fallback to 50% if not set
   const depositAmount = request.deposit_amount || (request.quoted_price ? Math.round(Number(request.quoted_price) * 0.5) : 0);
   const balanceAmount = request.balance_amount || (request.quoted_price ? Number(request.quoted_price) - depositAmount : 0);
+  const depositPercent = request.quoted_price ? Math.round((depositAmount / Number(request.quoted_price)) * 100) : 50;
   
   // Calculate balance due date (departure - 3 days)
   const calculateBalanceDueDate = () => {
@@ -689,7 +690,7 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
                       <Label htmlFor="pay-deposit" className="flex items-center gap-3 cursor-pointer flex-1">
                         <Clock className="w-5 h-5 text-accent" />
                         <div className="flex-1">
-                          <p className="font-medium">Pay Deposit (50%)</p>
+                          <p className="font-medium">Pay Deposit ({depositPercent}%)</p>
                           <p className="text-xs text-muted-foreground">
                             Pay {formatCurrency(depositAmount)} now, {formatCurrency(balanceAmount)} due 3 days before departure
                           </p>

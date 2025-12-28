@@ -53,6 +53,7 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedRequest, setSelectedRequest] = useState<TicketRequest | null>(null);
   const [quotedPrice, setQuotedPrice] = useState("");
+  const [depositPercent, setDepositPercent] = useState("50");
   const [adminNotes, setAdminNotes] = useState("");
   const [ticketInfo, setTicketInfo] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
@@ -129,9 +130,16 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
       toast({ title: "Error", description: "Please enter a quote amount", variant: "destructive" });
       return;
     }
+    const price = parseFloat(quotedPrice);
+    const depPercent = Math.min(100, Math.max(1, parseInt(depositPercent) || 50));
+    const depAmount = Math.round(price * (depPercent / 100));
+    const balAmount = price - depAmount;
+    
     await handleUpdateRequest(selectedRequest.id, {
-      quoted_price: parseFloat(quotedPrice),
+      quoted_price: price,
       status: "quoted",
+      deposit_amount: depAmount,
+      balance_amount: balAmount,
       admin_notes: adminNotes || null,
     });
   };
@@ -565,10 +573,19 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
               )}
 
               {/* Standard flow actions (non-split) */}
-              {!isSplitPayment && currentStage === "submitted" && isAdmin && (
+              {currentStage === "submitted" && isAdmin && (
                 <div className="space-y-3 p-4 rounded-lg border-2 border-dashed border-primary/50">
                   <Label className="text-primary font-semibold">👉 Action: Send Quote</Label>
-                  <div className="relative"><DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input type="number" value={quotedPrice} onChange={(e) => setQuotedPrice(e.target.value)} placeholder="Enter quote..." className="pl-10" /></div>
+                  <div className="relative"><DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input type="number" value={quotedPrice} onChange={(e) => setQuotedPrice(e.target.value)} placeholder="Enter quote amount..." className="pl-10" /></div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm text-muted-foreground whitespace-nowrap">Deposit %:</Label>
+                    <Input type="number" min="1" max="100" value={depositPercent} onChange={(e) => setDepositPercent(e.target.value)} className="w-20" />
+                    {quotedPrice && (
+                      <span className="text-xs text-muted-foreground">
+                        = {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(Math.round(parseFloat(quotedPrice) * (parseInt(depositPercent) || 50) / 100))} deposit
+                      </span>
+                    )}
+                  </div>
                   <Button variant="hero" className="w-full" onClick={handleSendQuote} disabled={updating || !quotedPrice}>{updating ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />} Send Quote</Button>
                 </div>
               )}
