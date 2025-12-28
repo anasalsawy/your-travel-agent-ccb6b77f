@@ -166,6 +166,41 @@ export type Database = {
           },
         ]
       }
+      payment_proofs: {
+        Row: {
+          created_at: string
+          id: string
+          order_id: string
+          payment_attempt_id: string
+          proof_upload_url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          order_id: string
+          payment_attempt_id: string
+          proof_upload_url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          order_id?: string
+          payment_attempt_id?: string
+          proof_upload_url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_proofs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -437,6 +472,36 @@ export type Database = {
         Returns: boolean
       }
       is_staff_or_admin: { Args: { _user_id: string }; Returns: boolean }
+      submit_order_payment_proof: {
+        Args: { p_order_id: string; p_proof_upload_url: string }
+        Returns: {
+          admin_notes: string | null
+          amount_paid: number
+          btc_address: string | null
+          btc_amount: string | null
+          created_at: string | null
+          customer_email: string | null
+          delivery_info: string | null
+          delivery_status: string | null
+          id: string
+          order_status: Database["public"]["Enums"]["order_status"] | null
+          payment_attempt_id: string
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status: Database["public"]["Enums"]["payment_status"] | null
+          payment_submitted_at: string | null
+          proof_upload_url: string | null
+          stripe_session_id: string | null
+          updated_at: string | null
+          user_id: string | null
+          voucher_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       app_role: "admin" | "customer" | "staff"

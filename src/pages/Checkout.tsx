@@ -158,12 +158,15 @@ export default function CheckoutPage() {
           .from("proof-uploads")
           .upload(fileName, proofFile);
         
-        if (!uploadError) {
-          // Store file path instead of public URL for private bucket
-          proofUrl = fileName;
+        if (uploadError) {
+          throw new Error("Failed to upload proof file");
         }
+        proofUrl = fileName;
+      } else {
+        proofUrl = txHash;
       }
 
+      // First create order with pending status
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
@@ -171,18 +174,24 @@ export default function CheckoutPage() {
           voucher_id: voucher.id,
           amount_paid: Number(voucher.sale_price),
           payment_method: "bitcoin",
-          payment_status: "under_review",
-          order_status: "payment_under_review",
-          payment_submitted_at: new Date().toISOString(),
+          payment_status: "pending",
+          order_status: "pending",
           btc_address: btcAddress,
           btc_amount: btcAmount,
-          proof_upload_url: proofUrl || txHash,
           customer_email: user.email,
         })
         .select()
         .single();
 
-      if (orderError) throw orderError;
+      if (orderError || !order) throw orderError || new Error("Failed to create order");
+
+      // Submit proof atomically (this updates status + creates payment_proof record)
+      const { error: submitError } = await supabase.rpc("submit_order_payment_proof", {
+        p_order_id: order.id,
+        p_proof_upload_url: proofUrl,
+      });
+
+      if (submitError) throw submitError;
 
       // Notifications are handled by database triggers
 
@@ -216,8 +225,6 @@ export default function CheckoutPage() {
     setProcessing(true);
     
     try {
-      let proofUrl = "";
-      
       const fileExt = proofFile.name.split('.').pop();
       const fileName = `${user.id}/zelle-${Date.now()}.${fileExt}`;
       
@@ -225,13 +232,13 @@ export default function CheckoutPage() {
         .from("proof-uploads")
         .upload(fileName, proofFile);
       
-      if (!uploadError) {
-        // Store file path instead of public URL for private bucket
-        proofUrl = fileName;
+      if (uploadError) {
+        throw new Error("Failed to upload proof file");
       }
 
       const deliveryInfo = zelleConfirmation ? `Confirmation: ${zelleConfirmation}` : null;
 
+      // First create order with pending status
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
@@ -239,17 +246,23 @@ export default function CheckoutPage() {
           voucher_id: voucher.id,
           amount_paid: Number(voucher.sale_price),
           payment_method: "zelle",
-          payment_status: "under_review",
-          order_status: "payment_under_review",
-          payment_submitted_at: new Date().toISOString(),
-          proof_upload_url: proofUrl,
+          payment_status: "pending",
+          order_status: "pending",
           delivery_info: deliveryInfo,
           customer_email: user.email,
         })
         .select()
         .single();
 
-      if (orderError) throw orderError;
+      if (orderError || !order) throw orderError || new Error("Failed to create order");
+
+      // Submit proof atomically (this updates status + creates payment_proof record)
+      const { error: submitError } = await supabase.rpc("submit_order_payment_proof", {
+        p_order_id: order.id,
+        p_proof_upload_url: fileName,
+      });
+
+      if (submitError) throw submitError;
 
       // Notifications are handled by database triggers
 

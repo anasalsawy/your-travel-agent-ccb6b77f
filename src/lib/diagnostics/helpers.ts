@@ -12,6 +12,8 @@ export const getTestVoucher = async () => {
 };
 
 export const cleanupOrder = async (orderId: string) => {
+  // Delete payment_proofs first (FK constraint)
+  await supabase.from("payment_proofs").delete().eq("order_id", orderId);
   await supabase.from("notification_log").delete().eq("record_id", orderId);
   await supabase.from("orders").delete().eq("id", orderId);
 };
@@ -22,6 +24,20 @@ export const cleanupTicketRequest = async (requestId: string) => {
 };
 
 export const cleanupAllTestData = async () => {
+  // Get test order IDs first to clean up payment_proofs
+  const { data: testOrders } = await supabase
+    .from("orders")
+    .select("id")
+    .like("customer_email", `%${TEST_EMAIL_PREFIX}%`);
+  
+  if (testOrders && testOrders.length > 0) {
+    const orderIds = testOrders.map(o => o.id);
+    await supabase
+      .from("payment_proofs")
+      .delete()
+      .in("order_id", orderIds);
+  }
+
   // Delete test orders
   await supabase
     .from("orders")
