@@ -6,14 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, CreditCard, Bitcoin, ArrowLeft, Copy, Check, Upload, DollarSign, HelpCircle } from "lucide-react";
+import { Loader2, Bitcoin, ArrowLeft, Copy, Check, Upload, DollarSign, HelpCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { SupportButtons } from "@/components/SupportButtons";
 import type { Tables } from "@/integrations/supabase/types";
 // Notifications are now handled by database triggers - no client-side calls needed
 
 type Voucher = Tables<"vouchers">;
-type PaymentMethod = "stripe" | "bitcoin" | "zelle";
+type PaymentMethod = "bitcoin" | "zelle";
 
 export default function CheckoutPage() {
   const { id } = useParams();
@@ -22,7 +22,7 @@ export default function CheckoutPage() {
   const [voucher, setVoucher] = useState<Voucher | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("stripe");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("zelle");
   const [user, setUser] = useState<any>(null);
   const [btcAddress, setBtcAddress] = useState("");
   const [btcRate, setBtcRate] = useState("43500");
@@ -378,20 +378,7 @@ export default function CheckoutPage() {
                   onValueChange={(v) => { setPaymentMethod(v as PaymentMethod); resetProof(); }}
                   className="space-y-4 mb-6"
                 >
-                  <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
-                    paymentMethod === "stripe" ? "border-primary bg-primary/5" : "border-border"
-                  }`}>
-                    <RadioGroupItem value="stripe" id="stripe" />
-                    <Label htmlFor="stripe" className="flex items-center gap-3 cursor-pointer flex-1">
-                      <CreditCard className="w-5 h-5 text-primary" />
-                      <div>
-                        <p className="font-medium">Credit/Debit Card</p>
-                        <p className="text-xs text-muted-foreground">Secure payment via Stripe</p>
-                      </div>
-                    </Label>
-                  </div>
-
-                  <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
+                <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
                     paymentMethod === "zelle" ? "border-primary bg-primary/5" : "border-border"
                   }`}>
                     <RadioGroupItem value="zelle" id="zelle" />
@@ -417,13 +404,6 @@ export default function CheckoutPage() {
                     </Label>
                   </div>
                 </RadioGroup>
-
-                {paymentMethod === "stripe" && (
-                  <Button variant="hero" size="lg" className="w-full" onClick={handleStripeCheckout} disabled={processing}>
-                    {processing && <Loader2 className="w-4 h-4 animate-spin" />}
-                    Pay {formatCurrency(Number(voucher.sale_price), voucher.currency || "USD")}
-                  </Button>
-                )}
 
                 {paymentMethod === "zelle" && (
                   <div className="space-y-4">

@@ -7,7 +7,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Loader2, 
-  CreditCard, 
   Bitcoin, 
   DollarSign, 
   Upload, 
@@ -25,7 +24,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { notifyTicketPaymentProofUploaded, notifyCustomerTicketPaymentUnderReview } from "@/lib/notifications";
 
 type TicketRequest = Tables<"ticket_requests">;
-type PaymentMethod = "stripe" | "bitcoin" | "zelle";
+type PaymentMethod = "bitcoin" | "zelle";
 
 interface TicketRequestDetailProps {
   request: TicketRequest;
@@ -119,7 +118,7 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
   const handlePaymentSubmit = async () => {
     if (!request.quoted_price) return;
     
-    if (paymentMethod !== "stripe" && !proofFile && !txHash) {
+    if (!proofFile && !txHash) {
       toast({
         title: "Error",
         description: "Please upload payment proof or enter transaction details.",
@@ -151,7 +150,7 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
         .from("ticket_requests")
         .update({
           payment_method: paymentMethod,
-          payment_status: paymentMethod === "stripe" ? "pending" : "processing",
+          payment_status: "processing",
           proof_upload_url: proofUrl || txHash || null,
           btc_address: paymentMethod === "bitcoin" ? btcAddress : null,
           btc_amount: paymentMethod === "bitcoin" ? btcAmount : null,
@@ -161,29 +160,25 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
       if (updateError) throw updateError;
 
       // Send notifications for proof upload
-      if (paymentMethod !== "stripe") {
-        await Promise.allSettled([
-          notifyTicketPaymentProofUploaded({
-            requestId: request.id,
-            origin: request.origin,
-            destination: request.destination,
-            amount: Number(request.quoted_price),
-            paymentMethod: paymentMethod === "bitcoin" ? "Bitcoin" : "Zelle",
-          }),
-          notifyCustomerTicketPaymentUnderReview(request.contact_email, {
-            requestId: request.id,
-            origin: request.origin,
-            destination: request.destination,
-            amount: Number(request.quoted_price),
-          }),
-        ]);
-      }
+      await Promise.allSettled([
+        notifyTicketPaymentProofUploaded({
+          requestId: request.id,
+          origin: request.origin,
+          destination: request.destination,
+          amount: Number(request.quoted_price),
+          paymentMethod: paymentMethod === "bitcoin" ? "Bitcoin" : "Zelle",
+        }),
+        notifyCustomerTicketPaymentUnderReview(request.contact_email, {
+          requestId: request.id,
+          origin: request.origin,
+          destination: request.destination,
+          amount: Number(request.quoted_price),
+        }),
+      ]);
 
       toast({
-        title: paymentMethod === "stripe" ? "Redirecting to payment..." : "Payment Submitted!",
-        description: paymentMethod === "stripe" 
-          ? "Please complete payment on the next page."
-          : "We'll verify your payment and issue your ticket shortly.",
+        title: "Payment Submitted!",
+        description: "We'll verify your payment and issue your ticket shortly.",
       });
 
       onUpdate();
@@ -381,18 +376,6 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
                   </Label>
                 </div>
 
-                <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
-                  paymentMethod === "stripe" ? "border-primary bg-primary/5" : "border-border"
-                }`}>
-                  <RadioGroupItem value="stripe" id="stripe" />
-                  <Label htmlFor="stripe" className="flex items-center gap-3 cursor-pointer flex-1">
-                    <CreditCard className="w-5 h-5 text-primary" />
-                    <div>
-                      <p className="font-medium">Credit/Debit Card</p>
-                      <p className="text-xs text-muted-foreground">Secure payment via Stripe</p>
-                    </div>
-                  </Label>
-                </div>
               </RadioGroup>
 
               {/* Zelle Instructions */}
@@ -489,14 +472,8 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
                 disabled={processing}
               >
                 {processing && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                {paymentMethod === "stripe" ? (
-                  <>Pay {formatCurrency(Number(request.quoted_price))}</>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Submit Payment Proof
-                  </>
-                )}
+                <Upload className="w-4 h-4 mr-2" />
+                Submit Payment Proof
               </Button>
             </div>
           )}
