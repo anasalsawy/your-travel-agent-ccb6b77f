@@ -81,7 +81,7 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
     fetchRequests();
   }, []);
 
-  // Load proof URLs when request selected
+  // Load proof URLs from payment_proofs table when request selected
   useEffect(() => {
     const loadProofUrls = async () => {
       if (!selectedRequest) {
@@ -98,17 +98,28 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
         return data?.signedUrl || null;
       };
 
+      // Fetch proofs from payment_proofs table for this ticket request
+      const { data: proofs } = await supabase
+        .from("payment_proofs")
+        .select("*")
+        .eq("ticket_request_id", selectedRequest.id)
+        .order("created_at", { ascending: false });
+
+      const depositProof = proofs?.find(p => p.type === "deposit");
+      const balanceProof = proofs?.find(p => p.type === "balance");
+
+      // Also check legacy proof_upload_url for backward compatibility
       const [proof, deposit, balance] = await Promise.all([
         loadUrl(selectedRequest.proof_upload_url),
-        loadUrl(selectedRequest.deposit_proof_url),
-        loadUrl(selectedRequest.balance_proof_url),
+        loadUrl(depositProof?.proof_upload_url || selectedRequest.deposit_proof_url),
+        loadUrl(balanceProof?.proof_upload_url || selectedRequest.balance_proof_url),
       ]);
       setProofUrl(proof);
       setDepositProofUrl(deposit);
       setBalanceProofUrl(balance);
     };
     loadProofUrls();
-  }, [selectedRequest?.proof_upload_url, selectedRequest?.deposit_proof_url, selectedRequest?.balance_proof_url]);
+  }, [selectedRequest?.id, selectedRequest?.proof_upload_url, selectedRequest?.deposit_proof_url, selectedRequest?.balance_proof_url]);
 
   const handleUpdateRequest = async (requestId: string, updates: Partial<TicketRequest>) => {
     setUpdating(true);
@@ -510,26 +521,80 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
               </div>
 
               {/* Deposit Proof (for split payments) */}
-              {isSplitPayment && depositProofUrl && (
+              {isSplitPayment && (
                 <div className="p-4 rounded-lg bg-warning/10 border border-warning/30">
-                  <div className="flex items-center gap-2 mb-3"><ImageIcon className="w-5 h-5 text-warning" /><span className="font-semibold text-warning">Deposit Proof</span></div>
-                  <img src={depositProofUrl} alt="Deposit proof" className="max-w-full max-h-64 rounded-lg border border-border" />
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="w-5 h-5 text-warning" />
+                      <span className="font-semibold text-warning">Deposit Proof</span>
+                    </div>
+                    {depositProofUrl && (
+                      <a href={depositProofUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" className="gap-1">
+                          <ExternalLink className="w-3 h-3" /> View Full
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                  {depositProofUrl ? (
+                    <img src={depositProofUrl} alt="Deposit proof" className="max-w-full max-h-64 rounded-lg border border-border cursor-pointer" onClick={() => window.open(depositProofUrl, '_blank')} />
+                  ) : (
+                    <div className="text-muted-foreground text-sm py-4 text-center bg-muted/30 rounded-lg">
+                      No deposit payment proof uploaded yet
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Balance Proof (for split payments) */}
-              {isSplitPayment && balanceProofUrl && (
+              {isSplitPayment && (selectedRequest.status === "ticketed" || balanceProofUrl) && (
                 <div className="p-4 rounded-lg bg-warning/10 border border-warning/30">
-                  <div className="flex items-center gap-2 mb-3"><ImageIcon className="w-5 h-5 text-warning" /><span className="font-semibold text-warning">Balance Proof</span></div>
-                  <img src={balanceProofUrl} alt="Balance proof" className="max-w-full max-h-64 rounded-lg border border-border" />
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="w-5 h-5 text-warning" />
+                      <span className="font-semibold text-warning">Balance Proof</span>
+                    </div>
+                    {balanceProofUrl && (
+                      <a href={balanceProofUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" className="gap-1">
+                          <ExternalLink className="w-3 h-3" /> View Full
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                  {balanceProofUrl ? (
+                    <img src={balanceProofUrl} alt="Balance proof" className="max-w-full max-h-64 rounded-lg border border-border cursor-pointer" onClick={() => window.open(balanceProofUrl, '_blank')} />
+                  ) : (
+                    <div className="text-muted-foreground text-sm py-4 text-center bg-muted/30 rounded-lg">
+                      No balance payment proof uploaded yet
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Regular Proof (for full payments) */}
-              {!isSplitPayment && proofUrl && (
+              {!isSplitPayment && currentStage === "payment_review" && (
                 <div className="p-4 rounded-lg bg-warning/10 border border-warning/30">
-                  <div className="flex items-center gap-2 mb-3"><ImageIcon className="w-5 h-5 text-warning" /><span className="font-semibold text-warning">Payment Proof</span></div>
-                  <img src={proofUrl} alt="Payment proof" className="max-w-full max-h-64 rounded-lg border border-border" />
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="w-5 h-5 text-warning" />
+                      <span className="font-semibold text-warning">Payment Proof</span>
+                    </div>
+                    {proofUrl && (
+                      <a href={proofUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" className="gap-1">
+                          <ExternalLink className="w-3 h-3" /> View Full
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                  {proofUrl ? (
+                    <img src={proofUrl} alt="Payment proof" className="max-w-full max-h-64 rounded-lg border border-border cursor-pointer" onClick={() => window.open(proofUrl, '_blank')} />
+                  ) : (
+                    <div className="text-muted-foreground text-sm py-4 text-center bg-muted/30 rounded-lg">
+                      No payment proof uploaded yet
+                    </div>
+                  )}
                 </div>
               )}
 
