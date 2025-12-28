@@ -12,7 +12,7 @@ export function Layout({ children, hideFooter }: LayoutProps) {
     <div className="min-h-screen flex flex-col">
       <PromoBanner />
       <Header />
-      <main className="flex-1 pt-16 md:pt-20">{children}</main>
+      <main className="flex-1" style={{ paddingTop: 'calc(var(--promo-banner-height, 0px) + 4rem)' }}>{children}</main>
       {!hideFooter && <Footer />}
     </div>
   );
