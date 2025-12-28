@@ -170,25 +170,31 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          order_id: string
+          order_id: string | null
           payment_attempt_id: string
           proof_upload_url: string
+          ticket_request_id: string | null
+          type: string | null
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
-          order_id: string
+          order_id?: string | null
           payment_attempt_id: string
           proof_upload_url: string
+          ticket_request_id?: string | null
+          type?: string | null
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
-          order_id?: string
+          order_id?: string | null
           payment_attempt_id?: string
           proof_upload_url?: string
+          ticket_request_id?: string | null
+          type?: string | null
           user_id?: string
         }
         Relationships: [
@@ -197,6 +203,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_proofs_ticket_request_id_fkey"
+            columns: ["ticket_request_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_requests"
             referencedColumns: ["id"]
           },
         ]
