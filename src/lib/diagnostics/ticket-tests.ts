@@ -2,6 +2,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { TestConfig, TestHelpers } from "./types";
 import { generateTestEmail, countNotifications, getNotificationsByRecord } from "./helpers";
 
+// Helper to get current user ID
+const getCurrentUserId = async (): Promise<string | null> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id || null;
+};
+
 // ============================================================================
 // TICKET REQUEST FULL FLOW - Submit → Quote → Zelle Payment → Ticketed
 // ============================================================================
@@ -16,6 +22,16 @@ export const ticketZelleFlowTest: TestConfig = {
 
     // Step 1: Create ticket request
     const step1 = addStep({ name: "Submit ticket request", status: "running" });
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      updateStep(step1, {
+        status: "fail",
+        expected: "User authenticated",
+        actual: "No authenticated user",
+      });
+      throw new Error("Not authenticated");
+    }
+    
     const testEmail = generateTestEmail("ticket_zelle");
     const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       .toISOString()
@@ -24,6 +40,7 @@ export const ticketZelleFlowTest: TestConfig = {
     const { data: request, error: createError } = await supabase
       .from("ticket_requests")
       .insert({
+        user_id: userId,
         origin: "TEST_JFK",
         destination: "TEST_CDG",
         departure_date: futureDate,
@@ -252,8 +269,18 @@ export const ticketBitcoinFlowTest: TestConfig = {
   run: async (helpers: TestHelpers) => {
     const { addStep, updateStep, cleanupTicketRequest, waitForTrigger } = helpers;
 
-    // Step 1: Create request
+// Step 1: Create request
     const step1 = addStep({ name: "Submit ticket request", status: "running" });
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      updateStep(step1, {
+        status: "fail",
+        expected: "User authenticated",
+        actual: "No authenticated user",
+      });
+      throw new Error("Not authenticated");
+    }
+    
     const testEmail = generateTestEmail("ticket_btc");
     const futureDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000)
       .toISOString()
@@ -262,6 +289,7 @@ export const ticketBitcoinFlowTest: TestConfig = {
     const { data: request, error } = await supabase
       .from("ticket_requests")
       .insert({
+        user_id: userId,
         origin: "TEST_LAX",
         destination: "TEST_NRT",
         departure_date: futureDate,
@@ -384,8 +412,18 @@ export const ticketStripeFlowTest: TestConfig = {
   run: async (helpers: TestHelpers) => {
     const { addStep, updateStep, cleanupTicketRequest, waitForTrigger } = helpers;
 
-    // Step 1: Create request
+// Step 1: Create request
     const step1 = addStep({ name: "Submit ticket request", status: "running" });
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      updateStep(step1, {
+        status: "fail",
+        expected: "User authenticated",
+        actual: "No authenticated user",
+      });
+      throw new Error("Not authenticated");
+    }
+    
     const testEmail = generateTestEmail("ticket_stripe");
     const futureDate = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
       .toISOString()
@@ -394,6 +432,7 @@ export const ticketStripeFlowTest: TestConfig = {
     const { data: request, error } = await supabase
       .from("ticket_requests")
       .insert({
+        user_id: userId,
         origin: "TEST_ORD",
         destination: "TEST_LHR",
         departure_date: futureDate,
