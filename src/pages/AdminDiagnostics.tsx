@@ -445,11 +445,11 @@ export default function AdminDiagnosticsPage() {
                           key={test.id}
                           className="glass-card overflow-hidden"
                         >
-                          <CardHeader className="flex flex-row items-center justify-between py-4">
-                            <div className="flex items-center gap-3">
+                          <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
                               {getStatusIcon(result?.status || "pending")}
-                              <div>
-                                <div className="flex items-center gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <CardTitle className="text-base">
                                     {test.name}
                                   </CardTitle>
@@ -463,18 +463,17 @@ export default function AdminDiagnosticsPage() {
                                     </Badge>
                                   )}
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
+                                <p className="text-xs text-muted-foreground mt-0.5 truncate">
                                   {test.description}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               {getStatusBadge(result?.status || "pending")}
                               <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
                                 onClick={() => toggleExpanded(test.id)}
-                                className="gap-1"
                                 aria-label="Toggle test details"
                               >
                                 <ChevronDown
@@ -487,7 +486,7 @@ export default function AdminDiagnosticsPage() {
                               </Button>
                               <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
                                 onClick={() => copyResultToClipboard(test.id)}
                                 aria-label="Copy test details"
                               >
@@ -495,7 +494,7 @@ export default function AdminDiagnosticsPage() {
                               </Button>
                               <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
                                 onClick={() => runTest(test)}
                                 disabled={isRunning || runningAll}
                                 aria-label="Run test"
