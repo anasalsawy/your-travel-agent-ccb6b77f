@@ -81,29 +81,41 @@ export const zelleFlowTest: TestConfig = {
         actual: `Found ${receivedCount}`,
       });
 
-      // Step 4: Upload proof (first submission)
+      // Step 4: Upload proof using atomic RPC function
       const step4 = addStep({
-        name: "Submit payment proof",
+        name: "Submit payment proof (atomic RPC)",
         status: "running",
       });
-      const { error: proofError } = await supabase
-        .from("orders")
-        .update({
-          payment_status: "under_review",
-          order_status: "payment_under_review",
-          proof_upload_url: `test-proof/${order.id}/zelle-1.png`,
-          payment_submitted_at: new Date().toISOString(),
-        })
-        .eq("id", order.id);
+      
+      const { data: updatedOrder, error: proofError } = await supabase.rpc(
+        "submit_order_payment_proof",
+        {
+          p_order_id: order.id,
+          p_proof_upload_url: `test-proof/${order.id}/zelle-1.png`,
+        }
+      );
 
       if (proofError) {
         updateStep(step4, { status: "fail", error: proofError.message });
         throw new Error("Failed to submit proof");
       }
+      
+      // Verify order status was updated
+      const { data: orderAfterProof } = await supabase
+        .from("orders")
+        .select("payment_status, order_status, payment_submitted_at, proof_upload_url")
+        .eq("id", order.id)
+        .single();
+      
+      const statusCorrect = 
+        orderAfterProof?.payment_status === "under_review" &&
+        orderAfterProof?.order_status === "payment_under_review" &&
+        orderAfterProof?.payment_submitted_at !== null;
+        
       updateStep(step4, {
-        status: "pass",
-        expected: "Status → under_review",
-        actual: "Updated successfully",
+        status: statusCorrect ? "pass" : "fail",
+        expected: "payment_status=under_review, order_status=payment_under_review",
+        actual: `payment_status=${orderAfterProof?.payment_status}, order_status=${orderAfterProof?.order_status}`,
       });
 
       // Step 5: Verify under_review notification
@@ -122,18 +134,17 @@ export const zelleFlowTest: TestConfig = {
         actual: `Found ${underReviewCount}`,
       });
 
-      // Step 6: Admin rejects payment
+      // Step 6: Admin rejects payment (triggers notification)
       const step6 = addStep({
         name: "Admin rejects payment",
         status: "running",
       });
-      const newAttemptId = crypto.randomUUID();
       const { error: rejectError } = await supabase
         .from("orders")
         .update({
-          payment_status: "failed",
-          order_status: "pending",
-          payment_attempt_id: newAttemptId,
+          payment_status: "failed", // This triggers the rejection notification
+          order_status: "cancelled",
+          admin_notes: "Test rejection reason",
         })
         .eq("id", order.id);
 
@@ -143,7 +154,7 @@ export const zelleFlowTest: TestConfig = {
       }
       updateStep(step6, {
         status: "pass",
-        expected: "Status → failed/pending",
+        expected: "Status → failed",
         actual: "Payment rejected",
       });
 
@@ -163,20 +174,44 @@ export const zelleFlowTest: TestConfig = {
         actual: `Found ${rejectedCount}`,
       });
 
-      // Step 8: Customer resubmits proof
+      // Step 7b: Admin resets to pending for resubmission
+      const step7b = addStep({
+        name: "Admin resets order for resubmission",
+        status: "running",
+      });
+      const newAttemptId = crypto.randomUUID();
+      const { error: resetError } = await supabase
+        .from("orders")
+        .update({
+          payment_status: "pending",
+          order_status: "pending",
+          payment_attempt_id: newAttemptId,
+          proof_upload_url: null,
+        })
+        .eq("id", order.id);
+
+      if (resetError) {
+        updateStep(step7b, { status: "fail", error: resetError.message });
+        throw new Error("Failed to reset");
+      }
+      updateStep(step7b, {
+        status: "pass",
+        expected: "Status reset to pending",
+        actual: "Can resubmit via RPC",
+      });
+
+      // Step 8: Customer resubmits proof (using atomic RPC after admin reset)
       const step8 = addStep({
         name: "Customer resubmits proof",
         status: "running",
       });
-      const { error: resubmitError } = await supabase
-        .from("orders")
-        .update({
-          payment_status: "under_review",
-          order_status: "payment_under_review",
-          proof_upload_url: `test-proof/${order.id}/zelle-2.png`,
-          payment_submitted_at: new Date().toISOString(),
-        })
-        .eq("id", order.id);
+      const { error: resubmitError } = await supabase.rpc(
+        "submit_order_payment_proof",
+        {
+          p_order_id: order.id,
+          p_proof_upload_url: `test-proof/${order.id}/zelle-2.png`,
+        }
+      );
 
       if (resubmitError) {
         updateStep(step8, { status: "fail", error: resubmitError.message });
@@ -365,26 +400,32 @@ export const bitcoinFlowTest: TestConfig = {
     });
 
     try {
-      // Step 3: Submit proof
-      const step3 = addStep({ name: "Submit BTC payment proof", status: "running" });
-      const { error: proofError } = await supabase
-        .from("orders")
-        .update({
-          payment_status: "under_review",
-          order_status: "payment_under_review",
-          proof_upload_url: `test-proof/${order.id}/btc-tx.png`,
-          payment_submitted_at: new Date().toISOString(),
-        })
-        .eq("id", order.id);
+      // Step 3: Submit proof using atomic RPC
+      const step3 = addStep({ name: "Submit BTC payment proof (atomic RPC)", status: "running" });
+      const { error: proofError } = await supabase.rpc(
+        "submit_order_payment_proof",
+        {
+          p_order_id: order.id,
+          p_proof_upload_url: `test-proof/${order.id}/btc-tx.png`,
+        }
+      );
 
       if (proofError) {
         updateStep(step3, { status: "fail", error: proofError.message });
         throw new Error("Failed to submit proof");
       }
+      
+      // Verify order status was updated
+      const { data: orderAfterProof } = await supabase
+        .from("orders")
+        .select("payment_status, order_status")
+        .eq("id", order.id)
+        .single();
+      
       updateStep(step3, {
-        status: "pass",
-        expected: "Status → under_review",
-        actual: "Proof submitted",
+        status: orderAfterProof?.payment_status === "under_review" ? "pass" : "fail",
+        expected: "payment_status=under_review",
+        actual: `payment_status=${orderAfterProof?.payment_status}`,
       });
 
       // Step 4: Verify under_review notification
@@ -627,7 +668,7 @@ export const stripeFlowTest: TestConfig = {
 export const paymentIdempotencyTest: TestConfig = {
   id: "voucher-idempotency",
   name: "Payment Proof Idempotency",
-  description: "Duplicate submissions are blocked, only 1 notification logged",
+  description: "Duplicate submissions via RPC are blocked, only 1 notification logged",
   category: "voucher",
   run: async (helpers: TestHelpers) => {
     const { addStep, updateStep, getTestVoucher, cleanupOrder, waitForTrigger } =
@@ -642,9 +683,9 @@ export const paymentIdempotencyTest: TestConfig = {
     }
     updateStep(step1, { status: "pass", actual: voucher.title });
 
-    // Step 2: Create order in under_review (simulating first submission)
+    // Step 2: Create order in pending (awaiting payment)
     const step2 = addStep({
-      name: "Create order with initial proof",
+      name: "Create order in pending status",
       status: "running",
     });
     const testEmail = generateTestEmail("idemp");
@@ -654,10 +695,8 @@ export const paymentIdempotencyTest: TestConfig = {
         voucher_id: voucher.id,
         amount_paid: Number(voucher.sale_price),
         payment_method: "zelle",
-        payment_status: "under_review",
-        order_status: "payment_under_review",
-        proof_upload_url: "test-proof/first.png",
-        payment_submitted_at: new Date().toISOString(),
+        payment_status: "pending",
+        order_status: "pending",
         customer_email: testEmail,
       })
       .select()
@@ -669,14 +708,37 @@ export const paymentIdempotencyTest: TestConfig = {
     }
     updateStep(step2, {
       status: "pass",
-      expected: "Order in under_review",
+      expected: "Order in pending",
       actual: `Order ${order.id.slice(0, 8)}`,
     });
 
     try {
-      // Step 3: Count initial notifications
+      // Step 3: Submit first proof via RPC
       const step3 = addStep({
-        name: "Count initial payment_under_review notifications",
+        name: "Submit first proof via RPC",
+        status: "running",
+      });
+      const { error: firstSubmitError } = await supabase.rpc(
+        "submit_order_payment_proof",
+        {
+          p_order_id: order.id,
+          p_proof_upload_url: "test-proof/first.png",
+        }
+      );
+      
+      if (firstSubmitError) {
+        updateStep(step3, { status: "fail", error: firstSubmitError.message });
+        throw new Error("Failed to submit first proof");
+      }
+      updateStep(step3, {
+        status: "pass",
+        expected: "First submission succeeds",
+        actual: "Proof submitted, status = under_review",
+      });
+
+      // Step 4: Wait and count notifications
+      const step4 = addStep({
+        name: "Count payment_under_review notifications",
         status: "running",
       });
       await waitForTrigger();
@@ -684,33 +746,42 @@ export const paymentIdempotencyTest: TestConfig = {
         order.id,
         "payment_under_review"
       );
-      updateStep(step3, {
-        status: "pass",
-        expected: "Notification count recorded",
+      updateStep(step4, {
+        status: initialCount >= 1 ? "pass" : "fail",
+        expected: "≥1 notification",
         actual: `Found ${initialCount}`,
       });
 
-      // Step 4: Attempt duplicate proof update
-      const step4 = addStep({
-        name: "Attempt duplicate proof submission",
+      // Step 5: Attempt duplicate submission via RPC (should fail)
+      const step5 = addStep({
+        name: "Attempt duplicate proof submission (should be blocked)",
         status: "running",
       });
-      const { error: updateError } = await supabase
-        .from("orders")
-        .update({
-          proof_upload_url: "test-proof/second.png",
-        })
-        .eq("id", order.id);
+      const { error: duplicateError } = await supabase.rpc(
+        "submit_order_payment_proof",
+        {
+          p_order_id: order.id,
+          p_proof_upload_url: "test-proof/second.png",
+        }
+      );
 
-      updateStep(step4, {
-        status: "pass",
-        expected: "Update executes but no new notification",
-        actual: updateError ? updateError.message : "Update completed",
-      });
+      if (duplicateError) {
+        updateStep(step5, {
+          status: "pass",
+          expected: "RPC rejects duplicate submission",
+          actual: `Blocked: ${duplicateError.message.slice(0, 50)}`,
+        });
+      } else {
+        updateStep(step5, {
+          status: "fail",
+          expected: "RPC should reject duplicate",
+          actual: "Duplicate was allowed (bug!)",
+        });
+      }
 
-      // Step 5: Verify no duplicate notifications
-      const step5 = addStep({
-        name: "Verify notification deduplication",
+      // Step 6: Verify no duplicate notifications
+      const step6 = addStep({
+        name: "Verify no duplicate notifications",
         status: "running",
       });
       await waitForTrigger();
@@ -719,17 +790,17 @@ export const paymentIdempotencyTest: TestConfig = {
         "payment_under_review"
       );
 
-      if (finalCount <= initialCount) {
-        updateStep(step5, {
+      if (finalCount === initialCount) {
+        updateStep(step6, {
           status: "pass",
           expected: "No new notification",
           actual: `Count: ${initialCount} → ${finalCount}`,
         });
       } else {
-        updateStep(step5, {
+        updateStep(step6, {
           status: "fail",
           expected: "No new notification",
-          actual: `Count increased: ${initialCount} → ${finalCount}`,
+          actual: `Count changed: ${initialCount} → ${finalCount}`,
         });
       }
 

@@ -148,6 +148,7 @@ export function AdminOrders({ isAdmin = false }: AdminOrdersProps) {
       toast({ title: "Error", description: "Please provide a reason for rejection", variant: "destructive" });
       return;
     }
+    
     await handleUpdateOrder(order.id, {
       payment_status: "failed",
       order_status: "cancelled",
