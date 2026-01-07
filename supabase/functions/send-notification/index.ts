@@ -52,6 +52,11 @@ type NotificationType =
   | "balance_approved"
   | "balance_rejected"
   | "balance_past_due"
+  // Marketplace notifications
+  | "new_bid_received"
+  | "bid_accepted"
+  | "bid_rejected"
+  | "listing_expired"
   // Legacy/misc
   | "payment_under_review"
   | "test_email";
@@ -586,6 +591,81 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
             </div>
             <p style="color: #dc2626; font-weight: bold;">Please complete your payment immediately to avoid ticket cancellation.</p>
             <p>Log in to your dashboard to submit payment proof.</p>
+          </div>
+        `,
+      };
+
+    // ========== MARKETPLACE EMAILS ==========
+    case "new_bid_received":
+      return {
+        subject: `New Bid Received - ${data.listingTitle}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">New Bid on Your Listing! 🎉</h1>
+            <p>A seller has placed a bid on your travel request.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Listing:</strong> ${data.listingTitle}</p>
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p style="font-size: 24px; color: #38a169;"><strong>Bid Amount: $${data.bidAmount?.toLocaleString()}</strong></p>
+              <p><strong>Seller:</strong> ${data.sellerName}</p>
+              ${data.bidMessage ? `<p><strong>Message:</strong> ${data.bidMessage}</p>` : ""}
+            </div>
+            <p>Log in to your dashboard to review and accept this bid.</p>
+          </div>
+        `,
+      };
+
+    case "bid_accepted":
+      return {
+        subject: `Your Bid Was Accepted! - ${data.listingTitle}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Congratulations! Your Bid Was Accepted! 🎉</h1>
+            <p>Great news! The buyer has accepted your bid.</p>
+            <div style="background: #d1fae5; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #10b981;">
+              <p><strong>Listing:</strong> ${data.listingTitle}</p>
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p style="font-size: 24px; color: #065f46;"><strong>Accepted Amount: $${data.bidAmount?.toLocaleString()}</strong></p>
+            </div>
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+              <li>Contact the buyer at: <strong>${data.buyerEmail}</strong></li>
+              <li>Finalize the booking details</li>
+              <li>Provide payment instructions</li>
+            </ul>
+          </div>
+        `,
+      };
+
+    case "bid_rejected":
+      return {
+        subject: `Bid Update - ${data.listingTitle}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #718096;">Bid Not Selected</h1>
+            <p>Unfortunately, the buyer has selected a different bid for their travel request.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Listing:</strong> ${data.listingTitle}</p>
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+              <p><strong>Your Bid:</strong> $${data.bidAmount?.toLocaleString()}</p>
+            </div>
+            <p>Keep an eye on the marketplace for new opportunities!</p>
+          </div>
+        `,
+      };
+
+    case "listing_expired":
+      return {
+        subject: `Listing Expired - ${data.listingTitle}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #718096;">Listing Expired</h1>
+            <p>Your marketplace listing has expired without accepting a bid.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Listing:</strong> ${data.listingTitle}</p>
+              <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
+            </div>
+            <p>You can create a new listing or request a custom ticket quote.</p>
           </div>
         `,
       };
