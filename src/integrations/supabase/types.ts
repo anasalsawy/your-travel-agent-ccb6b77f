@@ -14,6 +14,107 @@ export type Database = {
   }
   public: {
     Tables: {
+      bids: {
+        Row: {
+          amount: number
+          conditions: string | null
+          created_at: string
+          estimated_delivery: string | null
+          id: string
+          listing_id: string
+          message: string | null
+          seller_id: string
+          status: Database["public"]["Enums"]["bid_status"]
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          conditions?: string | null
+          created_at?: string
+          estimated_delivery?: string | null
+          id?: string
+          listing_id: string
+          message?: string | null
+          seller_id: string
+          status?: Database["public"]["Enums"]["bid_status"]
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          conditions?: string | null
+          created_at?: string
+          estimated_delivery?: string | null
+          id?: string
+          listing_id?: string
+          message?: string | null
+          seller_id?: string
+          status?: Database["public"]["Enums"]["bid_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bids_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_listings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bids_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "sellers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_listings: {
+        Row: {
+          created_at: string
+          deadline: string
+          id: string
+          min_bid: number | null
+          status: Database["public"]["Enums"]["listing_status"]
+          ticket_request_id: string
+          title: string
+          updated_at: string
+          user_id: string
+          winning_bid_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          deadline: string
+          id?: string
+          min_bid?: number | null
+          status?: Database["public"]["Enums"]["listing_status"]
+          ticket_request_id: string
+          title: string
+          updated_at?: string
+          user_id: string
+          winning_bid_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          deadline?: string
+          id?: string
+          min_bid?: number | null
+          status?: Database["public"]["Enums"]["listing_status"]
+          ticket_request_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+          winning_bid_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_listings_ticket_request_id_fkey"
+            columns: ["ticket_request_id"]
+            isOneToOne: true
+            referencedRelation: "ticket_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
@@ -241,6 +342,57 @@ export type Database = {
         }
         Relationships: []
       }
+      sellers: {
+        Row: {
+          admin_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
+          business_name: string
+          contact_email: string
+          contact_phone: string | null
+          created_at: string
+          description: string | null
+          id: string
+          logo_url: string | null
+          status: Database["public"]["Enums"]["seller_status"]
+          updated_at: string
+          user_id: string
+          website: string | null
+        }
+        Insert: {
+          admin_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          business_name: string
+          contact_email: string
+          contact_phone?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          logo_url?: string | null
+          status?: Database["public"]["Enums"]["seller_status"]
+          updated_at?: string
+          user_id: string
+          website?: string | null
+        }
+        Update: {
+          admin_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          business_name?: string
+          contact_email?: string
+          contact_phone?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          logo_url?: string | null
+          status?: Database["public"]["Enums"]["seller_status"]
+          updated_at?: string
+          user_id?: string
+          website?: string | null
+        }
+        Relationships: []
+      }
       site_settings: {
         Row: {
           id: string
@@ -313,6 +465,7 @@ export type Database = {
           destination: string
           flexibility: string | null
           id: string
+          is_public: boolean
           issued_ticket_info: string | null
           origin: string
           passengers: number | null
@@ -350,6 +503,7 @@ export type Database = {
           destination: string
           flexibility?: string | null
           id?: string
+          is_public?: boolean
           issued_ticket_info?: string | null
           origin: string
           passengers?: number | null
@@ -387,6 +541,7 @@ export type Database = {
           destination?: string
           flexibility?: string | null
           id?: string
+          is_public?: boolean
           issued_ticket_info?: string | null
           origin?: string
           passengers?: number | null
@@ -508,6 +663,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_approved_seller: { Args: { _user_id: string }; Returns: boolean }
       is_staff_or_admin: { Args: { _user_id: string }; Returns: boolean }
       submit_order_payment_proof: {
         Args: { p_order_id: string; p_proof_upload_url: string }
@@ -542,6 +698,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "customer" | "staff"
+      bid_status: "pending" | "accepted" | "rejected" | "expired"
+      listing_status: "open" | "closed" | "awarded" | "expired"
       order_status:
         | "pending"
         | "paid"
@@ -557,6 +715,7 @@ export type Database = {
         | "failed"
         | "refunded"
         | "under_review"
+      seller_status: "pending" | "approved" | "rejected" | "suspended"
       ticket_request_status:
         | "submitted"
         | "quoted"
@@ -694,6 +853,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "customer", "staff"],
+      bid_status: ["pending", "accepted", "rejected", "expired"],
+      listing_status: ["open", "closed", "awarded", "expired"],
       order_status: [
         "pending",
         "paid",
@@ -711,6 +872,7 @@ export const Constants = {
         "refunded",
         "under_review",
       ],
+      seller_status: ["pending", "approved", "rejected", "suspended"],
       ticket_request_status: [
         "submitted",
         "quoted",

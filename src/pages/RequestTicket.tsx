@@ -10,11 +10,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-import { CalendarIcon, Plane, Users, Loader2, Check, HelpCircle } from "lucide-react";
+import { CalendarIcon, Plane, Users, Loader2, Check, HelpCircle, Gavel } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { SupportButtons } from "@/components/SupportButtons";
 import { notifyNewTicketRequest } from "@/lib/notifications";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function RequestTicketPage() {
   const [user, setUser] = useState<any>(null);
@@ -37,6 +38,8 @@ export default function RequestTicketPage() {
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [specialNotes, setSpecialNotes] = useState("");
+  const [postToMarketplace, setPostToMarketplace] = useState(false);
+  const [marketplaceDeadline, setMarketplaceDeadline] = useState<Date>();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -67,7 +70,7 @@ export default function RequestTicketPage() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.from("ticket_requests").insert({
+      const { data: ticketRequest, error } = await supabase.from("ticket_requests").insert({
         user_id: user.id,
         origin,
         destination,
@@ -82,9 +85,22 @@ export default function RequestTicketPage() {
         contact_email: contactEmail,
         contact_phone: contactPhone,
         special_notes: specialNotes,
-      });
+        is_public: postToMarketplace,
+      }).select().single();
 
       if (error) throw error;
+
+      // Create marketplace listing if opted in
+      if (postToMarketplace && ticketRequest) {
+        const deadline = marketplaceDeadline || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await supabase.from("marketplace_listings").insert({
+          ticket_request_id: ticketRequest.id,
+          user_id: user.id,
+          title: `${origin} to ${destination} - ${format(departureDate, "MMM d")}`,
+          deadline: deadline.toISOString(),
+          min_bid: budget ? parseFloat(budget) : null,
+        });
+      }
 
       // Send admin notification
       notifyNewTicketRequest({
@@ -373,6 +389,28 @@ export default function RequestTicketPage() {
                     onChange={(e) => setSpecialNotes(e.target.value)}
                     className="bg-card border-border min-h-[100px]"
                   />
+                </div>
+
+                {/* Marketplace Opt-in */}
+                <div className="md:col-span-2 p-4 rounded-xl bg-accent/5 border border-accent/20">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="marketplace"
+                      checked={postToMarketplace}
+                      onCheckedChange={(checked) => setPostToMarketplace(checked === true)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="marketplace" className="flex items-center gap-2 cursor-pointer">
+                        <Gavel className="w-4 h-4 text-accent" />
+                        <span className="font-medium">Post to Marketplace</span>
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Let verified travel agents compete to offer you the best price. 
+                        Your request will be visible publicly (without your contact info).
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
