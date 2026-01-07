@@ -501,12 +501,20 @@ export default function ListingDetailPage() {
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Link 
+                                to={`/seller/${bid.seller_id}`}
+                                className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition-colors"
+                              >
                                 <Store className="w-5 h-5 text-primary" />
-                              </div>
+                              </Link>
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <p className="font-medium">{bid.seller?.business_name}</p>
+                                  <Link 
+                                    to={`/seller/${bid.seller_id}`}
+                                    className="font-medium hover:text-primary transition-colors"
+                                  >
+                                    {bid.seller?.business_name}
+                                  </Link>
                                   {index === 0 && bid.status === "pending" && (
                                     <Badge variant="outline" className="text-xs">Lowest</Badge>
                                   )}
