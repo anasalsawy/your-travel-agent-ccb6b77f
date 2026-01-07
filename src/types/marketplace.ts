@@ -45,6 +45,7 @@ export interface MarketplaceListing {
     preferred_airline?: string;
     budget?: number;
     special_notes?: string;
+    contact_email?: string;
   };
   // Aggregated data
   bid_count?: number;
@@ -68,6 +69,7 @@ export interface Bid {
     business_name: string;
     logo_url?: string;
     description?: string;
+    contact_email?: string;
   };
 }
 

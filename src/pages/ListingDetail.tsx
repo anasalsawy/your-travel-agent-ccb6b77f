@@ -116,7 +116,8 @@ export default function ListingDetailPage() {
             flexibility,
             preferred_airline,
             budget,
-            special_notes
+            special_notes,
+            contact_email
           )
         `)
         .eq("id", id)
@@ -124,7 +125,7 @@ export default function ListingDetailPage() {
 
       if (listingError) throw listingError;
 
-      // Fetch bids with seller info
+      // Fetch bids with seller info including contact_email
       const { data: bidsData } = await supabase
         .from("bids")
         .select(`
@@ -133,7 +134,8 @@ export default function ListingDetailPage() {
             id,
             business_name,
             logo_url,
-            description
+            description,
+            contact_email
           )
         `)
         .eq("listing_id", id)
@@ -177,6 +179,27 @@ export default function ListingDetailPage() {
 
       if (error) throw error;
 
+      // Send notification to listing owner
+      try {
+        await supabase.functions.invoke("send-notification", {
+          body: {
+            type: "new_bid_received",
+            customerEmail: listing.ticket_request?.contact_email,
+            data: {
+              listingId: listing.id,
+              listingTitle: listing.title,
+              origin: listing.ticket_request?.origin,
+              destination: listing.ticket_request?.destination,
+              bidAmount: parseFloat(bidAmount),
+              sellerName: seller.business_name,
+              bidMessage: bidMessage || null,
+            },
+          },
+        });
+      } catch (notifError) {
+        console.error("Failed to send notification:", notifError);
+      }
+
       toast({
         title: "Bid Submitted!",
         description: "Your bid has been placed successfully.",
@@ -202,6 +225,8 @@ export default function ListingDetailPage() {
     if (!listing) return;
 
     try {
+      const acceptedBid = listing.bids.find(b => b.id === bidId);
+      
       // Update bid status
       await supabase
         .from("bids")
@@ -223,6 +248,52 @@ export default function ListingDetailPage() {
           winning_bid_id: bidId,
         })
         .eq("id", listing.id);
+
+      // Send notification to winning seller
+      if (acceptedBid?.seller) {
+        try {
+          await supabase.functions.invoke("send-notification", {
+            body: {
+              type: "bid_accepted",
+              customerEmail: acceptedBid.seller.contact_email,
+              data: {
+                listingId: listing.id,
+                listingTitle: listing.title,
+                origin: listing.ticket_request?.origin,
+                destination: listing.ticket_request?.destination,
+                bidAmount: acceptedBid.amount,
+                buyerEmail: listing.ticket_request?.contact_email,
+              },
+            },
+          });
+        } catch (notifError) {
+          console.error("Failed to send notification:", notifError);
+        }
+      }
+
+      // Send notifications to rejected sellers
+      const rejectedBids = listing.bids.filter(b => b.id !== bidId);
+      for (const bid of rejectedBids) {
+        if (bid.seller) {
+          try {
+            await supabase.functions.invoke("send-notification", {
+              body: {
+                type: "bid_rejected",
+                customerEmail: bid.seller.contact_email,
+                data: {
+                  listingId: listing.id,
+                  listingTitle: listing.title,
+                  origin: listing.ticket_request?.origin,
+                  destination: listing.ticket_request?.destination,
+                  bidAmount: bid.amount,
+                },
+              },
+            });
+          } catch (notifError) {
+            console.error("Failed to send rejection notification:", notifError);
+          }
+        }
+      }
 
       toast({
         title: "Bid Accepted!",
