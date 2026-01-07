@@ -3,12 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings, Users } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2 } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
 import { AdminSettings } from "@/components/admin/AdminSettings";
 import { AdminUsers } from "@/components/admin/AdminUsers";
+import { AdminSellers } from "@/components/admin/AdminSellers";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -99,6 +100,10 @@ export default function AdminPage() {
               </TabsTrigger>
               {isAdmin && (
                 <>
+                  <TabsTrigger value="sellers" className="gap-2">
+                    <Building2 className="w-4 h-4" />
+                    Sellers
+                  </TabsTrigger>
                   <TabsTrigger value="users" className="gap-2">
                     <Users className="w-4 h-4" />
                     Users
@@ -125,6 +130,10 @@ export default function AdminPage() {
 
             {isAdmin && (
               <>
+                <TabsContent value="sellers">
+                  <AdminSellers />
+                </TabsContent>
+
                 <TabsContent value="users">
                   <AdminUsers />
                 </TabsContent>
