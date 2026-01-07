@@ -8,15 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { 
   Loader2, 
   Store, 
-  Mail, 
   Globe, 
   ArrowLeft,
   Trophy,
   Gavel,
   CheckCircle,
   Clock,
-  TrendingDown
+  TrendingDown,
+  Star
 } from "lucide-react";
+import { SellerReviews } from "@/components/sellers/SellerReviews";
 import { format, parseISO } from "date-fns";
 
 interface SellerProfile {
@@ -265,6 +266,11 @@ export default function SellerProfilePage() {
               </Card>
             </div>
           )}
+
+          {/* Reviews Section */}
+          <div className="mb-8">
+            <SellerReviews sellerId={id!} showWriteReview={true} />
+          </div>
 
           {/* Recent Activity */}
           <Card className="glass-card">
