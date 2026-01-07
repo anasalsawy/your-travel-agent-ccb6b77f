@@ -14,6 +14,10 @@ import FAQ from "./pages/FAQ";
 import Admin from "./pages/Admin";
 import AdminDiagnostics from "./pages/AdminDiagnostics";
 import NotFound from "./pages/NotFound";
+import Marketplace from "./pages/Marketplace";
+import SellerRegister from "./pages/SellerRegister";
+import SellerDashboard from "./pages/SellerDashboard";
+import ListingDetail from "./pages/ListingDetail";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +38,10 @@ const App = () => (
           <Route path="/faq" element={<FAQ />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/diagnostics" element={<AdminDiagnostics />} />
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/marketplace/:id" element={<ListingDetail />} />
+          <Route path="/seller/register" element={<SellerRegister />} />
+          <Route path="/seller/dashboard" element={<SellerDashboard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
