@@ -48,6 +48,7 @@ export function Header() {
 
   const navLinks = [
     { href: "/vouchers", label: "Vouchers" },
+    { href: "/marketplace", label: "Marketplace" },
     { href: "/request-ticket", label: "Request Ticket" },
     { href: "/faq", label: "FAQ" },
   ];
