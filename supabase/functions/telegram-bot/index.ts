@@ -64,12 +64,14 @@ async function handleStart(chatId: number) {
 I can help you:
 • Browse open travel requests in our marketplace
 • Place bids on listings (for verified sellers)
-• Check listing details
+• Check your submitted bids
 
 <b>Available Commands:</b>
 /listings - View open marketplace listings
 /listing_[id] - View details of a specific listing
 /bid_[id]_[amount] - Place a bid (sellers only)
+/mybids - View your submitted bids (sellers only)
+/link - Link your Telegram to your seller account
 /vouchers - Browse available vouchers
 /help - Show this help message
 
@@ -291,6 +293,147 @@ async function handleHelp(chatId: number) {
   await handleStart(chatId);
 }
 
+// Handle /link command - link Telegram account to seller
+async function handleLink(chatId: number) {
+  console.log(`Link request from chat ${chatId}`);
+
+  // Check if already linked
+  const { data: existingSeller } = await supabase
+    .from("sellers")
+    .select("id, business_name, status")
+    .eq("telegram_chat_id", chatId)
+    .single();
+
+  if (existingSeller) {
+    await sendMessage(
+      chatId,
+      `✅ <b>Already Linked!</b>\n\n` +
+        `Your Telegram is linked to: <b>${existingSeller.business_name}</b>\n` +
+        `Status: ${existingSeller.status}\n\n` +
+        `Use /mybids to see your bids.`
+    );
+    return;
+  }
+
+  // Generate a link code (using chat_id as temporary code)
+  await sendMessage(
+    chatId,
+    `🔗 <b>Link Your Seller Account</b>\n\n` +
+      `To link your Telegram account:\n\n` +
+      `1. Log in to your seller account on the website\n` +
+      `2. Go to your Seller Dashboard\n` +
+      `3. Enter this code: <code>${chatId}</code>\n\n` +
+      `Or an admin can link your account using your Chat ID: <code>${chatId}</code>`
+  );
+}
+
+// Handle /mybids command - show seller's bids
+async function handleMyBids(chatId: number) {
+  console.log(`Fetching bids for chat ${chatId}`);
+
+  // Find seller by telegram_chat_id
+  const { data: seller, error: sellerError } = await supabase
+    .from("sellers")
+    .select("id, business_name, status")
+    .eq("telegram_chat_id", chatId)
+    .single();
+
+  if (sellerError || !seller) {
+    await sendMessage(
+      chatId,
+      `❌ <b>Account Not Linked</b>\n\n` +
+        `Your Telegram is not linked to a seller account.\n\n` +
+        `Use /link to connect your account.`
+    );
+    return;
+  }
+
+  if (seller.status !== "approved") {
+    await sendMessage(
+      chatId,
+      `⏳ <b>Account Pending</b>\n\n` +
+        `Your seller account is not yet approved.\n` +
+        `Status: ${seller.status}\n\n` +
+        `Please wait for admin approval.`
+    );
+    return;
+  }
+
+  // Get seller's bids
+  const { data: bids, error: bidsError } = await supabase
+    .from("bids")
+    .select(`
+      id,
+      amount,
+      status,
+      created_at,
+      listing_id
+    `)
+    .eq("seller_id", seller.id)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (bidsError) {
+    console.error("Error fetching bids:", bidsError);
+    await sendMessage(chatId, "❌ Error fetching your bids. Please try again.");
+    return;
+  }
+
+  if (!bids || bids.length === 0) {
+    await sendMessage(
+      chatId,
+      `📭 <b>No Bids Yet</b>\n\n` +
+        `You haven't placed any bids yet.\n\n` +
+        `Use /listings to see open requests and place bids!`
+    );
+    return;
+  }
+
+  // Get listing details for these bids
+  const listingIds = bids.map((b) => b.listing_id);
+  const { data: listings } = await supabase
+    .from("marketplace_listings")
+    .select("id, title, status, ticket_request_id")
+    .in("id", listingIds);
+
+  interface Listing {
+    id: string;
+    title: string;
+    status: string;
+    ticket_request_id: string;
+  }
+
+  const listingMap: Record<string, Listing> = {};
+  (listings as Listing[] | null)?.forEach((l) => {
+    listingMap[l.id] = l;
+  });
+
+  let message = `📋 <b>Your Bids</b> (${seller.business_name})\n\n`;
+
+  const statusEmoji: Record<string, string> = {
+    pending: "⏳",
+    accepted: "✅",
+    rejected: "❌",
+    expired: "⌛",
+  };
+
+  bids.forEach((bid, index) => {
+    const listing = listingMap[bid.listing_id];
+    const emoji = statusEmoji[bid.status] || "❓";
+
+    message += `<b>${index + 1}. ${listing?.title || "Unknown Listing"}</b>\n`;
+    message += `💰 ${formatCurrency(bid.amount)} ${emoji} ${bid.status}\n`;
+    message += `📅 ${formatDate(bid.created_at)}\n`;
+    if (listing) {
+      message += `🔗 /listing_${listing.id.slice(0, 8)}\n`;
+    }
+    message += `\n`;
+  });
+
+  message += `Showing last ${bids.length} bids.`;
+  await sendMessage(chatId, message);
+}
+
 // Main webhook handler
 serve(async (req) => {
   // Handle CORS preflight
@@ -357,13 +500,17 @@ serve(async (req) => {
         }
       } else if (text.startsWith("/vouchers") || text === "/v") {
         await handleVouchers(chatId);
+      } else if (text.startsWith("/mybids") || text === "/mb") {
+        await handleMyBids(chatId);
+      } else if (text.startsWith("/link")) {
+        await handleLink(chatId);
       } else if (text.startsWith("/help") || text === "/h") {
         await handleHelp(chatId);
       } else {
         // Unknown command or regular message
         await sendMessage(
           chatId,
-          "👋 I didn't understand that command.\n\nTry:\n/listings - View marketplace\n/vouchers - Browse vouchers\n/help - All commands"
+          "👋 I didn't understand that command.\n\nTry:\n/listings - View marketplace\n/mybids - Your bids\n/vouchers - Browse vouchers\n/help - All commands"
         );
       }
     }
