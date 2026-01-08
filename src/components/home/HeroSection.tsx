@@ -26,8 +26,8 @@ export function HeroSection() {
 
           {/* Subheading */}
           <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            Save up to 70% on airline vouchers with verified balances. 
-            Request custom flight tickets at unbeatable prices.
+            Reverse auctions for travel — post your trip, watch sellers bid, pick the best deal. 
+            Plus, shop verified vouchers and book any ticket you want.
           </p>
 
           {/* CTA Buttons */}
