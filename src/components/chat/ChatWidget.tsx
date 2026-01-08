@@ -294,13 +294,7 @@ export function ChatWidget() {
             </div>
             <div>
               <h3 className="font-semibold text-foreground">Maya</h3>
-              <p className="text-xs text-muted-foreground">
-                {thinkingPhase ? (
-                  thinkingPhase === "thinking" ? "Thinking..." :
-                  thinkingPhase === "researching" ? "Researching..." :
-                  "Composing..."
-                ) : "Travel Consultant • Online"}
-              </p>
+              <p className="text-xs text-muted-foreground">Travel Consultant • Online</p>
             </div>
           </div>
           <Button
