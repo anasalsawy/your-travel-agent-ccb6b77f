@@ -17,10 +17,10 @@ serve(async (req) => {
       throw new Error('SEATS_AERO_API_KEY is not configured');
     }
 
-    // Search: Houston (IAH) to London (LHR) - well-covered route
+    // Search: London (LHR) to Cairo (CAI)
     const searchParams = new URLSearchParams({
-      origin_airport: 'IAH',
-      destination_airport: 'LHR',
+      origin_airport: 'LHR',
+      destination_airport: 'CAI',
       start_date: '2026-01-15',
       end_date: '2026-01-20',
       take: '50',
