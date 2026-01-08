@@ -680,9 +680,56 @@ export default function AdminEscrow() {
 
               {/* Notification History */}
               <div className="p-3 bg-muted rounded-md">
-                <div className="flex items-center gap-2 mb-2">
-                  <History className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-sm font-medium">Notification History</p>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm font-medium">Notification History</p>
+                  </div>
+                  {notificationHistory.filter(n => n.status === "failed").length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      disabled={resendingId === "bulk"}
+                      onClick={async () => {
+                        const failedNotifications = notificationHistory.filter(n => n.status === "failed" && n.payload);
+                        if (failedNotifications.length === 0) return;
+                        
+                        setResendingId("bulk");
+                        let successCount = 0;
+                        let failCount = 0;
+                        
+                        for (const log of failedNotifications) {
+                          try {
+                            const result = await sendNotification({
+                              type: log.event_type as any,
+                              data: log.payload,
+                              customerEmail: log.recipient || undefined,
+                            });
+                            if (result.success) {
+                              successCount++;
+                            } else {
+                              failCount++;
+                            }
+                          } catch {
+                            failCount++;
+                          }
+                        }
+                        
+                        toast({
+                          title: "Bulk Resend Complete",
+                          description: `${successCount} sent, ${failCount} failed`,
+                          variant: failCount > 0 ? "destructive" : "default",
+                        });
+                        
+                        fetchNotificationHistory(selectedListing!.id);
+                        setResendingId(null);
+                      }}
+                    >
+                      <RotateCcw className={`h-3 w-3 mr-1 ${resendingId === "bulk" ? "animate-spin" : ""}`} />
+                      Resend All Failed ({notificationHistory.filter(n => n.status === "failed").length})
+                    </Button>
+                  )}
                 </div>
                 {loadingHistory ? (
                   <p className="text-sm text-muted-foreground">Loading...</p>
