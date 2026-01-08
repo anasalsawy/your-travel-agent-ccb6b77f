@@ -327,6 +327,86 @@ async function handleLink(chatId: number) {
   );
 }
 
+// Handle /admin_link command - admin links a seller's Telegram account
+async function handleAdminLink(chatId: number, sellerEmail: string, targetChatId: number) {
+  console.log(`Admin link request: email=${sellerEmail}, chatId=${targetChatId}`);
+
+  // Check if requester is an admin (check if their chat_id is linked to an admin user)
+  // For now, we'll use a simple approach - check site_settings for admin telegram IDs
+  const { data: adminSetting } = await supabase
+    .from("site_settings")
+    .select("value")
+    .eq("key", "admin_telegram_ids")
+    .single();
+
+  const adminIds = adminSetting?.value?.split(",").map((id: string) => parseInt(id.trim())) || [];
+  
+  if (!adminIds.includes(chatId)) {
+    await sendMessage(
+      chatId,
+      `❌ <b>Access Denied</b>\n\n` +
+        `You are not authorized to use admin commands.\n` +
+        `Your Chat ID: <code>${chatId}</code>`
+    );
+    return;
+  }
+
+  // Find seller by email
+  const { data: seller, error: sellerError } = await supabase
+    .from("sellers")
+    .select("id, business_name, contact_email, telegram_chat_id")
+    .eq("contact_email", sellerEmail)
+    .single();
+
+  if (sellerError || !seller) {
+    await sendMessage(
+      chatId,
+      `❌ <b>Seller Not Found</b>\n\n` +
+        `No seller found with email: ${sellerEmail}`
+    );
+    return;
+  }
+
+  if (seller.telegram_chat_id) {
+    await sendMessage(
+      chatId,
+      `⚠️ <b>Already Linked</b>\n\n` +
+        `${seller.business_name} is already linked to Chat ID: <code>${seller.telegram_chat_id}</code>\n\n` +
+        `To re-link, first unlink using /admin_unlink_${sellerEmail}`
+    );
+    return;
+  }
+
+  // Update seller with telegram_chat_id
+  const { error: updateError } = await supabase
+    .from("sellers")
+    .update({ telegram_chat_id: targetChatId })
+    .eq("id", seller.id);
+
+  if (updateError) {
+    console.error("Error linking seller:", updateError);
+    await sendMessage(chatId, `❌ Error linking seller: ${updateError.message}`);
+    return;
+  }
+
+  // Notify admin
+  await sendMessage(
+    chatId,
+    `✅ <b>Seller Linked Successfully</b>\n\n` +
+      `<b>Business:</b> ${seller.business_name}\n` +
+      `<b>Email:</b> ${seller.contact_email}\n` +
+      `<b>Telegram Chat ID:</b> <code>${targetChatId}</code>`
+  );
+
+  // Notify the seller
+  await sendMessage(
+    targetChatId,
+    `🎉 <b>Account Linked!</b>\n\n` +
+      `Your Telegram has been linked to your seller account: <b>${seller.business_name}</b>\n\n` +
+      `You can now use /mybids to view your bids!`
+  );
+}
+
 // Handle /mybids command - show seller's bids
 async function handleMyBids(chatId: number) {
   console.log(`Fetching bids for chat ${chatId}`);
@@ -504,6 +584,27 @@ serve(async (req) => {
         await handleMyBids(chatId);
       } else if (text.startsWith("/link")) {
         await handleLink(chatId);
+      } else if (text.startsWith("/admin_link_")) {
+        // Format: /admin_link_email@example.com_123456789
+        const params = text.replace("/admin_link_", "").trim();
+        const lastUnderscoreIndex = params.lastIndexOf("_");
+        if (lastUnderscoreIndex > 0) {
+          const email = params.substring(0, lastUnderscoreIndex);
+          const targetChatId = parseInt(params.substring(lastUnderscoreIndex + 1));
+          if (!isNaN(targetChatId)) {
+            await handleAdminLink(chatId, email, targetChatId);
+          } else {
+            await sendMessage(
+              chatId,
+              "❌ Invalid format. Use: /admin_link_[email]_[chat_id]\nExample: /admin_link_seller@example.com_123456789"
+            );
+          }
+        } else {
+          await sendMessage(
+            chatId,
+            "❌ Invalid format. Use: /admin_link_[email]_[chat_id]\nExample: /admin_link_seller@example.com_123456789"
+          );
+        }
       } else if (text.startsWith("/help") || text === "/h") {
         await handleHelp(chatId);
       } else {
