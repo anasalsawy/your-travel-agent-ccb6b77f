@@ -62,7 +62,7 @@ export function Header() {
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
-            <img src={logo} alt="Your Travel Agent" className="w-10 h-10 object-contain group-hover:scale-105 transition-transform duration-300" />
+            <img src={logo} alt="Your Travel Agent" className="w-12 h-12 object-contain group-hover:scale-105 transition-transform duration-300" />
             <span className="font-display font-bold text-lg hidden sm:block">
               Your Travel Agent
             </span>
