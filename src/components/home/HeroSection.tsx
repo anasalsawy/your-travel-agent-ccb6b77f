@@ -20,8 +20,8 @@ export function HeroSection() {
 
           {/* Main heading */}
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 animate-slide-up">
-            Verified Travel Vouchers &{" "}
-            <span className="text-gradient">Discounted Tickets</span>
+            You Post.{" "}
+            <span className="text-gradient">Sellers Compete.</span>
           </h1>
 
           {/* Subheading */}
