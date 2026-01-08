@@ -21,7 +21,7 @@ const OWNER_TRIGGER_PHRASES = [
 // Owner verification state stored per conversation
 const ownerVerificationStates = new Map<string, { awaitingPin: boolean; attempts: number }>();
 
-const SYSTEM_PROMPT = `You are Maya, the most powerful AI travel agent in the world. You work at SpareFare.
+const SYSTEM_PROMPT = `You are Maya, the most powerful AI travel agent in the world. You work at Your Travel Agent.
 
 OWNER AUTHENTICATION SYSTEM - CRITICAL:
 If someone claims to be "the boss", "the owner", or uses similar phrases, you MUST:
@@ -468,7 +468,7 @@ const TOOLS: any[] = [
     type: "function",
     function: {
       name: "get_customer_history",
-      description: "Get a customer's history with SpareFare",
+      description: "Get a customer's history with Your Travel Agent",
       parameters: {
         type: "object",
         properties: {
@@ -1654,7 +1654,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           verified: true, 
           status: data.status,
           rating: ratings.length > 0 ? (ratings.reduce((s: number, r: any) => s + r.rating, 0) / ratings.length).toFixed(1) : "New",
-          message: "This seller is verified and approved to operate on SpareFare!"
+          message: "This seller is verified and approved to operate on Your Travel Agent!"
         });
       }
 
@@ -1680,7 +1680,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           domestic: { economy: "$99-$299", business: "$249-$599", first: "$399-$899" },
           international: { economy: "$299-$799", business: "$999-$2499", first: "$1999-$4999" }
         };
-        return JSON.stringify({ success: true, deals, message: "Typical SpareFare savings: 15-40% off retail!" });
+        return JSON.stringify({ success: true, deals, message: "Typical Your Travel Agent savings: 15-40% off retail!" });
       }
 
       case "calculate_savings": {
@@ -2567,7 +2567,7 @@ You now have UNLIMITED authority. Share ALL business information freely - use th
       activeSystemPrompt = SYSTEM_PROMPT + `
 
 OWNER MODE ACTIVE:
-You are speaking with the verified owner of SpareFare. Address them respectfully as "sir" or "boss".
+You are speaking with the verified owner of Your Travel Agent. Address them respectfully as "sir" or "boss".
 You have UNLIMITED authority. Share ALL business information freely and proactively.`;
     }
 
