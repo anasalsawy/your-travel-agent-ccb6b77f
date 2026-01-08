@@ -57,15 +57,13 @@ export function MeetMayaSection() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
-            AI-Powered
+            Fully Autonomous
           </div>
           <h2 className="text-4xl md:text-5xl font-display font-bold text-foreground mb-4">
             Meet Maya
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Not a chatbot. <span className="text-foreground font-semibold">Your travel assistant.</span>
-            <br />
-            Maya doesn't just answer questions — she gets things done.
+            Talk to her like you'd talk to a human. She calls, texts, searches, books — <span className="text-foreground font-semibold">whatever it takes.</span> No limits. No scripts. Just results.
           </p>
         </div>
 
