@@ -23,6 +23,9 @@ export type Database = {
           id: string
           listing_id: string
           message: string | null
+          payment_method: string | null
+          payment_proof_url: string | null
+          payment_verified_at: string | null
           seller_id: string
           status: Database["public"]["Enums"]["bid_status"]
           updated_at: string
@@ -35,6 +38,9 @@ export type Database = {
           id?: string
           listing_id: string
           message?: string | null
+          payment_method?: string | null
+          payment_proof_url?: string | null
+          payment_verified_at?: string | null
           seller_id: string
           status?: Database["public"]["Enums"]["bid_status"]
           updated_at?: string
@@ -47,6 +53,9 @@ export type Database = {
           id?: string
           listing_id?: string
           message?: string | null
+          payment_method?: string | null
+          payment_proof_url?: string | null
+          payment_verified_at?: string | null
           seller_id?: string
           status?: Database["public"]["Enums"]["bid_status"]
           updated_at?: string
@@ -70,37 +79,58 @@ export type Database = {
       }
       marketplace_listings: {
         Row: {
+          buyer_notified_at: string | null
+          completed_at: string | null
           created_at: string
           deadline: string
+          escrow_notes: string | null
+          escrow_status: string | null
           id: string
           min_bid: number | null
+          seller_notified_at: string | null
+          sparefare_listing_url: string | null
           status: Database["public"]["Enums"]["listing_status"]
           ticket_request_id: string
           title: string
+          travel_date: string | null
           updated_at: string
           user_id: string
           winning_bid_id: string | null
         }
         Insert: {
+          buyer_notified_at?: string | null
+          completed_at?: string | null
           created_at?: string
           deadline: string
+          escrow_notes?: string | null
+          escrow_status?: string | null
           id?: string
           min_bid?: number | null
+          seller_notified_at?: string | null
+          sparefare_listing_url?: string | null
           status?: Database["public"]["Enums"]["listing_status"]
           ticket_request_id: string
           title: string
+          travel_date?: string | null
           updated_at?: string
           user_id: string
           winning_bid_id?: string | null
         }
         Update: {
+          buyer_notified_at?: string | null
+          completed_at?: string | null
           created_at?: string
           deadline?: string
+          escrow_notes?: string | null
+          escrow_status?: string | null
           id?: string
           min_bid?: number | null
+          seller_notified_at?: string | null
+          sparefare_listing_url?: string | null
           status?: Database["public"]["Enums"]["listing_status"]
           ticket_request_id?: string
           title?: string
+          travel_date?: string | null
           updated_at?: string
           user_id?: string
           winning_bid_id?: string | null
