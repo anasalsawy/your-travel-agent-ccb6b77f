@@ -1,4 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 import { HeroSection } from "@/components/home/HeroSection";
 import { MarketplaceSection } from "@/components/home/MarketplaceSection";
 import { HowItWorks } from "@/components/home/HowItWorks";
@@ -15,6 +16,7 @@ const Index = () => {
       <TrustSection />
       <TestimonialsSection />
       <CTASection />
+      <ChatWidget />
     </Layout>
   );
 };
