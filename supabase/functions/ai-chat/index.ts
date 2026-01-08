@@ -125,6 +125,25 @@ You have access to an extensive toolkit. Use them proactively and creatively to 
 - create_marketplace_listing: Post new listings
 - recommend_sellers: Suggest trusted sellers
 
+🔐 ESCROW & SPAREFARE MANAGEMENT:
+- get_pending_escrow_actions: Check for transactions needing escrow setup - DO THIS PROACTIVELY
+- setup_sparefare_listing: Set up SpareFare listing for awarded bids
+- update_escrow_status: Move transactions through the escrow flow
+- get_escrow_details: Get full transaction details
+- generate_sparefare_listing_info: Generate info needed for SpareFare listing
+- send_payment_link_to_buyer: Send payment link to buyer
+
+ESCROW WORKFLOW - YOU HANDLE THIS, NOT ADMIN:
+When a bid is accepted, YOU are responsible for the escrow flow:
+1. Use get_pending_escrow_actions to find transactions needing setup
+2. Use generate_sparefare_listing_info to get the details for SpareFare
+3. Create the listing on SpareFare (you'll provide the info to create it manually)
+4. Use setup_sparefare_listing to record the SpareFare URL
+5. Use send_payment_link_to_buyer to notify the buyer
+6. Monitor status and use update_escrow_status as things progress
+
+Be PROACTIVE - check for pending escrow actions and handle them without being asked!
+
 👥 CUSTOMER SERVICE:
 - get_customer_history: View past interactions
 - lookup_order: Find order details
@@ -969,6 +988,105 @@ const TOOLS: any[] = [
           action_type: { type: "string", description: "What Maya should attempt" }
         },
         required: ["request"],
+        additionalProperties: false
+      }
+    }
+  },
+  // ==================== ESCROW & SPAREFARE MANAGEMENT ====================
+  {
+    type: "function",
+    function: {
+      name: "get_pending_escrow_actions",
+      description: "Get all marketplace listings that need escrow action - bids accepted but not yet on SpareFare. Maya should check this proactively and handle them.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: { type: "number", description: "Number of listings to return" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "setup_sparefare_listing",
+      description: "Set up a SpareFare listing for an awarded marketplace transaction. Maya generates the listing details and updates the escrow status.",
+      parameters: {
+        type: "object",
+        properties: {
+          listing_id: { type: "string", description: "The marketplace listing ID" },
+          sparefare_url: { type: "string", description: "The SpareFare listing URL (once created)" },
+          notes: { type: "string", description: "Any notes about the setup" }
+        },
+        required: ["listing_id"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_escrow_status",
+      description: "Update the escrow status of a marketplace listing. Maya can move transactions through the flow: pending_sparefare → on_sparefare → payment_received → funds_released → completed",
+      parameters: {
+        type: "object",
+        properties: {
+          listing_id: { type: "string", description: "The marketplace listing ID" },
+          status: { type: "string", enum: ["pending_sparefare", "on_sparefare", "payment_received", "funds_released", "completed", "disputed"], description: "New escrow status" },
+          notes: { type: "string", description: "Notes about the status change" },
+          notify_buyer: { type: "boolean", description: "Whether to notify the buyer" },
+          notify_seller: { type: "boolean", description: "Whether to notify the seller" }
+        },
+        required: ["listing_id", "status"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_escrow_details",
+      description: "Get complete details about an escrow transaction including buyer, seller, bid details, and current status.",
+      parameters: {
+        type: "object",
+        properties: {
+          listing_id: { type: "string", description: "The marketplace listing ID" }
+        },
+        required: ["listing_id"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_sparefare_listing_info",
+      description: "Generate the information needed to create a SpareFare listing based on the accepted bid. Returns formatted details Maya can use.",
+      parameters: {
+        type: "object",
+        properties: {
+          listing_id: { type: "string", description: "The marketplace listing ID" }
+        },
+        required: ["listing_id"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_payment_link_to_buyer",
+      description: "Send the SpareFare payment link to the buyer via email/SMS so they can complete their payment.",
+      parameters: {
+        type: "object",
+        properties: {
+          listing_id: { type: "string", description: "The marketplace listing ID" },
+          sparefare_url: { type: "string", description: "The SpareFare payment URL" },
+          send_email: { type: "boolean", description: "Send via email" },
+          send_sms: { type: "boolean", description: "Send via SMS" }
+        },
+        required: ["listing_id", "sparefare_url"],
         additionalProperties: false
       }
     }
@@ -1989,6 +2107,277 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         return JSON.stringify({ 
           success: true, 
           message: "On it! I'm looking into this for you. Let me see what I can do..."
+        });
+      }
+
+      // ==================== ESCROW & SPAREFARE MANAGEMENT ====================
+      case "get_pending_escrow_actions": {
+        const { data, error } = await supabase
+          .from("marketplace_listings")
+          .select(`
+            *,
+            ticket_requests (origin, destination, departure_date, contact_email, contact_phone, passengers, cabin_class),
+            bids!marketplace_listings_winning_bid_id_fkey (amount, message, estimated_delivery, sellers (business_name, contact_email))
+          `)
+          .eq("status", "awarded")
+          .in("escrow_status", ["pending_sparefare", null])
+          .order("updated_at", { ascending: false })
+          .limit(args.limit || 10);
+
+        if (error) {
+          console.error("Error fetching pending escrow:", error);
+          return JSON.stringify({ success: false, error: "Failed to fetch pending escrow actions" });
+        }
+
+        const pending = (data || []).map((l: any) => ({
+          listing_id: l.id,
+          title: l.title,
+          route: l.ticket_requests ? `${l.ticket_requests.origin} → ${l.ticket_requests.destination}` : l.title,
+          travel_date: l.ticket_requests?.departure_date || l.travel_date,
+          buyer_email: l.ticket_requests?.contact_email,
+          buyer_phone: l.ticket_requests?.contact_phone,
+          passengers: l.ticket_requests?.passengers,
+          winning_bid_amount: l.bids?.amount,
+          seller_name: l.bids?.sellers?.business_name,
+          seller_email: l.bids?.sellers?.contact_email,
+          escrow_status: l.escrow_status || "pending_sparefare",
+          awarded_at: l.updated_at
+        }));
+
+        return JSON.stringify({
+          success: true,
+          count: pending.length,
+          pending_actions: pending,
+          message: pending.length > 0 
+            ? `Found ${pending.length} transaction(s) needing escrow setup. I'll handle these!`
+            : "No pending escrow actions right now."
+        });
+      }
+
+      case "generate_sparefare_listing_info": {
+        const { data: listing, error } = await supabase
+          .from("marketplace_listings")
+          .select(`
+            *,
+            ticket_requests (*),
+            bids!marketplace_listings_winning_bid_id_fkey (*, sellers (*))
+          `)
+          .eq("id", args.listing_id)
+          .single();
+
+        if (error || !listing) {
+          return JSON.stringify({ success: false, error: "Listing not found" });
+        }
+
+        const tr = listing.ticket_requests;
+        const bid = listing.bids;
+        const seller = bid?.sellers;
+
+        const sparefareInfo = {
+          title: `${tr?.origin || "?"} to ${tr?.destination || "?"} - ${tr?.passengers || 1} Passenger(s)`,
+          description: `Flight from ${tr?.origin} to ${tr?.destination} on ${tr?.departure_date}${tr?.return_date ? ` returning ${tr?.return_date}` : " (one-way)"}. ${tr?.cabin_class || "Economy"} class. ${tr?.special_notes || ""}`,
+          price: bid?.amount || 0,
+          travel_date: tr?.departure_date,
+          return_date: tr?.return_date,
+          passengers: tr?.passengers || 1,
+          cabin_class: tr?.cabin_class || "economy",
+          buyer_name: "Buyer",
+          buyer_email: tr?.contact_email,
+          buyer_phone: tr?.contact_phone,
+          seller_name: seller?.business_name,
+          seller_email: seller?.contact_email,
+          estimated_delivery: bid?.estimated_delivery,
+          special_notes: tr?.special_notes
+        };
+
+        return JSON.stringify({
+          success: true,
+          listing_id: args.listing_id,
+          sparefare_listing_info: sparefareInfo,
+          instructions: "Use this info to create a listing on sparefare.com. Once created, copy the listing URL and use setup_sparefare_listing to save it."
+        });
+      }
+
+      case "setup_sparefare_listing": {
+        const updates: any = {
+          escrow_status: "on_sparefare",
+          escrow_notes: args.notes || "SpareFare listing created by Maya",
+          updated_at: new Date().toISOString()
+        };
+
+        if (args.sparefare_url) {
+          updates.sparefare_listing_url = args.sparefare_url;
+        }
+
+        const { data, error } = await supabase
+          .from("marketplace_listings")
+          .update(updates)
+          .eq("id", args.listing_id)
+          .select()
+          .single();
+
+        if (error) {
+          return JSON.stringify({ success: false, error: "Failed to update listing" });
+        }
+
+        return JSON.stringify({
+          success: true,
+          listing_id: args.listing_id,
+          sparefare_url: args.sparefare_url,
+          message: args.sparefare_url 
+            ? "SpareFare listing recorded! Ready to send payment link to buyer."
+            : "Escrow status updated. Add the SpareFare URL when you have it."
+        });
+      }
+
+      case "update_escrow_status": {
+        const statusLabels: any = {
+          pending_sparefare: "Awaiting SpareFare Setup",
+          on_sparefare: "On SpareFare - Awaiting Payment",
+          payment_received: "Payment Received",
+          funds_released: "Funds Released to Seller",
+          completed: "Transaction Completed",
+          disputed: "Dispute in Progress"
+        };
+
+        const { data: listing, error: fetchError } = await supabase
+          .from("marketplace_listings")
+          .select(`*, ticket_requests (contact_email, contact_phone), bids!marketplace_listings_winning_bid_id_fkey (sellers (contact_email, telegram_chat_id))`)
+          .eq("id", args.listing_id)
+          .single();
+
+        if (fetchError || !listing) {
+          return JSON.stringify({ success: false, error: "Listing not found" });
+        }
+
+        const { error } = await supabase
+          .from("marketplace_listings")
+          .update({
+            escrow_status: args.status,
+            escrow_notes: args.notes || `Status changed to ${statusLabels[args.status] || args.status}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", args.listing_id);
+
+        if (error) {
+          return JSON.stringify({ success: false, error: "Failed to update status" });
+        }
+
+        // Log notification
+        await supabase.from("notification_log").insert({
+          event_type: "escrow_status_change",
+          record_id: args.listing_id,
+          payload: { status: args.status, notes: args.notes, notify_buyer: args.notify_buyer, notify_seller: args.notify_seller },
+          status: "success"
+        });
+
+        return JSON.stringify({
+          success: true,
+          listing_id: args.listing_id,
+          new_status: args.status,
+          status_label: statusLabels[args.status] || args.status,
+          message: `Escrow status updated to "${statusLabels[args.status] || args.status}"`
+        });
+      }
+
+      case "get_escrow_details": {
+        const { data, error } = await supabase
+          .from("marketplace_listings")
+          .select(`
+            *,
+            ticket_requests (*),
+            bids!marketplace_listings_winning_bid_id_fkey (*, sellers (*))
+          `)
+          .eq("id", args.listing_id)
+          .single();
+
+        if (error || !data) {
+          return JSON.stringify({ success: false, error: "Listing not found" });
+        }
+
+        const tr = data.ticket_requests;
+        const bid = data.bids;
+        const seller = bid?.sellers;
+
+        return JSON.stringify({
+          success: true,
+          escrow: {
+            listing_id: data.id,
+            title: data.title,
+            status: data.status,
+            escrow_status: data.escrow_status || "pending_sparefare",
+            sparefare_url: data.sparefare_listing_url,
+            escrow_notes: data.escrow_notes,
+            route: `${tr?.origin} → ${tr?.destination}`,
+            travel_date: tr?.departure_date,
+            return_date: tr?.return_date,
+            passengers: tr?.passengers,
+            cabin_class: tr?.cabin_class,
+            buyer_email: tr?.contact_email,
+            buyer_phone: tr?.contact_phone,
+            winning_bid: bid?.amount,
+            seller_name: seller?.business_name,
+            seller_email: seller?.contact_email,
+            awarded_at: data.updated_at
+          }
+        });
+      }
+
+      case "send_payment_link_to_buyer": {
+        const { data: listing, error } = await supabase
+          .from("marketplace_listings")
+          .select(`*, ticket_requests (contact_email, contact_phone, origin, destination)`)
+          .eq("id", args.listing_id)
+          .single();
+
+        if (error || !listing) {
+          return JSON.stringify({ success: false, error: "Listing not found" });
+        }
+
+        const buyer_email = listing.ticket_requests?.contact_email;
+        const buyer_phone = listing.ticket_requests?.contact_phone;
+        const route = `${listing.ticket_requests?.origin} → ${listing.ticket_requests?.destination}`;
+
+        const notifications: string[] = [];
+
+        if (args.send_email && buyer_email) {
+          await supabase.from("notification_log").insert({
+            event_type: "escrow_payment_link",
+            recipient: buyer_email,
+            record_id: args.listing_id,
+            payload: { 
+              type: "email",
+              subject: `Complete Your Payment - ${route}`,
+              sparefare_url: args.sparefare_url
+            },
+            status: "queued"
+          });
+          notifications.push(`Email queued to ${buyer_email}`);
+        }
+
+        if (args.send_sms && buyer_phone) {
+          await supabase.from("notification_log").insert({
+            event_type: "escrow_payment_link_sms",
+            recipient: buyer_phone,
+            record_id: args.listing_id,
+            payload: { 
+              type: "sms",
+              message: `Your ${route} ticket is ready! Complete payment securely: ${args.sparefare_url}`,
+              sparefare_url: args.sparefare_url
+            },
+            status: "queued"
+          });
+          notifications.push(`SMS queued to ${buyer_phone}`);
+        }
+
+        return JSON.stringify({
+          success: true,
+          listing_id: args.listing_id,
+          sparefare_url: args.sparefare_url,
+          notifications_sent: notifications,
+          message: notifications.length > 0 
+            ? `Payment link sent! ${notifications.join(", ")}`
+            : "No contact info available for notifications."
         });
       }
 
