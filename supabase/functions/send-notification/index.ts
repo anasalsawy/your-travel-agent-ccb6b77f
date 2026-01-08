@@ -1,8 +1,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const adminEmail = Deno.env.get("ADMIN_EMAIL");
 const FROM_EMAIL = "Your Travel Agent <no-reply@your-travel-agent.net>";
+
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -860,6 +864,25 @@ const handler = async (req: Request): Promise<Response> => {
     console.log("Resend API response status:", res.status);
     console.log("Resend API response:", JSON.stringify(emailResponse));
 
+    // Create supabase client for logging
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Log to notification_log table
+    const logNotification = async (status: string, error?: string) => {
+      try {
+        await supabase.from("notification_log").insert({
+          event_type: type,
+          recipient: recipient,
+          record_id: recordId || data?.listingId || null,
+          status,
+          error: error || null,
+          payload: { ...data, subject },
+        });
+      } catch (logError) {
+        console.error("Failed to log notification:", logError);
+      }
+    };
+
     if (!res.ok) {
       console.error("Resend API error:", emailResponse);
       console.log("NOTIFICATION_FAILED", JSON.stringify({
@@ -869,6 +892,9 @@ const handler = async (req: Request): Promise<Response> => {
         recipient: recipient,
         error: JSON.stringify(emailResponse)
       }));
+      
+      await logNotification("failed", JSON.stringify(emailResponse));
+      
       return new Response(
         JSON.stringify({ error: emailResponse }),
         { status: res.status, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -883,6 +909,8 @@ const handler = async (req: Request): Promise<Response> => {
       recipient: recipient,
       resend_id: emailResponse.id
     }));
+    
+    await logNotification("sent");
 
     return new Response(
       JSON.stringify({ success: true, emailResponse, recipient }),
