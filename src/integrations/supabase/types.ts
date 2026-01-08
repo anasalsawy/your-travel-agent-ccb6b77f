@@ -14,6 +14,136 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_alerts: {
+        Row: {
+          admin_response: string | null
+          alert_type: string
+          conversation_id: string
+          created_at: string
+          customer_context: string | null
+          discount_requested: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          responded_at: string | null
+        }
+        Insert: {
+          admin_response?: string | null
+          alert_type: string
+          conversation_id: string
+          created_at?: string
+          customer_context?: string | null
+          discount_requested?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          responded_at?: string | null
+        }
+        Update: {
+          admin_response?: string | null
+          alert_type?: string
+          conversation_id?: string
+          created_at?: string
+          customer_context?: string | null
+          discount_requested?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          responded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_alerts_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_chat_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          role: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          role: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_chat_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_conversations: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          is_serious: boolean | null
+          last_discount_requested: string | null
+          needs_admin_attention: boolean | null
+          session_id: string
+          status: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          is_serious?: boolean | null
+          last_discount_requested?: string | null
+          needs_admin_attention?: boolean | null
+          session_id: string
+          status?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          is_serious?: boolean | null
+          last_discount_requested?: string | null
+          needs_admin_attention?: boolean | null
+          session_id?: string
+          status?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       bids: {
         Row: {
           amount: number
