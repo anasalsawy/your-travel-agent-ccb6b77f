@@ -63,7 +63,7 @@ export function MeetMayaSection() {
             Meet Maya
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Talk to her like you'd talk to a human. She calls, texts, searches, books — <span className="text-foreground font-semibold">whatever it takes.</span> No limits. No scripts. Just results.
+            <span className="text-foreground font-semibold">Your expert travel assistant.</span> She calls, texts, searches, books — whatever it takes. No limits. No scripts. Just results.
           </p>
         </div>
 
