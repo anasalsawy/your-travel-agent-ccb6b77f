@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Mail, Shield, Lock } from "lucide-react";
 import { SupportButtons, FacebookLink } from "@/components/SupportButtons";
-import logo from "@/assets/logo-option-1.png";
+import logo from "@/assets/logo-teal-gradient.png";
 
 export function Footer() {
   return (
