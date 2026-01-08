@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { Copy, ExternalLink, Check, Clock, DollarSign, Plane, Send, Mail, History, RotateCcw } from "lucide-react";
+import { Copy, ExternalLink, Check, Clock, DollarSign, Plane, Send, Mail, History, RotateCcw, Eye } from "lucide-react";
 import { format } from "date-fns";
 import {
   notifyBuyerEscrowUpdate,
@@ -107,6 +107,8 @@ export default function AdminEscrow() {
   const [notificationHistory, setNotificationHistory] = useState<NotificationLogEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewData, setPreviewData] = useState<{ buyer: string; seller: string; route: string; amount: number; departureDate: string; sparefareUrl: string } | null>(null);
 
   useEffect(() => {
     fetchListings();
@@ -384,6 +386,122 @@ export default function AdminEscrow() {
     }).format(amount);
   };
 
+  const generateEmailPreviewHtml = (isBuyer: boolean, data: { route: string; amount: number; departureDate: string; sparefareUrl: string }) => {
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #ea580c;">Transaction Listed on SpareFare! 🔒</h1>
+        <p>Your ${isBuyer ? "ticket purchase" : "ticket sale"} is now protected by SpareFare's secure escrow service.</p>
+        <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <p><strong>Route:</strong> ${data.route}</p>
+          <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+          <p><strong>Departure:</strong> ${data.departureDate}</p>
+        </div>
+        <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #f59e0b;">
+          <p style="font-weight: bold; margin: 0 0 10px 0;">🔗 Complete Your Transaction:</p>
+          <a href="${data.sparefareUrl}" style="color: #2563eb; font-size: 18px; word-break: break-all;">${data.sparefareUrl}</a>
+        </div>
+        <h2 style="color: #1a365d;">${isBuyer ? "What Happens Next (Buyer)" : "What Happens Next (Seller)"}</h2>
+        ${isBuyer ? `
+          <ol>
+            <li>Click the SpareFare link above</li>
+            <li>Complete your payment through SpareFare's secure platform</li>
+            <li>The seller will transfer the ticket to your name</li>
+            <li>Once confirmed, funds are released to the seller</li>
+          </ol>
+        ` : `
+          <ol>
+            <li>Click the SpareFare link above</li>
+            <li>Wait for the buyer to complete payment</li>
+            <li>Transfer the ticket to the buyer's name</li>
+            <li>Confirm the transfer on SpareFare</li>
+            <li>Receive your payment securely</li>
+          </ol>
+        `}
+        <p style="color: #6b7280; font-size: 14px;">If you have any questions, please contact our support team.</p>
+      </div>
+    `;
+  };
+
+  const openEmailPreview = () => {
+    if (!selectedListing || !sparefareUrl) return;
+    
+    const route = `${selectedListing.ticket_request?.origin} → ${selectedListing.ticket_request?.destination}`;
+    const amount = selectedListing.winning_bid?.amount || 0;
+    const departureDate = selectedListing.ticket_request?.departure_date
+      ? format(new Date(selectedListing.ticket_request.departure_date), "MMM dd, yyyy")
+      : "TBD";
+    
+    setPreviewData({
+      buyer: selectedListing.buyer_email || "",
+      seller: selectedListing.winning_bid?.seller?.contact_email || "",
+      route,
+      amount,
+      departureDate,
+      sparefareUrl,
+    });
+    setShowPreview(true);
+  };
+
+  const sendNotificationsFromPreview = async () => {
+    if (!selectedListing || !previewData) return;
+    
+    setNotifying(true);
+    try {
+      let notified = 0;
+      
+      if (previewData.buyer) {
+        await notifyEscrowSpareFareListed(previewData.buyer, {
+          listingId: selectedListing.id,
+          route: previewData.route,
+          sparefareUrl: previewData.sparefareUrl,
+          amount: previewData.amount,
+          departureDate: previewData.departureDate,
+          isBuyer: true,
+        });
+        notified++;
+      }
+      
+      if (previewData.seller) {
+        await notifyEscrowSpareFareListed(previewData.seller, {
+          listingId: selectedListing.id,
+          route: previewData.route,
+          sparefareUrl: previewData.sparefareUrl,
+          amount: previewData.amount,
+          departureDate: previewData.departureDate,
+          isBuyer: false,
+        });
+        notified++;
+      }
+      
+      // Update notification timestamps
+      await supabase
+        .from("marketplace_listings")
+        .update({
+          sparefare_listing_url: previewData.sparefareUrl,
+          buyer_notified_at: previewData.buyer ? new Date().toISOString() : undefined,
+          seller_notified_at: previewData.seller ? new Date().toISOString() : undefined,
+        })
+        .eq("id", selectedListing.id);
+      
+      toast({
+        title: "Notifications Sent",
+        description: `SpareFare link sent to ${notified} ${notified === 1 ? "party" : "parties"}`,
+      });
+      
+      setShowPreview(false);
+      fetchListings();
+      fetchNotificationHistory(selectedListing.id);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to send notifications",
+        variant: "destructive",
+      });
+    } finally {
+      setNotifying(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -600,80 +718,13 @@ export default function AdminEscrow() {
                     Copy Seller Email
                   </Button>
                   <Button
-                    variant="default"
+                    variant="outline"
                     size="sm"
-                    disabled={!sparefareUrl || notifying}
-                    onClick={async () => {
-                      if (!sparefareUrl) {
-                        toast({
-                          title: "No SpareFare URL",
-                          description: "Please enter a SpareFare link first",
-                          variant: "destructive",
-                        });
-                        return;
-                      }
-                      setNotifying(true);
-                      try {
-                        const route = `${selectedListing.ticket_request?.origin} → ${selectedListing.ticket_request?.destination}`;
-                        const amount = selectedListing.winning_bid?.amount || 0;
-                        const departureDate = selectedListing.ticket_request?.departure_date
-                          ? format(new Date(selectedListing.ticket_request.departure_date), "MMM dd, yyyy")
-                          : "TBD";
-                        
-                        let notified = 0;
-                        
-                        if (selectedListing.buyer_email) {
-                          await notifyEscrowSpareFareListed(selectedListing.buyer_email, {
-                            listingId: selectedListing.id,
-                            route,
-                            sparefareUrl,
-                            amount,
-                            departureDate,
-                            isBuyer: true,
-                          });
-                          notified++;
-                        }
-                        
-                        if (selectedListing.winning_bid?.seller?.contact_email) {
-                          await notifyEscrowSpareFareListed(selectedListing.winning_bid.seller.contact_email, {
-                            listingId: selectedListing.id,
-                            route,
-                            sparefareUrl,
-                            amount,
-                            departureDate,
-                            isBuyer: false,
-                          });
-                          notified++;
-                        }
-                        
-                        // Update notification timestamps
-                        await supabase
-                          .from("marketplace_listings")
-                          .update({
-                            sparefare_listing_url: sparefareUrl,
-                            buyer_notified_at: selectedListing.buyer_email ? new Date().toISOString() : undefined,
-                            seller_notified_at: selectedListing.winning_bid?.seller?.contact_email ? new Date().toISOString() : undefined,
-                          })
-                          .eq("id", selectedListing.id);
-                        
-                        toast({
-                          title: "Notifications Sent",
-                          description: `SpareFare link sent to ${notified} ${notified === 1 ? "party" : "parties"}`,
-                        });
-                        fetchListings();
-                      } catch (error: any) {
-                        toast({
-                          title: "Error",
-                          description: "Failed to send notifications",
-                          variant: "destructive",
-                        });
-                      } finally {
-                        setNotifying(false);
-                      }
-                    }}
+                    disabled={!sparefareUrl}
+                    onClick={openEmailPreview}
                   >
-                    <Send className="h-3 w-3 mr-1" />
-                    {notifying ? "Sending..." : "Notify Parties"}
+                    <Eye className="h-3 w-3 mr-1" />
+                    Preview & Notify
                   </Button>
                 </div>
               </div>
@@ -820,6 +871,80 @@ export default function AdminEscrow() {
             </Button>
             <Button onClick={updateEscrowStatus} disabled={updating}>
               {updating ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Preview Dialog */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Email Preview
+            </DialogTitle>
+          </DialogHeader>
+
+          {previewData && (
+            <div className="flex-1 overflow-auto space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="text-muted-foreground mb-1">Buyer Email:</p>
+                  <p className="font-medium">{previewData.buyer || "No buyer email"}</p>
+                </div>
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="text-muted-foreground mb-1">Seller Email:</p>
+                  <p className="font-medium">{previewData.seller || "No seller email"}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Buyer Preview */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-blue-50 px-4 py-2 border-b">
+                    <p className="text-sm font-medium text-blue-800">Buyer Email Preview</p>
+                    <p className="text-xs text-blue-600 truncate">To: {previewData.buyer || "N/A"}</p>
+                  </div>
+                  <ScrollArea className="h-[300px]">
+                    <div 
+                      className="p-4 bg-white"
+                      dangerouslySetInnerHTML={{ 
+                        __html: generateEmailPreviewHtml(true, previewData) 
+                      }} 
+                    />
+                  </ScrollArea>
+                </div>
+
+                {/* Seller Preview */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-green-50 px-4 py-2 border-b">
+                    <p className="text-sm font-medium text-green-800">Seller Email Preview</p>
+                    <p className="text-xs text-green-600 truncate">To: {previewData.seller || "N/A"}</p>
+                  </div>
+                  <ScrollArea className="h-[300px]">
+                    <div 
+                      className="p-4 bg-white"
+                      dangerouslySetInnerHTML={{ 
+                        __html: generateEmailPreviewHtml(false, previewData) 
+                      }} 
+                    />
+                  </ScrollArea>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowPreview(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={sendNotificationsFromPreview} 
+              disabled={notifying || (!previewData?.buyer && !previewData?.seller)}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {notifying ? "Sending..." : "Send Notifications"}
             </Button>
           </DialogFooter>
         </DialogContent>
