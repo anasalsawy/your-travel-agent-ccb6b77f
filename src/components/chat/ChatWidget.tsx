@@ -9,20 +9,47 @@ type Message = {
   role: "user" | "assistant" | "system";
   content: string;
   agentName?: string;
+  isNotification?: boolean;
+};
+
+// Helper to get time-based greeting
+const getTimeGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+};
+
+// Check if returning visitor
+const isReturningVisitor = () => {
+  const visited = localStorage.getItem("sparefare_chat_visited");
+  if (visited) return true;
+  localStorage.setItem("sparefare_chat_visited", "true");
+  return false;
 };
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "Hey there! 👋 I'm Maya from SpareFare. Looking for some travel deals today? I'd love to help you out!",
-    },
-  ]);
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingAgent, setTypingAgent] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const greeting = getTimeGreeting();
+    const returning = isReturningVisitor();
+    return [
+      {
+        role: "assistant",
+        content: returning 
+          ? `${greeting}! 👋 Welcome back to SpareFare! Great to see you again. How can I help you today?`
+          : `${greeting}! 👋 I'm Maya from SpareFare. Looking for some travel deals today? I'd love to help you out!`,
+        agentName: "Maya",
+      },
+    ];
+  });
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sessionId] = useState(() => crypto.randomUUID());
+  const [hasJoined, setHasJoined] = useState(true); // Maya already "joined" with initial message
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -30,7 +57,7 @@ export function ChatWidget() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isTyping]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -46,6 +73,12 @@ export function ChatWidget() {
     setInput("");
     setIsLoading(true);
 
+    // Calculate delay based on message complexity (longer messages = more "thinking" time)
+    const baseDelay = 2000;
+    const complexityDelay = Math.min(userMessage.content.length * 20, 2000);
+    const randomDelay = Math.random() * 1500;
+    const totalDelay = baseDelay + complexityDelay + randomDelay;
+
     // Add system acknowledgment message first (appears as automated)
     const acknowledgments = [
       "Thanks for your message! Someone will be with you momentarily.",
@@ -57,9 +90,46 @@ export function ChatWidget() {
     
     setMessages((prev) => [...prev, { role: "system", content: ackMessage }]);
     
-    // Wait 2-4 seconds to simulate human joining the chat
-    const delay = 2000 + Math.random() * 2000;
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    // Wait before Maya "joins"
+    await new Promise((resolve) => setTimeout(resolve, totalDelay * 0.6));
+
+    // Show "Maya has joined the chat" notification
+    if (!hasJoined || Math.random() > 0.7) {
+      setMessages((prev) => [
+        ...prev,
+        { 
+          role: "system", 
+          content: "Maya has joined the chat",
+          isNotification: true 
+        },
+      ]);
+      setHasJoined(true);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+
+    // Occasionally add a "let me check" message
+    const shouldAddCheckMessage = Math.random() > 0.6;
+    if (shouldAddCheckMessage) {
+      const checkMessages = [
+        "Let me look into that for you...",
+        "One sec, checking our system...",
+        "Great question! Let me find that info...",
+        "Hmm, let me see what we have...",
+      ];
+      setMessages((prev) => [
+        ...prev,
+        { 
+          role: "assistant", 
+          content: checkMessages[Math.floor(Math.random() * checkMessages.length)],
+          agentName: "Maya" 
+        },
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 800));
+    }
+
+    // Show "Maya is typing..." indicator
+    setIsTyping(true);
+    setTypingAgent("Maya");
 
     let assistantContent = "";
 
@@ -74,7 +144,7 @@ export function ChatWidget() {
           },
           body: JSON.stringify({
             messages: [...messages, userMessage].map((m) => ({
-              role: m.role,
+              role: m.role === "system" ? "user" : m.role,
               content: m.content,
             })),
             sessionId,
@@ -97,7 +167,9 @@ export function ChatWidget() {
       const decoder = new TextDecoder();
       let textBuffer = "";
 
-      // Add Maya's response as a new message (she just "joined")
+      // Hide typing indicator and add Maya's response
+      setIsTyping(false);
+      setTypingAgent(null);
       setMessages((prev) => [...prev, { role: "assistant", content: "", agentName: "Maya" }]);
 
       while (true) {
@@ -141,6 +213,8 @@ export function ChatWidget() {
       }
     } catch (error) {
       console.error("Chat error:", error);
+      setIsTyping(false);
+      setTypingAgent(null);
       setMessages((prev) => [
         ...prev,
         {
@@ -198,7 +272,9 @@ export function ChatWidget() {
             </div>
             <div>
               <h3 className="font-semibold text-foreground">Maya</h3>
-              <p className="text-xs text-muted-foreground">Travel Consultant • Online</p>
+              <p className="text-xs text-muted-foreground">
+                {isTyping ? "Typing..." : "Travel Consultant • Online"}
+              </p>
             </div>
           </div>
           <Button
@@ -216,45 +292,63 @@ export function ChatWidget() {
           <div className="flex flex-col gap-3">
             {messages.map((message, index) => (
               <div key={index} className="flex flex-col gap-1">
-                {/* Show agent name for assistant messages */}
-                {message.role === "assistant" && message.agentName && (
-                  <span className="text-xs text-muted-foreground ml-1 font-medium">
-                    {message.agentName}
-                  </span>
-                )}
-                {message.role === "system" && (
-                  <span className="text-xs text-muted-foreground ml-1 italic">
-                    System
-                  </span>
-                )}
-                <div
-                  className={cn(
-                    "flex",
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
-                      message.role === "user"
-                        ? "bg-primary text-primary-foreground rounded-br-md"
-                        : message.role === "system"
-                        ? "bg-muted/50 text-muted-foreground italic rounded-bl-md border border-border"
-                        : "bg-muted text-foreground rounded-bl-md"
-                    )}
-                  >
-                    {message.content}
+                {/* Notification messages (like "Maya has joined") */}
+                {message.isNotification ? (
+                  <div className="flex justify-center my-2">
+                    <span className="text-xs text-muted-foreground bg-muted/30 px-3 py-1 rounded-full">
+                      {message.content}
+                    </span>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    {/* Show agent name for assistant messages */}
+                    {message.role === "assistant" && message.agentName && (
+                      <span className="text-xs text-muted-foreground ml-1 font-medium">
+                        {message.agentName}
+                      </span>
+                    )}
+                    {message.role === "system" && !message.isNotification && (
+                      <span className="text-xs text-muted-foreground ml-1 italic">
+                        System
+                      </span>
+                    )}
+                    <div
+                      className={cn(
+                        "flex",
+                        message.role === "user" ? "justify-end" : "justify-start"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
+                          message.role === "user"
+                            ? "bg-primary text-primary-foreground rounded-br-md"
+                            : message.role === "system"
+                            ? "bg-muted/50 text-muted-foreground italic rounded-bl-md border border-border"
+                            : "bg-muted text-foreground rounded-bl-md"
+                        )}
+                      >
+                        {message.content}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
-            {isLoading && messages[messages.length - 1]?.role === "user" && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2.5">
-                  <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+            
+            {/* Typing indicator with agent name */}
+            {isTyping && typingAgent && (
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground ml-1 font-medium">
+                  {typingAgent} is typing...
+                </span>
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2.5">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
                   </div>
                 </div>
               </div>
