@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { MessageCircle, X, Send, Loader2, Brain, Search, PenTool } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +11,8 @@ type Message = {
   agentName?: string;
   isNotification?: boolean;
 };
+
+type ThinkingPhase = "thinking" | "researching" | "composing" | null;
 
 // Helper to get time-based greeting
 const getTimeGreeting = () => {
@@ -28,9 +30,43 @@ const isReturningVisitor = () => {
   return false;
 };
 
+// Simulated typing delay - adds characters gradually
+const useTypingEffect = (text: string, speed: number = 15) => {
+  const [displayedText, setDisplayedText] = useState("");
+  const [isComplete, setIsComplete] = useState(false);
+
+  useEffect(() => {
+    if (!text) {
+      setDisplayedText("");
+      setIsComplete(false);
+      return;
+    }
+
+    setDisplayedText("");
+    setIsComplete(false);
+    let index = 0;
+
+    const timer = setInterval(() => {
+      if (index < text.length) {
+        // Add 1-3 characters at a time for more natural feel
+        const chunkSize = Math.floor(Math.random() * 3) + 1;
+        setDisplayedText(text.slice(0, index + chunkSize));
+        index += chunkSize;
+      } else {
+        setIsComplete(true);
+        clearInterval(timer);
+      }
+    }, speed);
+
+    return () => clearInterval(timer);
+  }, [text, speed]);
+
+  return { displayedText, isComplete };
+};
+
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
+  const [thinkingPhase, setThinkingPhase] = useState<ThinkingPhase>(null);
   const [typingAgent, setTypingAgent] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>(() => {
     const greeting = getTimeGreeting();
@@ -49,21 +85,55 @@ export function ChatWidget() {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sessionId] = useState(() => crypto.randomUUID());
-  const [hasJoined, setHasJoined] = useState(true); // Maya already "joined" with initial message
+  const [streamingContent, setStreamingContent] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isTyping]);
+  }, [messages, thinkingPhase, streamingContent]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
       inputRef.current.focus();
     }
   }, [isOpen]);
+
+  // Cleanup phase timer on unmount
+  useEffect(() => {
+    return () => {
+      if (phaseTimerRef.current) {
+        clearTimeout(phaseTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Cycle through thinking phases for human-like feel
+  const startThinkingPhases = useCallback(() => {
+    setThinkingPhase("thinking");
+    setTypingAgent("Maya");
+
+    // After 800-1200ms, switch to researching
+    phaseTimerRef.current = setTimeout(() => {
+      setThinkingPhase("researching");
+      
+      // After another 600-1000ms, switch to composing
+      phaseTimerRef.current = setTimeout(() => {
+        setThinkingPhase("composing");
+      }, 600 + Math.random() * 400);
+    }, 800 + Math.random() * 400);
+  }, []);
+
+  const stopThinkingPhases = useCallback(() => {
+    if (phaseTimerRef.current) {
+      clearTimeout(phaseTimerRef.current);
+    }
+    setThinkingPhase(null);
+    setTypingAgent(null);
+  }, []);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -72,10 +142,10 @@ export function ChatWidget() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setStreamingContent("");
 
-    // Show "Maya is typing..." indicator immediately - no fake delays
-    setIsTyping(true);
-    setTypingAgent("Maya");
+    // Start human-like thinking phases
+    startThinkingPhases();
 
     let assistantContent = "";
 
@@ -112,11 +182,7 @@ export function ChatWidget() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let textBuffer = "";
-
-      // Hide typing indicator and add Maya's response
-      setIsTyping(false);
-      setTypingAgent(null);
-      setMessages((prev) => [...prev, { role: "assistant", content: "", agentName: "Maya" }]);
+      let firstChunkReceived = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -140,7 +206,17 @@ export function ChatWidget() {
             const parsed = JSON.parse(jsonStr);
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
+              // On first chunk, stop thinking phases and add message
+              if (!firstChunkReceived) {
+                firstChunkReceived = true;
+                stopThinkingPhases();
+                setMessages((prev) => [...prev, { role: "assistant", content: "", agentName: "Maya" }]);
+              }
+              
               assistantContent += content;
+              
+              // Update the streaming content with small delay for natural feel
+              setStreamingContent(assistantContent);
               setMessages((prev) => {
                 const updated = [...prev];
                 updated[updated.length - 1] = {
@@ -159,8 +235,7 @@ export function ChatWidget() {
       }
     } catch (error) {
       console.error("Chat error:", error);
-      setIsTyping(false);
-      setTypingAgent(null);
+      stopThinkingPhases();
       setMessages((prev) => [
         ...prev,
         {
@@ -171,6 +246,7 @@ export function ChatWidget() {
       ]);
     } finally {
       setIsLoading(false);
+      setStreamingContent("");
     }
   };
 
@@ -219,7 +295,11 @@ export function ChatWidget() {
             <div>
               <h3 className="font-semibold text-foreground">Maya</h3>
               <p className="text-xs text-muted-foreground">
-                {isTyping ? "Typing..." : "Travel Consultant • Online"}
+                {thinkingPhase ? (
+                  thinkingPhase === "thinking" ? "Thinking..." :
+                  thinkingPhase === "researching" ? "Researching..." :
+                  "Composing..."
+                ) : "Travel Consultant • Online"}
               </p>
             </div>
           </div>
@@ -282,11 +362,28 @@ export function ChatWidget() {
               </div>
             ))}
             
-            {/* Typing indicator with agent name */}
-            {isTyping && typingAgent && (
+            {/* Thinking phases indicator */}
+            {thinkingPhase && typingAgent && (
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground ml-1 font-medium">
-                  {typingAgent} is typing...
+                <span className="text-xs text-muted-foreground ml-1 font-medium flex items-center gap-1.5">
+                  {thinkingPhase === "thinking" && (
+                    <>
+                      <Brain className="w-3 h-3 animate-pulse" />
+                      {typingAgent} is thinking...
+                    </>
+                  )}
+                  {thinkingPhase === "researching" && (
+                    <>
+                      <Search className="w-3 h-3 animate-pulse" />
+                      {typingAgent} is looking into this...
+                    </>
+                  )}
+                  {thinkingPhase === "composing" && (
+                    <>
+                      <PenTool className="w-3 h-3 animate-pulse" />
+                      {typingAgent} is composing a response...
+                    </>
+                  )}
                 </span>
                 <div className="flex justify-start">
                   <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2.5">
