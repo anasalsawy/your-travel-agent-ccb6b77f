@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { MessageCircle, X, Send, Loader2, Brain, Search, PenTool } from "lucide-react";
+import { MessageCircle, X, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -362,36 +362,14 @@ export function ChatWidget() {
               </div>
             ))}
             
-            {/* Thinking phases indicator */}
-            {thinkingPhase && typingAgent && (
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground ml-1 font-medium flex items-center gap-1.5">
-                  {thinkingPhase === "thinking" && (
-                    <>
-                      <Brain className="w-3 h-3 animate-pulse" />
-                      {typingAgent} is thinking...
-                    </>
-                  )}
-                  {thinkingPhase === "researching" && (
-                    <>
-                      <Search className="w-3 h-3 animate-pulse" />
-                      {typingAgent} is looking into this...
-                    </>
-                  )}
-                  {thinkingPhase === "composing" && (
-                    <>
-                      <PenTool className="w-3 h-3 animate-pulse" />
-                      {typingAgent} is composing a response...
-                    </>
-                  )}
-                </span>
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2.5">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div>
+            {/* Thinking indicator - just animated dots */}
+            {thinkingPhase && (
+              <div className="flex justify-start">
+                <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2.5">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
                 </div>
               </div>
