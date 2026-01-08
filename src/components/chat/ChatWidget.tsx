@@ -6,8 +6,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 type Message = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
+  agentName?: string;
 };
 
 export function ChatWidget() {
@@ -45,18 +46,18 @@ export function ChatWidget() {
     setInput("");
     setIsLoading(true);
 
-    // Add acknowledgment message first (human-like delay)
+    // Add system acknowledgment message first (appears as automated)
     const acknowledgments = [
-      "Got your message! Let me take a look... 🙂",
-      "Thanks for reaching out! One moment...",
-      "I see your message! Give me just a sec...",
-      "Hey, I got this! Just checking something for you...",
+      "Thanks for your message! Someone will be with you momentarily.",
+      "We received your message. A travel consultant will be right with you.",
+      "Got it! Please hold on, someone will assist you shortly.",
+      "Message received! One of our team members will be with you in just a moment.",
     ];
     const ackMessage = acknowledgments[Math.floor(Math.random() * acknowledgments.length)];
     
-    setMessages((prev) => [...prev, { role: "assistant", content: ackMessage }]);
+    setMessages((prev) => [...prev, { role: "system", content: ackMessage }]);
     
-    // Wait 2-4 seconds to simulate human reading/typing delay
+    // Wait 2-4 seconds to simulate human joining the chat
     const delay = 2000 + Math.random() * 2000;
     await new Promise((resolve) => setTimeout(resolve, delay));
 
@@ -96,12 +97,8 @@ export function ChatWidget() {
       const decoder = new TextDecoder();
       let textBuffer = "";
 
-      // Replace acknowledgment with actual response (start fresh)
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: "assistant", content: "" };
-        return updated;
-      });
+      // Add Maya's response as a new message (she just "joined")
+      setMessages((prev) => [...prev, { role: "assistant", content: "", agentName: "Maya" }]);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -131,6 +128,7 @@ export function ChatWidget() {
                 updated[updated.length - 1] = {
                   role: "assistant",
                   content: assistantContent,
+                  agentName: "Maya",
                 };
                 return updated;
               });
@@ -143,14 +141,14 @@ export function ChatWidget() {
       }
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
+      setMessages((prev) => [
+        ...prev,
+        {
           role: "assistant",
           content: "Oops, something went wrong on my end! Mind trying that again?",
-        };
-        return updated;
-      });
+          agentName: "Maya",
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -217,22 +215,36 @@ export function ChatWidget() {
         <ScrollArea className="flex-1 p-4" ref={scrollRef}>
           <div className="flex flex-col gap-3">
             {messages.map((message, index) => (
-              <div
-                key={index}
-                className={cn(
-                  "flex",
-                  message.role === "user" ? "justify-end" : "justify-start"
+              <div key={index} className="flex flex-col gap-1">
+                {/* Show agent name for assistant messages */}
+                {message.role === "assistant" && message.agentName && (
+                  <span className="text-xs text-muted-foreground ml-1 font-medium">
+                    {message.agentName}
+                  </span>
                 )}
-              >
+                {message.role === "system" && (
+                  <span className="text-xs text-muted-foreground ml-1 italic">
+                    System
+                  </span>
+                )}
                 <div
                   className={cn(
-                    "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-br-md"
-                      : "bg-muted text-foreground rounded-bl-md"
+                    "flex",
+                    message.role === "user" ? "justify-end" : "justify-start"
                   )}
                 >
-                  {message.content}
+                  <div
+                    className={cn(
+                      "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
+                      message.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-br-md"
+                        : message.role === "system"
+                        ? "bg-muted/50 text-muted-foreground italic rounded-bl-md border border-border"
+                        : "bg-muted text-foreground rounded-bl-md"
+                    )}
+                  >
+                    {message.content}
+                  </div>
                 </div>
               </div>
             ))}
