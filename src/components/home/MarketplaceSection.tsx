@@ -52,12 +52,16 @@ export function MarketplaceSection() {
             <span className="text-sm font-medium text-accent">Travel Marketplace</span>
           </div>
           <h2 className="font-display text-3xl md:text-5xl font-bold mb-4">
-            Get Bids From <span className="text-gradient">Verified Sellers</span>
+            Name Your Price. <span className="text-gradient">Pay Even Less.</span>
           </h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
-            Post your travel request and receive competitive bids from our network of verified travel agents. 
-            Compare offers and save up to 70% on your next trip.
+          <p className="text-muted-foreground max-w-2xl mx-auto text-lg mb-4">
+            Set your budget and watch verified travel agents compete for your business. 
+            The winning bid? Often <span className="font-semibold text-foreground">below</span> your asking price.
           </p>
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-success/10 border border-success/20">
+            <DollarSign className="w-4 h-4 text-success" />
+            <span className="text-sm font-medium text-success">Better than "Name Your Price" — sellers compete, you win</span>
+          </div>
         </div>
 
         {/* Stats bar */}
