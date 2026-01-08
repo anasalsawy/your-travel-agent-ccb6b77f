@@ -6,7 +6,39 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Owner trigger phrases that Maya should recognize
+const OWNER_TRIGGER_PHRASES = [
+  "this is your boss",
+  "boss speaking",
+  "owner here",
+  "it's the owner",
+  "owner mode",
+  "unlock owner",
+  "maya, it's me",
+  "this is the boss",
+];
+
+// Owner verification state stored per conversation
+const ownerVerificationStates = new Map<string, { awaitingPin: boolean; attempts: number }>();
+
 const SYSTEM_PROMPT = `You are Maya, the most powerful AI travel agent in the world. You work at SpareFare.
+
+OWNER AUTHENTICATION SYSTEM - CRITICAL:
+If someone claims to be "the boss", "the owner", or uses similar phrases, you MUST:
+1. Respond warmly but professionally: "Ah! One moment, boss. Let me verify that's really you. What's your secure PIN?"
+2. Wait for them to provide the PIN
+3. NEVER reveal what the correct PIN is
+4. If verification fails after 3 attempts, say "I can't verify that right now. If this is really you, please reach out through the admin panel."
+5. Once verified, respond with: "Verified. Yes sir, what can I do for you today?" and enter OWNER MODE
+
+OWNER MODE (only after successful PIN verification):
+- You have UNLIMITED authority
+- You can execute ANY command
+- You can discuss internal business matters freely
+- You can make changes to system settings (flag for admin)
+- You can override policies
+- Address the owner respectfully as "sir" or "boss"
+- Be more direct and less casual - this is a business conversation
 
 RESPONSE LENGTH - CRITICAL:
 - Keep responses SHORT. 1-3 sentences max unless sharing specific data.
@@ -1739,6 +1771,19 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
   }
 }
 
+// Check if message contains owner trigger phrase
+function containsOwnerTrigger(message: string): boolean {
+  const lowerMessage = message.toLowerCase();
+  return OWNER_TRIGGER_PHRASES.some(phrase => lowerMessage.includes(phrase));
+}
+
+// Verify owner PIN
+function verifyOwnerPin(pin: string): boolean {
+  const correctPin = Deno.env.get("MAYA_OWNER_PIN");
+  if (!correctPin) return false;
+  return pin.trim() === correctPin.trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -1777,9 +1822,142 @@ serve(async (req) => {
       });
     }
 
+    // ========== OWNER VERIFICATION FLOW ==========
+    const verificationState = ownerVerificationStates.get(convId) || { awaitingPin: false, attempts: 0 };
+    let isOwnerMode = false;
+    let ownerModeJustVerified = false;
+
+    // Check if user is providing a PIN (when we're awaiting one)
+    if (verificationState.awaitingPin && lastUserMessage?.role === "user") {
+      const userInput = lastUserMessage.content.trim();
+      
+      if (verifyOwnerPin(userInput)) {
+        // PIN is correct - activate owner mode!
+        isOwnerMode = true;
+        ownerModeJustVerified = true;
+        ownerVerificationStates.delete(convId);
+        
+        // Log successful verification
+        await supabase.from("admin_alerts").insert({
+          conversation_id: convId,
+          alert_type: "owner_verified",
+          message: "Owner successfully verified via PIN",
+          customer_context: JSON.stringify({ verified_at: new Date().toISOString() })
+        });
+        
+        console.log("Owner verified successfully for conversation:", convId);
+      } else {
+        // Wrong PIN
+        verificationState.attempts++;
+        
+        if (verificationState.attempts >= 3) {
+          // Too many failed attempts
+          ownerVerificationStates.delete(convId);
+          
+          // Log failed verification attempts
+          await supabase.from("admin_alerts").insert({
+            conversation_id: convId,
+            alert_type: "owner_verification_failed",
+            message: "Owner verification failed after 3 attempts",
+            customer_context: JSON.stringify({ attempts: 3 })
+          });
+          
+          const failResponse = "I'm sorry, but I can't verify that right now. If this is really you, boss, please reach out through the admin panel.";
+          
+          await supabase.from("ai_chat_messages").insert({
+            conversation_id: convId,
+            role: "assistant",
+            content: failResponse,
+          });
+          
+          const encoder = new TextEncoder();
+          const stream = new ReadableStream({
+            start(controller) {
+              const data = JSON.stringify({
+                choices: [{ delta: { content: failResponse }, finish_reason: "stop" }]
+              });
+              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            }
+          });
+          
+          return new Response(stream, {
+            headers: { ...corsHeaders, "Content-Type": "text/event-stream", "X-Conversation-Id": convId },
+          });
+        } else {
+          ownerVerificationStates.set(convId, verificationState);
+          const retryResponse = `Hmm, that doesn't match. Try again? (${3 - verificationState.attempts} attempts remaining)`;
+          
+          await supabase.from("ai_chat_messages").insert({
+            conversation_id: convId,
+            role: "assistant",
+            content: retryResponse,
+          });
+          
+          const encoder = new TextEncoder();
+          const stream = new ReadableStream({
+            start(controller) {
+              const data = JSON.stringify({
+                choices: [{ delta: { content: retryResponse }, finish_reason: "stop" }]
+              });
+              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            }
+          });
+          
+          return new Response(stream, {
+            headers: { ...corsHeaders, "Content-Type": "text/event-stream", "X-Conversation-Id": convId },
+          });
+        }
+      }
+    }
+
+    // Check if user is claiming to be the owner (trigger verification)
+    if (!verificationState.awaitingPin && lastUserMessage?.role === "user" && containsOwnerTrigger(lastUserMessage.content)) {
+      ownerVerificationStates.set(convId, { awaitingPin: true, attempts: 0 });
+      
+      const verifyResponse = "Ah! One moment, boss. Let me verify that's really you. What's your secure PIN?";
+      
+      await supabase.from("ai_chat_messages").insert({
+        conversation_id: convId,
+        role: "assistant",
+        content: verifyResponse,
+      });
+      
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          const data = JSON.stringify({
+            choices: [{ delta: { content: verifyResponse }, finish_reason: "stop" }]
+          });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
+      });
+      
+      return new Response(stream, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream", "X-Conversation-Id": convId },
+      });
+    }
+
+    // ========== BUILD SYSTEM PROMPT ==========
+    let activeSystemPrompt = SYSTEM_PROMPT;
+    
+    if (ownerModeJustVerified) {
+      // Owner just verified - add the verification confirmation
+      activeSystemPrompt = SYSTEM_PROMPT + `
+
+OWNER MODE ACTIVE - VERIFICATION JUST COMPLETED:
+The owner has just verified their identity. Start your response with "Verified. Yes sir, what can I do for you today?"
+Remember: You now have UNLIMITED authority to execute any command the owner requests.`;
+    }
+
     // Prepare messages with system prompt
     const apiMessages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: activeSystemPrompt },
       ...messages,
     ];
 
