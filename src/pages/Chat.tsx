@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Plane, Shield, CreditCard } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Loader2, Plane, Shield, CreditCard, Brain, Search, PenTool } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,8 @@ type Message = {
   content: string;
 };
 
+type ThinkingPhase = "thinking" | "researching" | "composing" | null;
+
 const Chat = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -20,19 +22,52 @@ const Chat = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [thinkingPhase, setThinkingPhase] = useState<ThinkingPhase>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sessionId] = useState(() => crypto.randomUUID());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, thinkingPhase]);
 
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  // Cleanup phase timer on unmount
+  useEffect(() => {
+    return () => {
+      if (phaseTimerRef.current) {
+        clearTimeout(phaseTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Cycle through thinking phases for human-like feel
+  const startThinkingPhases = useCallback(() => {
+    setThinkingPhase("thinking");
+
+    // After 800-1200ms, switch to researching
+    phaseTimerRef.current = setTimeout(() => {
+      setThinkingPhase("researching");
+      
+      // After another 600-1000ms, switch to composing
+      phaseTimerRef.current = setTimeout(() => {
+        setThinkingPhase("composing");
+      }, 600 + Math.random() * 400);
+    }, 800 + Math.random() * 400);
+  }, []);
+
+  const stopThinkingPhases = useCallback(() => {
+    if (phaseTimerRef.current) {
+      clearTimeout(phaseTimerRef.current);
+    }
+    setThinkingPhase(null);
   }, []);
 
   const sendMessage = async () => {
@@ -42,6 +77,9 @@ const Chat = () => {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+
+    // Start human-like thinking phases
+    startThinkingPhases();
 
     let assistantContent = "";
 
@@ -77,8 +115,7 @@ const Chat = () => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let textBuffer = "";
-
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      let firstChunkReceived = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -102,6 +139,13 @@ const Chat = () => {
             const parsed = JSON.parse(jsonStr);
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
+              // On first chunk, stop thinking phases and add message
+              if (!firstChunkReceived) {
+                firstChunkReceived = true;
+                stopThinkingPhases();
+                setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+              }
+
               assistantContent += content;
               setMessages((prev) => {
                 const updated = [...prev];
@@ -120,6 +164,7 @@ const Chat = () => {
       }
     } catch (error) {
       console.error("Chat error:", error);
+      stopThinkingPhases();
       setMessages((prev) => [
         ...prev,
         {
@@ -186,13 +231,36 @@ const Chat = () => {
                   </div>
                 </div>
               ))}
-              {isLoading && messages[messages.length - 1]?.role === "user" && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-2xl rounded-bl-md px-5 py-3">
-                    <div className="flex gap-1.5">
-                      <span className="w-2.5 h-2.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2.5 h-2.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2.5 h-2.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              {/* Thinking phases indicator */}
+              {thinkingPhase && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground ml-1 font-medium flex items-center gap-1.5">
+                    {thinkingPhase === "thinking" && (
+                      <>
+                        <Brain className="w-3 h-3 animate-pulse" />
+                        Maya is thinking...
+                      </>
+                    )}
+                    {thinkingPhase === "researching" && (
+                      <>
+                        <Search className="w-3 h-3 animate-pulse" />
+                        Maya is looking into this...
+                      </>
+                    )}
+                    {thinkingPhase === "composing" && (
+                      <>
+                        <PenTool className="w-3 h-3 animate-pulse" />
+                        Maya is composing a response...
+                      </>
+                    )}
+                  </span>
+                  <div className="flex justify-start">
+                    <div className="bg-muted rounded-2xl rounded-bl-md px-5 py-3">
+                      <div className="flex gap-1.5">
+                        <span className="w-2.5 h-2.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-2.5 h-2.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-2.5 h-2.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
                     </div>
                   </div>
                 </div>
