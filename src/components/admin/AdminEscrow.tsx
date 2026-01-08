@@ -91,6 +91,7 @@ export default function AdminEscrow() {
   const [updating, setUpdating] = useState(false);
   const [filter, setFilter] = useState<string>("active");
   const [sendNotifications, setSendNotifications] = useState(true);
+  const [notifying, setNotifying] = useState(false);
 
   useEffect(() => {
     fetchListings();
@@ -561,6 +562,82 @@ export default function AdminEscrow() {
                     onClick={() => copyToClipboard(selectedListing.winning_bid?.seller?.contact_email || "")}
                   >
                     Copy Seller Email
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    disabled={!sparefareUrl || notifying}
+                    onClick={async () => {
+                      if (!sparefareUrl) {
+                        toast({
+                          title: "No SpareFare URL",
+                          description: "Please enter a SpareFare link first",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      setNotifying(true);
+                      try {
+                        const route = `${selectedListing.ticket_request?.origin} → ${selectedListing.ticket_request?.destination}`;
+                        const amount = selectedListing.winning_bid?.amount || 0;
+                        const departureDate = selectedListing.ticket_request?.departure_date
+                          ? format(new Date(selectedListing.ticket_request.departure_date), "MMM dd, yyyy")
+                          : "TBD";
+                        
+                        let notified = 0;
+                        
+                        if (selectedListing.buyer_email) {
+                          await notifyEscrowSpareFareListed(selectedListing.buyer_email, {
+                            listingId: selectedListing.id,
+                            route,
+                            sparefareUrl,
+                            amount,
+                            departureDate,
+                            isBuyer: true,
+                          });
+                          notified++;
+                        }
+                        
+                        if (selectedListing.winning_bid?.seller?.contact_email) {
+                          await notifyEscrowSpareFareListed(selectedListing.winning_bid.seller.contact_email, {
+                            listingId: selectedListing.id,
+                            route,
+                            sparefareUrl,
+                            amount,
+                            departureDate,
+                            isBuyer: false,
+                          });
+                          notified++;
+                        }
+                        
+                        // Update notification timestamps
+                        await supabase
+                          .from("marketplace_listings")
+                          .update({
+                            sparefare_listing_url: sparefareUrl,
+                            buyer_notified_at: selectedListing.buyer_email ? new Date().toISOString() : undefined,
+                            seller_notified_at: selectedListing.winning_bid?.seller?.contact_email ? new Date().toISOString() : undefined,
+                          })
+                          .eq("id", selectedListing.id);
+                        
+                        toast({
+                          title: "Notifications Sent",
+                          description: `SpareFare link sent to ${notified} ${notified === 1 ? "party" : "parties"}`,
+                        });
+                        fetchListings();
+                      } catch (error: any) {
+                        toast({
+                          title: "Error",
+                          description: "Failed to send notifications",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setNotifying(false);
+                      }
+                    }}
+                  >
+                    <Send className="h-3 w-3 mr-1" />
+                    {notifying ? "Sending..." : "Notify Parties"}
                   </Button>
                 </div>
               </div>
