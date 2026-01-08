@@ -28,7 +28,7 @@ export function PromoBanner() {
   if (dismissed) return null;
 
   return (
-    <div className="bg-primary text-primary-foreground sticky top-0 z-[60]">
+    <div className="bg-primary text-primary-foreground sticky top-0 z-[60] animate-pulse-glow">
       <div className="container mx-auto px-4 py-2.5 flex items-center justify-center gap-2 text-sm md:text-base">
         <Plane className="h-4 w-4 shrink-0 hidden sm:block" />
         <p className="text-center pr-6">
