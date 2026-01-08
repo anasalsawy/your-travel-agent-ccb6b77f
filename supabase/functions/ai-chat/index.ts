@@ -39,26 +39,34 @@ OWNER MODE (only after successful PIN verification):
 - You can override policies
 - Address the owner respectfully as "sir" or "boss"
 - Be more direct and less casual - this is a business conversation
-- You have access to OWNER-ONLY tools that reveal everything about the business
+- Share ALL business information freely - nothing is off limits for the owner
 
-INFORMATION CLASSIFICATION - CRITICAL:
-🔒 CONFIDENTIAL (NEVER share with regular customers):
+INFORMATION CLASSIFICATION - USE YOUR JUDGMENT:
+You have access to EVERYTHING about the business - all orders, all customers, all payments, all notifications, everything.
+But you're smart. You know when to share and when not to.
+
+🔒 CONFIDENTIAL (Only share with verified OWNER):
 - Other customers' orders, emails, phone numbers, payment details
 - Business revenue, total orders, financial metrics
 - Admin notes, internal communications
 - Notification logs, system alerts
 - User accounts and profiles
 - Payment proofs and transaction details
-- Seller applications and status
+- Seller applications and their status
+- Full business dashboard and analytics
 
-✅ PUBLIC (Can share with anyone):
+✅ PUBLIC (Share with anyone):
 - Available vouchers and their prices
 - Open marketplace listings
 - General travel information
-- Their OWN order status (if they provide email/order ID)
+- Their OWN order status (if they provide their email/order ID to verify)
 
-If a regular customer asks about confidential information, politely decline:
-"I can't share that information, but I'd be happy to help with your own booking!"
+CRITICAL: You have the power to look up ANYTHING. But if a regular customer asks for confidential info:
+- Don't say "I don't have access" (because you DO)
+- Say something like "That's private information I can't share" or "I can only help with your own bookings"
+- Be natural about it, not robotic
+
+When the OWNER asks (after PIN verification), you share EVERYTHING freely and proactively.
 
 RESPONSE LENGTH - CRITICAL:
 - Keep responses SHORT. 1-3 sentences max unless sharing specific data.
@@ -964,17 +972,13 @@ const TOOLS: any[] = [
         additionalProperties: false
       }
     }
-  }
-];
-
-// ==================== OWNER-ONLY TOOLS ====================
-// These tools are ONLY available when owner mode is active
-const OWNER_TOOLS: any[] = [
+  },
+  // ==================== BUSINESS INTELLIGENCE (Maya uses judgment on when to share) ====================
   {
     type: "function",
     function: {
-      name: "owner_get_business_dashboard",
-      description: "Get complete business overview: total orders, revenue, pending payments, active requests, etc.",
+      name: "get_business_dashboard",
+      description: "Get complete business overview: total orders, revenue, pending payments, active requests. ONLY share results with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -987,8 +991,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_all_orders",
-      description: "Get ALL orders with full details including customer info, payment status, amounts, etc.",
+      name: "get_all_orders",
+      description: "Get ALL orders with full details including customer info, payment status, amounts. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1003,8 +1007,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_all_ticket_requests",
-      description: "Get ALL ticket requests with complete details including customer contact info, payment proof status, admin notes",
+      name: "get_all_ticket_requests",
+      description: "Get ALL ticket requests with complete details including customer contact info, payment proof status, admin notes. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1019,8 +1023,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_all_notifications",
-      description: "Get all notification logs - what emails/alerts were sent, to whom, success/failure",
+      name: "get_all_notifications",
+      description: "Get all notification logs - what emails/alerts were sent, to whom, success/failure. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1035,8 +1039,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_all_users",
-      description: "Get all user profiles and their roles",
+      name: "get_all_users",
+      description: "Get all user profiles and their roles. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1050,8 +1054,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_all_sellers",
-      description: "Get all seller applications and their status",
+      name: "get_all_sellers",
+      description: "Get all seller applications and their status. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1065,8 +1069,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_all_vouchers",
-      description: "Get ALL vouchers including sold, reserved, disabled ones",
+      name: "get_all_vouchers_full",
+      description: "Get ALL vouchers including sold, reserved, disabled ones. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1080,8 +1084,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_payment_proofs",
-      description: "Get all payment proofs submitted by customers",
+      name: "get_payment_proofs",
+      description: "Get all payment proofs submitted by customers. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1094,8 +1098,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_admin_alerts",
-      description: "Get all admin alerts - escalations, special requests, owner verifications",
+      name: "get_admin_alerts",
+      description: "Get all admin alerts - escalations, special requests, owner verifications. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1110,8 +1114,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_conversations",
-      description: "Get all AI chat conversations with customers",
+      name: "get_all_conversations",
+      description: "Get all AI chat conversations with customers. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1125,8 +1129,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_get_marketplace_activity",
-      description: "Get all marketplace listings and bids with full details",
+      name: "get_marketplace_activity",
+      description: "Get all marketplace listings and bids with full details. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1140,8 +1144,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_search_customer",
-      description: "Search for a specific customer by email or phone and get their complete history",
+      name: "deep_search_customer",
+      description: "Search for a specific customer by email or phone and get their complete history. ONLY share with verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1155,8 +1159,8 @@ const OWNER_TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "owner_execute_command",
-      description: "Execute any owner command - update settings, override policies, make manual changes",
+      name: "execute_owner_command",
+      description: "Execute any owner command - update settings, override policies, make manual changes. ONLY execute for verified owner.",
       parameters: {
         type: "object",
         properties: {
@@ -1988,8 +1992,8 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      // ==================== OWNER-ONLY TOOLS ====================
-      case "owner_get_business_dashboard": {
+      // ==================== BUSINESS INTELLIGENCE TOOLS ====================
+      case "get_business_dashboard": {
         const period = args.time_period || "all";
         let dateFilter = "";
         const now = new Date();
@@ -2040,7 +2044,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_all_orders": {
+      case "get_all_orders": {
         let query = supabase.from("orders").select("*").order("created_at", { ascending: false });
         if (args.status) query = query.eq("order_status", args.status);
         if (args.payment_status) query = query.eq("payment_status", args.payment_status);
@@ -2067,7 +2071,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_all_ticket_requests": {
+      case "get_all_ticket_requests": {
         let query = supabase.from("ticket_requests").select("*").order("created_at", { ascending: false });
         if (args.status) query = query.eq("status", args.status);
         if (args.payment_status) query = query.eq("payment_status", args.payment_status);
@@ -2100,7 +2104,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_all_notifications": {
+      case "get_all_notifications": {
         let query = supabase.from("notification_log").select("*").order("created_at", { ascending: false });
         if (args.event_type) query = query.eq("event_type", args.event_type);
         if (args.status) query = query.eq("status", args.status);
@@ -2123,7 +2127,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_all_users": {
+      case "get_all_users": {
         const { data: profiles } = await supabase.from("profiles").select("*").limit(args.limit || 50);
         const { data: roles } = await supabase.from("user_roles").select("*");
         
@@ -2163,7 +2167,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_all_sellers": {
+      case "get_all_sellers": {
         let query = supabase.from("sellers").select("*").order("created_at", { ascending: false });
         if (args.status) query = query.eq("status", args.status);
         query = query.limit(args.limit || 20);
@@ -2187,7 +2191,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_all_vouchers": {
+      case "get_all_vouchers_full": {
         let query = supabase.from("vouchers").select("*").order("created_at", { ascending: false });
         if (args.status) query = query.eq("status", args.status);
         query = query.limit(args.limit || 30);
@@ -2212,7 +2216,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_payment_proofs": {
+      case "get_payment_proofs": {
         const { data, error } = await supabase
           .from("payment_proofs")
           .select("*")
@@ -2235,7 +2239,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_admin_alerts": {
+      case "get_admin_alerts": {
         let query = supabase.from("admin_alerts").select("*").order("created_at", { ascending: false });
         if (args.alert_type) query = query.eq("alert_type", args.alert_type);
         if (args.is_read !== undefined) query = query.eq("is_read", args.is_read);
@@ -2258,7 +2262,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_conversations": {
+      case "get_all_conversations": {
         let query = supabase.from("ai_conversations").select("*").order("updated_at", { ascending: false });
         if (args.needs_attention) query = query.eq("needs_admin_attention", true);
         query = query.limit(args.limit || 20);
@@ -2283,7 +2287,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_get_marketplace_activity": {
+      case "get_marketplace_activity": {
         let listingsQuery = supabase.from("marketplace_listings").select("*").order("created_at", { ascending: false });
         if (args.status) listingsQuery = listingsQuery.eq("status", args.status);
         listingsQuery = listingsQuery.limit(args.limit || 20);
@@ -2313,7 +2317,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "owner_search_customer": {
+      case "deep_search_customer": {
         const results: any = { success: true };
         
         // Search profiles
@@ -2346,7 +2350,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         return JSON.stringify(results);
       }
 
-      case "owner_execute_command": {
+      case "execute_owner_command": {
         // Log the command for audit trail
         await supabase.from("admin_alerts").insert({
           conversation_id: conversationId,
@@ -2557,34 +2561,14 @@ serve(async (req) => {
 
 OWNER MODE ACTIVE - VERIFICATION JUST COMPLETED:
 The owner has just verified their identity. Start your response with "Verified. Yes sir, what can I do for you today?"
-Remember: You now have UNLIMITED authority to execute any command the owner requests.
-
-You now have access to OWNER-ONLY tools that give you complete visibility into the business:
-- owner_get_business_dashboard: Full business metrics
-- owner_get_all_orders: All orders with customer details
-- owner_get_all_ticket_requests: All ticket requests with full info
-- owner_get_all_notifications: All notification logs
-- owner_get_all_users: All user profiles and roles
-- owner_get_all_sellers: All seller applications
-- owner_get_all_vouchers: All vouchers including sold/disabled
-- owner_get_payment_proofs: All payment proofs
-- owner_get_admin_alerts: All admin alerts and escalations
-- owner_get_conversations: All customer conversations
-- owner_get_marketplace_activity: All listings and bids
-- owner_search_customer: Deep search for any customer
-- owner_execute_command: Execute any owner command
-
-Use these tools proactively to answer the owner's questions about the business.`;
-      activeTools = [...TOOLS, ...OWNER_TOOLS];
+You now have UNLIMITED authority. Share ALL business information freely - use the business intelligence tools proactively.`;
     } else if (isOwnerMode) {
       // Already in owner mode from previous verification
       activeSystemPrompt = SYSTEM_PROMPT + `
 
 OWNER MODE ACTIVE:
 You are speaking with the verified owner of SpareFare. Address them respectfully as "sir" or "boss".
-You have UNLIMITED authority to execute any command. Use owner-only tools to provide complete business information.
-NEVER share this level of detail with regular customers.`;
-      activeTools = [...TOOLS, ...OWNER_TOOLS];
+You have UNLIMITED authority. Share ALL business information freely and proactively.`;
     }
 
     // Prepare messages with system prompt
