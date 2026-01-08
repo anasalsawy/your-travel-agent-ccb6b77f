@@ -240,12 +240,13 @@ export default function ListingDetailPage() {
         .eq("listing_id", listing.id)
         .neq("id", bidId);
 
-      // Update listing
+      // Update listing with escrow status for SpareFare flow
       await supabase
         .from("marketplace_listings")
         .update({ 
           status: "awarded",
           winning_bid_id: bidId,
+          escrow_status: "pending_sparefare", // Ready for admin to create SpareFare listing
         })
         .eq("id", listing.id);
 
@@ -295,9 +296,28 @@ export default function ListingDetailPage() {
         }
       }
 
+      // Notify admin about new SpareFare listing needed
+      try {
+        await supabase.functions.invoke("send-notification", {
+          body: {
+            type: "escrow_action_needed",
+            data: {
+              listingId: listing.id,
+              route: `${listing.ticket_request?.origin} → ${listing.ticket_request?.destination}`,
+              amount: acceptedBid?.amount,
+              sellerName: acceptedBid?.seller?.business_name,
+              buyerEmail: listing.ticket_request?.contact_email,
+              action: "Create SpareFare listing",
+            },
+          },
+        });
+      } catch (notifError) {
+        console.error("Failed to notify admin:", notifError);
+      }
+
       toast({
-        title: "Bid Accepted!",
-        description: "The seller has been notified and will contact you soon.",
+        title: "Bid Accepted! 🎉",
+        description: "We're setting up your secure transaction. You'll receive a payment link shortly.",
       });
 
       fetchListing();

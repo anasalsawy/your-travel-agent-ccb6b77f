@@ -13,10 +13,12 @@ import {
   Calendar,
   Clock,
   ArrowRight,
-  Eye
+  Eye,
+  Store
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import { TicketRequestDetail } from "@/components/dashboard/TicketRequestDetail";
+import { MarketplaceOrders } from "@/components/dashboard/MarketplaceOrders";
 
 type Order = Tables<"orders"> & { vouchers: Tables<"vouchers"> | null };
 type TicketRequest = Tables<"ticket_requests">;
@@ -186,7 +188,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/vouchers")}>
               <Package className="w-8 h-8 text-primary mb-3" />
               <h3 className="font-semibold mb-1">Browse Vouchers</h3>
@@ -197,6 +199,11 @@ export default function DashboardPage() {
               <h3 className="font-semibold mb-1">Request Ticket</h3>
               <p className="text-sm text-muted-foreground">Get a personalized quote</p>
             </div>
+            <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/marketplace")}>
+              <Store className="w-8 h-8 text-success mb-3" />
+              <h3 className="font-semibold mb-1">Marketplace</h3>
+              <p className="text-sm text-muted-foreground">Bid on travel requests</p>
+            </div>
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/faq")}>
               <User className="w-8 h-8 text-warning mb-3" />
               <h3 className="font-semibold mb-1">Need Help?</h3>
@@ -204,8 +211,11 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Marketplace Orders Section */}
+          {user && <MarketplaceOrders userId={user.id} />}
+
           {/* Tabs */}
-          <Tabs defaultValue="orders" className="space-y-6">
+          <Tabs defaultValue="orders" className="space-y-6 mt-8">
             <TabsList className="bg-card border border-border">
               <TabsTrigger value="orders">Voucher Orders ({orders.length})</TabsTrigger>
               <TabsTrigger value="requests">Ticket Requests ({requests.length})</TabsTrigger>
