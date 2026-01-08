@@ -433,6 +433,7 @@ export type Database = {
           id: string
           logo_url: string | null
           status: Database["public"]["Enums"]["seller_status"]
+          telegram_chat_id: number | null
           updated_at: string
           user_id: string
           website: string | null
@@ -449,6 +450,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           status?: Database["public"]["Enums"]["seller_status"]
+          telegram_chat_id?: number | null
           updated_at?: string
           user_id: string
           website?: string | null
@@ -465,6 +467,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           status?: Database["public"]["Enums"]["seller_status"]
+          telegram_chat_id?: number | null
           updated_at?: string
           user_id?: string
           website?: string | null
