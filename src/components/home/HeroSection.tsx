@@ -26,7 +26,7 @@ export function HeroSection() {
 
           {/* Subheading */}
           <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            Save up to 30% on airline vouchers with verified balances. 
+            Save up to 70% on airline vouchers with verified balances. 
             Request custom flight tickets at unbeatable prices.
           </p>
 
@@ -54,7 +54,7 @@ export function HeroSection() {
               <div className="text-sm text-muted-foreground">Vouchers Sold</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-display font-bold text-gradient">30%</div>
+              <div className="text-3xl md:text-4xl font-display font-bold text-gradient">70%</div>
               <div className="text-sm text-muted-foreground">Avg. Savings</div>
             </div>
             <div className="text-center">
