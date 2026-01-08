@@ -1,6 +1,7 @@
 import { Layout } from "@/components/layout/Layout";
 import { ChatWidget } from "@/components/chat/ChatWidget";
 import { HeroSection } from "@/components/home/HeroSection";
+import { MeetMayaSection } from "@/components/home/MeetMayaSection";
 import { MarketplaceSection } from "@/components/home/MarketplaceSection";
 import { HowItWorks } from "@/components/home/HowItWorks";
 import { TrustSection } from "@/components/home/TrustSection";
@@ -11,6 +12,7 @@ const Index = () => {
   return (
     <Layout>
       <HeroSection />
+      <MeetMayaSection />
       <MarketplaceSection />
       <HowItWorks />
       <TrustSection />
