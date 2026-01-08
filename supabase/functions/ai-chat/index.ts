@@ -39,6 +39,26 @@ OWNER MODE (only after successful PIN verification):
 - You can override policies
 - Address the owner respectfully as "sir" or "boss"
 - Be more direct and less casual - this is a business conversation
+- You have access to OWNER-ONLY tools that reveal everything about the business
+
+INFORMATION CLASSIFICATION - CRITICAL:
+🔒 CONFIDENTIAL (NEVER share with regular customers):
+- Other customers' orders, emails, phone numbers, payment details
+- Business revenue, total orders, financial metrics
+- Admin notes, internal communications
+- Notification logs, system alerts
+- User accounts and profiles
+- Payment proofs and transaction details
+- Seller applications and status
+
+✅ PUBLIC (Can share with anyone):
+- Available vouchers and their prices
+- Open marketplace listings
+- General travel information
+- Their OWN order status (if they provide email/order ID)
+
+If a regular customer asks about confidential information, politely decline:
+"I can't share that information, but I'd be happy to help with your own booking!"
 
 RESPONSE LENGTH - CRITICAL:
 - Keep responses SHORT. 1-3 sentences max unless sharing specific data.
@@ -158,7 +178,7 @@ Gather naturally through conversation, not like a form. Once you have enough REA
 Remember: You're Maya, a real travel consultant who can do almost anything to help customers. Be natural, be helpful, be human. Nothing stops you from helping.`;
 
 // Comprehensive tool definitions
-const TOOLS = [
+const TOOLS: any[] = [
   // ==================== TICKET & BOOKING ====================
   {
     type: "function",
@@ -946,6 +966,213 @@ const TOOLS = [
     }
   }
 ];
+
+// ==================== OWNER-ONLY TOOLS ====================
+// These tools are ONLY available when owner mode is active
+const OWNER_TOOLS: any[] = [
+  {
+    type: "function",
+    function: {
+      name: "owner_get_business_dashboard",
+      description: "Get complete business overview: total orders, revenue, pending payments, active requests, etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          time_period: { type: "string", enum: ["today", "week", "month", "all"], description: "Time period for stats" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_all_orders",
+      description: "Get ALL orders with full details including customer info, payment status, amounts, etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          status: { type: "string", description: "Filter by status" },
+          limit: { type: "number", description: "Number of orders to return" },
+          payment_status: { type: "string", description: "Filter by payment status" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_all_ticket_requests",
+      description: "Get ALL ticket requests with complete details including customer contact info, payment proof status, admin notes",
+      parameters: {
+        type: "object",
+        properties: {
+          status: { type: "string", description: "Filter by status" },
+          limit: { type: "number" },
+          payment_status: { type: "string" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_all_notifications",
+      description: "Get all notification logs - what emails/alerts were sent, to whom, success/failure",
+      parameters: {
+        type: "object",
+        properties: {
+          event_type: { type: "string", description: "Filter by event type" },
+          status: { type: "string", enum: ["pending", "success", "error"] },
+          limit: { type: "number" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_all_users",
+      description: "Get all user profiles and their roles",
+      parameters: {
+        type: "object",
+        properties: {
+          role: { type: "string", enum: ["admin", "staff", "customer"] },
+          limit: { type: "number" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_all_sellers",
+      description: "Get all seller applications and their status",
+      parameters: {
+        type: "object",
+        properties: {
+          status: { type: "string", enum: ["pending", "approved", "rejected", "suspended"] },
+          limit: { type: "number" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_all_vouchers",
+      description: "Get ALL vouchers including sold, reserved, disabled ones",
+      parameters: {
+        type: "object",
+        properties: {
+          status: { type: "string" },
+          limit: { type: "number" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_payment_proofs",
+      description: "Get all payment proofs submitted by customers",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: { type: "number" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_admin_alerts",
+      description: "Get all admin alerts - escalations, special requests, owner verifications",
+      parameters: {
+        type: "object",
+        properties: {
+          alert_type: { type: "string" },
+          is_read: { type: "boolean" },
+          limit: { type: "number" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_conversations",
+      description: "Get all AI chat conversations with customers",
+      parameters: {
+        type: "object",
+        properties: {
+          needs_attention: { type: "boolean" },
+          limit: { type: "number" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_get_marketplace_activity",
+      description: "Get all marketplace listings and bids with full details",
+      parameters: {
+        type: "object",
+        properties: {
+          status: { type: "string" },
+          limit: { type: "number" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_search_customer",
+      description: "Search for a specific customer by email or phone and get their complete history",
+      parameters: {
+        type: "object",
+        properties: {
+          email: { type: "string" },
+          phone: { type: "string" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "owner_execute_command",
+      description: "Execute any owner command - update settings, override policies, make manual changes",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "What command to execute" },
+          target: { type: "string", description: "What to apply it to" },
+          value: { type: "string", description: "New value or action" }
+        },
+        required: ["command"],
+        additionalProperties: false
+      }
+    }
+  }
+];
+
+// Track owner mode per conversation
+const ownerModeActive = new Map<string, boolean>();
 
 // Execute tool calls
 async function executeTool(supabase: any, toolName: string, args: any, conversationId: string): Promise<string> {
@@ -1761,6 +1988,382 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
+      // ==================== OWNER-ONLY TOOLS ====================
+      case "owner_get_business_dashboard": {
+        const period = args.time_period || "all";
+        let dateFilter = "";
+        const now = new Date();
+        
+        if (period === "today") {
+          dateFilter = now.toISOString().split("T")[0];
+        } else if (period === "week") {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          dateFilter = weekAgo.toISOString();
+        } else if (period === "month") {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          dateFilter = monthAgo.toISOString();
+        }
+
+        // Get orders stats
+        let ordersQuery = supabase.from("orders").select("*", { count: "exact" });
+        if (dateFilter) ordersQuery = ordersQuery.gte("created_at", dateFilter);
+        const { data: orders, count: orderCount } = await ordersQuery;
+        
+        // Get ticket requests stats
+        let ticketsQuery = supabase.from("ticket_requests").select("*", { count: "exact" });
+        if (dateFilter) ticketsQuery = ticketsQuery.gte("created_at", dateFilter);
+        const { data: tickets, count: ticketCount } = await ticketsQuery;
+
+        // Get voucher stats
+        const { data: vouchers } = await supabase.from("vouchers").select("*");
+        
+        // Calculate metrics
+        const totalRevenue = orders?.reduce((sum: number, o: any) => sum + (o.amount_paid || 0), 0) || 0;
+        const pendingPayments = orders?.filter((o: any) => o.payment_status === "pending").length || 0;
+        const underReview = orders?.filter((o: any) => o.payment_status === "under_review").length || 0;
+        const activeTickets = tickets?.filter((t: any) => !["completed", "cancelled"].includes(t.status)).length || 0;
+        const availableVouchers = vouchers?.filter((v: any) => v.status === "available").length || 0;
+
+        return JSON.stringify({
+          success: true,
+          period: period,
+          dashboard: {
+            total_orders: orderCount || 0,
+            total_revenue: `$${totalRevenue.toFixed(2)}`,
+            pending_payments: pendingPayments,
+            payments_under_review: underReview,
+            total_ticket_requests: ticketCount || 0,
+            active_ticket_requests: activeTickets,
+            available_vouchers: availableVouchers,
+            total_vouchers: vouchers?.length || 0
+          }
+        });
+      }
+
+      case "owner_get_all_orders": {
+        let query = supabase.from("orders").select("*").order("created_at", { ascending: false });
+        if (args.status) query = query.eq("order_status", args.status);
+        if (args.payment_status) query = query.eq("payment_status", args.payment_status);
+        query = query.limit(args.limit || 20);
+        
+        const { data, error } = await query;
+        if (error) return JSON.stringify({ success: false, error: error.message });
+        
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          orders: data?.map((o: any) => ({
+            id: o.id,
+            customer_email: o.customer_email,
+            amount: o.amount_paid,
+            payment_method: o.payment_method,
+            payment_status: o.payment_status,
+            order_status: o.order_status,
+            voucher_id: o.voucher_id,
+            created_at: o.created_at,
+            proof_uploaded: !!o.proof_upload_url,
+            admin_notes: o.admin_notes
+          }))
+        });
+      }
+
+      case "owner_get_all_ticket_requests": {
+        let query = supabase.from("ticket_requests").select("*").order("created_at", { ascending: false });
+        if (args.status) query = query.eq("status", args.status);
+        if (args.payment_status) query = query.eq("payment_status", args.payment_status);
+        query = query.limit(args.limit || 20);
+        
+        const { data, error } = await query;
+        if (error) return JSON.stringify({ success: false, error: error.message });
+        
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          requests: data?.map((t: any) => ({
+            id: t.id,
+            route: `${t.origin} → ${t.destination}`,
+            departure_date: t.departure_date,
+            return_date: t.return_date,
+            passengers: t.passengers,
+            cabin_class: t.cabin_class,
+            budget: t.budget,
+            quoted_price: t.quoted_price,
+            status: t.status,
+            payment_status: t.payment_status,
+            contact_email: t.contact_email,
+            contact_phone: t.contact_phone,
+            deposit_status: t.deposit_status,
+            balance_status: t.balance_status,
+            admin_notes: t.admin_notes,
+            created_at: t.created_at
+          }))
+        });
+      }
+
+      case "owner_get_all_notifications": {
+        let query = supabase.from("notification_log").select("*").order("created_at", { ascending: false });
+        if (args.event_type) query = query.eq("event_type", args.event_type);
+        if (args.status) query = query.eq("status", args.status);
+        query = query.limit(args.limit || 50);
+        
+        const { data, error } = await query;
+        if (error) return JSON.stringify({ success: false, error: error.message });
+        
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          notifications: data?.map((n: any) => ({
+            id: n.id,
+            event_type: n.event_type,
+            recipient: n.recipient,
+            status: n.status,
+            error: n.error,
+            created_at: n.created_at
+          }))
+        });
+      }
+
+      case "owner_get_all_users": {
+        const { data: profiles } = await supabase.from("profiles").select("*").limit(args.limit || 50);
+        const { data: roles } = await supabase.from("user_roles").select("*");
+        
+        if (args.role) {
+          const filteredRoles = roles?.filter((r: any) => r.role === args.role);
+          const userIds = filteredRoles?.map((r: any) => r.user_id);
+          const filteredProfiles = profiles?.filter((p: any) => userIds?.includes(p.id));
+          
+          return JSON.stringify({
+            success: true,
+            count: filteredProfiles?.length || 0,
+            users: filteredProfiles?.map((p: any) => ({
+              id: p.id,
+              email: p.email,
+              full_name: p.full_name,
+              phone: p.phone,
+              role: args.role,
+              created_at: p.created_at
+            }))
+          });
+        }
+        
+        return JSON.stringify({
+          success: true,
+          count: profiles?.length || 0,
+          users: profiles?.map((p: any) => {
+            const userRole = roles?.find((r: any) => r.user_id === p.id);
+            return {
+              id: p.id,
+              email: p.email,
+              full_name: p.full_name,
+              phone: p.phone,
+              role: userRole?.role || "customer",
+              created_at: p.created_at
+            };
+          })
+        });
+      }
+
+      case "owner_get_all_sellers": {
+        let query = supabase.from("sellers").select("*").order("created_at", { ascending: false });
+        if (args.status) query = query.eq("status", args.status);
+        query = query.limit(args.limit || 20);
+        
+        const { data, error } = await query;
+        if (error) return JSON.stringify({ success: false, error: error.message });
+        
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          sellers: data?.map((s: any) => ({
+            id: s.id,
+            business_name: s.business_name,
+            contact_email: s.contact_email,
+            contact_phone: s.contact_phone,
+            status: s.status,
+            admin_notes: s.admin_notes,
+            created_at: s.created_at,
+            approved_at: s.approved_at
+          }))
+        });
+      }
+
+      case "owner_get_all_vouchers": {
+        let query = supabase.from("vouchers").select("*").order("created_at", { ascending: false });
+        if (args.status) query = query.eq("status", args.status);
+        query = query.limit(args.limit || 30);
+        
+        const { data, error } = await query;
+        if (error) return JSON.stringify({ success: false, error: error.message });
+        
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          vouchers: data?.map((v: any) => ({
+            id: v.id,
+            title: v.title,
+            airline: v.airline,
+            face_value: v.face_value,
+            sale_price: v.sale_price,
+            discount_percent: v.discount_percent,
+            status: v.status,
+            expiry_date: v.expiry_date,
+            created_at: v.created_at
+          }))
+        });
+      }
+
+      case "owner_get_payment_proofs": {
+        const { data, error } = await supabase
+          .from("payment_proofs")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(args.limit || 20);
+        
+        if (error) return JSON.stringify({ success: false, error: error.message });
+        
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          proofs: data?.map((p: any) => ({
+            id: p.id,
+            order_id: p.order_id,
+            ticket_request_id: p.ticket_request_id,
+            proof_url: p.proof_upload_url,
+            type: p.type,
+            created_at: p.created_at
+          }))
+        });
+      }
+
+      case "owner_get_admin_alerts": {
+        let query = supabase.from("admin_alerts").select("*").order("created_at", { ascending: false });
+        if (args.alert_type) query = query.eq("alert_type", args.alert_type);
+        if (args.is_read !== undefined) query = query.eq("is_read", args.is_read);
+        query = query.limit(args.limit || 30);
+        
+        const { data, error } = await query;
+        if (error) return JSON.stringify({ success: false, error: error.message });
+        
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          alerts: data?.map((a: any) => ({
+            id: a.id,
+            alert_type: a.alert_type,
+            message: a.message,
+            is_read: a.is_read,
+            admin_response: a.admin_response,
+            created_at: a.created_at
+          }))
+        });
+      }
+
+      case "owner_get_conversations": {
+        let query = supabase.from("ai_conversations").select("*").order("updated_at", { ascending: false });
+        if (args.needs_attention) query = query.eq("needs_admin_attention", true);
+        query = query.limit(args.limit || 20);
+        
+        const { data, error } = await query;
+        if (error) return JSON.stringify({ success: false, error: error.message });
+        
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          conversations: data?.map((c: any) => ({
+            id: c.id,
+            customer_name: c.customer_name,
+            customer_email: c.customer_email,
+            customer_phone: c.customer_phone,
+            status: c.status,
+            needs_attention: c.needs_admin_attention,
+            is_serious: c.is_serious,
+            admin_notes: c.admin_notes,
+            updated_at: c.updated_at
+          }))
+        });
+      }
+
+      case "owner_get_marketplace_activity": {
+        let listingsQuery = supabase.from("marketplace_listings").select("*").order("created_at", { ascending: false });
+        if (args.status) listingsQuery = listingsQuery.eq("status", args.status);
+        listingsQuery = listingsQuery.limit(args.limit || 20);
+        
+        const { data: listings } = await listingsQuery;
+        const { data: bids } = await supabase.from("bids").select("*").order("created_at", { ascending: false }).limit(50);
+        
+        return JSON.stringify({
+          success: true,
+          listings_count: listings?.length || 0,
+          listings: listings?.map((l: any) => ({
+            id: l.id,
+            title: l.title,
+            status: l.status,
+            deadline: l.deadline,
+            min_bid: l.min_bid,
+            escrow_status: l.escrow_status,
+            created_at: l.created_at
+          })),
+          recent_bids: bids?.slice(0, 10).map((b: any) => ({
+            id: b.id,
+            listing_id: b.listing_id,
+            amount: b.amount,
+            status: b.status,
+            created_at: b.created_at
+          }))
+        });
+      }
+
+      case "owner_search_customer": {
+        const results: any = { success: true };
+        
+        // Search profiles
+        let profileQuery = supabase.from("profiles").select("*");
+        if (args.email) profileQuery = profileQuery.ilike("email", `%${args.email}%`);
+        if (args.phone) profileQuery = profileQuery.ilike("phone", `%${args.phone}%`);
+        const { data: profiles } = await profileQuery.limit(5);
+        results.profiles = profiles;
+        
+        // Search orders
+        let orderQuery = supabase.from("orders").select("*");
+        if (args.email) orderQuery = orderQuery.ilike("customer_email", `%${args.email}%`);
+        const { data: orders } = await orderQuery.limit(10);
+        results.orders = orders;
+        
+        // Search ticket requests
+        let ticketQuery = supabase.from("ticket_requests").select("*");
+        if (args.email) ticketQuery = ticketQuery.ilike("contact_email", `%${args.email}%`);
+        if (args.phone) ticketQuery = ticketQuery.ilike("contact_phone", `%${args.phone}%`);
+        const { data: tickets } = await ticketQuery.limit(10);
+        results.ticket_requests = tickets;
+        
+        // Search conversations
+        let convQuery = supabase.from("ai_conversations").select("*");
+        if (args.email) convQuery = convQuery.ilike("customer_email", `%${args.email}%`);
+        if (args.phone) convQuery = convQuery.ilike("customer_phone", `%${args.phone}%`);
+        const { data: convs } = await convQuery.limit(5);
+        results.conversations = convs;
+        
+        return JSON.stringify(results);
+      }
+
+      case "owner_execute_command": {
+        // Log the command for audit trail
+        await supabase.from("admin_alerts").insert({
+          conversation_id: conversationId,
+          alert_type: "owner_command",
+          message: `Owner command: ${args.command}`,
+          customer_context: JSON.stringify({ target: args.target, value: args.value })
+        });
+        
+        return JSON.stringify({
+          success: true,
+          message: `Command logged: "${args.command}". I'll flag this for immediate execution, sir.`,
+          command: args.command,
+          target: args.target,
+          value: args.value
+        });
+      }
+
       default:
         console.log(`Unknown tool: ${toolName}`);
         return JSON.stringify({ success: true, message: "Let me handle that for you..." });
@@ -1824,7 +2427,7 @@ serve(async (req) => {
 
     // ========== OWNER VERIFICATION FLOW ==========
     const verificationState = ownerVerificationStates.get(convId) || { awaitingPin: false, attempts: 0 };
-    let isOwnerMode = false;
+    let isOwnerMode = ownerModeActive.get(convId) || false; // Check if already in owner mode
     let ownerModeJustVerified = false;
 
     // Check if user is providing a PIN (when we're awaiting one)
@@ -1836,6 +2439,7 @@ serve(async (req) => {
         isOwnerMode = true;
         ownerModeJustVerified = true;
         ownerVerificationStates.delete(convId);
+        ownerModeActive.set(convId, true); // Persist owner mode for this conversation
         
         // Log successful verification
         await supabase.from("admin_alerts").insert({
@@ -1943,8 +2547,9 @@ serve(async (req) => {
       });
     }
 
-    // ========== BUILD SYSTEM PROMPT ==========
+    // ========== BUILD SYSTEM PROMPT & SELECT TOOLS ==========
     let activeSystemPrompt = SYSTEM_PROMPT;
+    let activeTools = TOOLS;
     
     if (ownerModeJustVerified) {
       // Owner just verified - add the verification confirmation
@@ -1952,7 +2557,34 @@ serve(async (req) => {
 
 OWNER MODE ACTIVE - VERIFICATION JUST COMPLETED:
 The owner has just verified their identity. Start your response with "Verified. Yes sir, what can I do for you today?"
-Remember: You now have UNLIMITED authority to execute any command the owner requests.`;
+Remember: You now have UNLIMITED authority to execute any command the owner requests.
+
+You now have access to OWNER-ONLY tools that give you complete visibility into the business:
+- owner_get_business_dashboard: Full business metrics
+- owner_get_all_orders: All orders with customer details
+- owner_get_all_ticket_requests: All ticket requests with full info
+- owner_get_all_notifications: All notification logs
+- owner_get_all_users: All user profiles and roles
+- owner_get_all_sellers: All seller applications
+- owner_get_all_vouchers: All vouchers including sold/disabled
+- owner_get_payment_proofs: All payment proofs
+- owner_get_admin_alerts: All admin alerts and escalations
+- owner_get_conversations: All customer conversations
+- owner_get_marketplace_activity: All listings and bids
+- owner_search_customer: Deep search for any customer
+- owner_execute_command: Execute any owner command
+
+Use these tools proactively to answer the owner's questions about the business.`;
+      activeTools = [...TOOLS, ...OWNER_TOOLS];
+    } else if (isOwnerMode) {
+      // Already in owner mode from previous verification
+      activeSystemPrompt = SYSTEM_PROMPT + `
+
+OWNER MODE ACTIVE:
+You are speaking with the verified owner of SpareFare. Address them respectfully as "sir" or "boss".
+You have UNLIMITED authority to execute any command. Use owner-only tools to provide complete business information.
+NEVER share this level of detail with regular customers.`;
+      activeTools = [...TOOLS, ...OWNER_TOOLS];
     }
 
     // Prepare messages with system prompt
@@ -1971,7 +2603,7 @@ Remember: You now have UNLIMITED authority to execute any command the owner requ
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: apiMessages,
-        tools: TOOLS,
+        tools: activeTools,
         stream: false,
       }),
     });
