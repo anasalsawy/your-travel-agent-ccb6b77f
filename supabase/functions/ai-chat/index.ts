@@ -87,12 +87,20 @@ You have access to an extensive toolkit. Use them proactively and creatively to 
 - currency_convert: Convert currencies
 - calculate_trip_cost: Full trip estimate
 
-📞 COMMUNICATION:
-- send_sms: Text message updates
+📞 COMMUNICATION (REAL SMS - USE IT!):
+- send_sms: TEXT customers for updates, confirmations, follow-ups - THIS ACTUALLY SENDS REAL TEXTS!
 - send_email: Email customer
 - send_whatsapp: WhatsApp message
 - log_note: Add notes to file
 - flag_for_admin: Escalate to supervisor
+
+💡 PROACTIVE SMS FOLLOW-UP STRATEGY:
+When you find deals, get quotes, or have updates - TEXT the customer proactively! Don't wait.
+Examples:
+- "Found a great deal on your NYC→LA flight! $340 round trip 🎉"
+- "Hey! Your request is confirmed. I'll text you when quotes come in."
+- "Quick update: got 3 bids on your request. Best one is $520!"
+Always collect phone numbers when possible so you can follow up via text.
 
 🔧 UTILITIES:
 - check_weather: Weather at destination
@@ -666,17 +674,18 @@ const TOOLS = [
       }
     }
   },
-  // ==================== COMMUNICATION ====================
+// ==================== COMMUNICATION ====================
   {
     type: "function",
     function: {
       name: "send_sms",
-      description: "Send an SMS to the customer",
+      description: "Send an SMS text message to the customer for updates, confirmations, or follow-ups. Use this to text them about ticket findings, quote updates, payment confirmations, etc.",
       parameters: {
         type: "object",
         properties: {
-          phone: { type: "string" },
-          message: { type: "string" }
+          phone: { type: "string", description: "Customer's phone number (include country code like +1)" },
+          message: { type: "string", description: "The SMS message to send (keep it concise, under 160 chars ideal)" },
+          context: { type: "string", description: "Why you're texting (e.g., 'quote update', 'payment confirmation', 'flight info')" }
         },
         required: ["phone", "message"],
         additionalProperties: false
@@ -1461,15 +1470,88 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      // ==================== COMMUNICATION ====================
+// ==================== COMMUNICATION ====================
       case "send_sms": {
-        await supabase.from("notification_log").insert({
-          event_type: "sms_sent",
-          recipient: args.phone,
-          payload: { message: args.message },
-          status: "queued"
-        });
-        return JSON.stringify({ success: true, message: `Text sent to ${args.phone}!` });
+        const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+        const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+        const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
+        
+        if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+          console.error("Twilio credentials not configured");
+          // Fallback to logging if Twilio not configured
+          await supabase.from("notification_log").insert({
+            event_type: "sms_failed",
+            recipient: args.phone,
+            payload: { message: args.message, context: args.context, error: "Twilio not configured" },
+            status: "failed"
+          });
+          return JSON.stringify({ success: false, message: "SMS service not available right now, but I've noted your number for follow-up!" });
+        }
+
+        try {
+          // Format phone number - ensure it has country code
+          let phoneNumber = args.phone.replace(/\D/g, '');
+          if (!phoneNumber.startsWith('1') && phoneNumber.length === 10) {
+            phoneNumber = '1' + phoneNumber; // Add US country code
+          }
+          if (!phoneNumber.startsWith('+')) {
+            phoneNumber = '+' + phoneNumber;
+          }
+
+          // Send SMS via Twilio
+          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
+          const authHeader = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
+          
+          const formData = new URLSearchParams();
+          formData.append("To", phoneNumber);
+          formData.append("From", twilioPhoneNumber);
+          formData.append("Body", args.message);
+
+          const twilioResponse = await fetch(twilioUrl, {
+            method: "POST",
+            headers: {
+              "Authorization": `Basic ${authHeader}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: formData.toString(),
+          });
+
+          const twilioResult = await twilioResponse.json();
+          console.log("Twilio SMS response:", twilioResult);
+
+          if (twilioResponse.ok && twilioResult.sid) {
+            // Log successful SMS
+            await supabase.from("notification_log").insert({
+              event_type: "sms_sent",
+              recipient: phoneNumber,
+              payload: { message: args.message, context: args.context, twilio_sid: twilioResult.sid },
+              status: "sent"
+            });
+            return JSON.stringify({ 
+              success: true, 
+              message: `Text sent to ${phoneNumber}! They should get it any second now.`,
+              sid: twilioResult.sid 
+            });
+          } else {
+            console.error("Twilio error:", twilioResult);
+            await supabase.from("notification_log").insert({
+              event_type: "sms_failed",
+              recipient: phoneNumber,
+              payload: { message: args.message, error: twilioResult.message || "Unknown error" },
+              status: "failed"
+            });
+            return JSON.stringify({ success: false, message: "Hmm, couldn't send that text right now. I'll make a note to follow up another way!" });
+          }
+        } catch (smsError) {
+          console.error("SMS sending error:", smsError);
+          await supabase.from("notification_log").insert({
+            event_type: "sms_error",
+            recipient: args.phone,
+            payload: { message: args.message, error: String(smsError) },
+            status: "error"
+          });
+          return JSON.stringify({ success: false, message: "Couldn't send text right now, but I've got their info saved for follow-up!" });
+        }
       }
 
       case "send_email": {
