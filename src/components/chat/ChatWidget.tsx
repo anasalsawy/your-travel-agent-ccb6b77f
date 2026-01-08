@@ -73,61 +73,7 @@ export function ChatWidget() {
     setInput("");
     setIsLoading(true);
 
-    // Calculate delay based on message complexity (longer messages = more "thinking" time)
-    const baseDelay = 2000;
-    const complexityDelay = Math.min(userMessage.content.length * 20, 2000);
-    const randomDelay = Math.random() * 1500;
-    const totalDelay = baseDelay + complexityDelay + randomDelay;
-
-    // Add system acknowledgment message first (appears as automated)
-    const acknowledgments = [
-      "Thanks for your message! Someone will be with you momentarily.",
-      "We received your message. A travel consultant will be right with you.",
-      "Got it! Please hold on, someone will assist you shortly.",
-      "Message received! One of our team members will be with you in just a moment.",
-    ];
-    const ackMessage = acknowledgments[Math.floor(Math.random() * acknowledgments.length)];
-    
-    setMessages((prev) => [...prev, { role: "system", content: ackMessage }]);
-    
-    // Wait before Maya "joins"
-    await new Promise((resolve) => setTimeout(resolve, totalDelay * 0.6));
-
-    // Show "Maya has joined the chat" notification
-    if (!hasJoined || Math.random() > 0.7) {
-      setMessages((prev) => [
-        ...prev,
-        { 
-          role: "system", 
-          content: "Maya has joined the chat",
-          isNotification: true 
-        },
-      ]);
-      setHasJoined(true);
-      await new Promise((resolve) => setTimeout(resolve, 800));
-    }
-
-    // Occasionally add a "let me check" message
-    const shouldAddCheckMessage = Math.random() > 0.6;
-    if (shouldAddCheckMessage) {
-      const checkMessages = [
-        "Let me look into that for you...",
-        "One sec, checking our system...",
-        "Great question! Let me find that info...",
-        "Hmm, let me see what we have...",
-      ];
-      setMessages((prev) => [
-        ...prev,
-        { 
-          role: "assistant", 
-          content: checkMessages[Math.floor(Math.random() * checkMessages.length)],
-          agentName: "Maya" 
-        },
-      ]);
-      await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 800));
-    }
-
-    // Show "Maya is typing..." indicator
+    // Show "Maya is typing..." indicator immediately - no fake delays
     setIsTyping(true);
     setTypingAgent("Maya");
 
