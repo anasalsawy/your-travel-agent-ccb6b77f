@@ -32,14 +32,14 @@ export function PromoBanner() {
       <div className="container mx-auto px-4 py-2.5 flex items-center justify-center gap-2 text-sm md:text-base">
         <Plane className="h-4 w-4 shrink-0 hidden sm:block" />
         <p className="text-center pr-6">
-          <span className="font-semibold">Domestic Flights:</span>{" "}
-          <span className="font-bold">$99 Economy</span> | <span className="font-bold">$249 Business/First</span>
-          <span className="hidden md:inline"> — Save up to 70%</span>
+          <span className="font-bold">Name Your Price</span>
+          <span className="hidden sm:inline"> — Set your budget, sellers compete, pay even less</span>
+          <span className="sm:hidden"> — Pay less than you ask!</span>
           <Link 
             to="/request-ticket" 
             className="ml-2 underline underline-offset-2 hover:opacity-80 transition-opacity"
           >
-            Book now →
+            Try it →
           </Link>
         </p>
         <button
