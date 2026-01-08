@@ -15,7 +15,7 @@ export function CTASection() {
             Ready to Save on Your Next Flight?
           </h2>
           <p className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto">
-            Join hundreds of smart travelers who save 20-30% on every trip with verified airline vouchers.
+            Join hundreds of smart travelers who save up to 70% on every trip with verified airline vouchers.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button variant="hero" size="xl" asChild>

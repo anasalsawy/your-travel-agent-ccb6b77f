@@ -56,7 +56,7 @@ export function MarketplaceSection() {
           </h2>
           <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
             Post your travel request and receive competitive bids from our network of verified travel agents. 
-            Compare offers and save up to 30% on your next trip.
+            Compare offers and save up to 70% on your next trip.
           </p>
         </div>
 
