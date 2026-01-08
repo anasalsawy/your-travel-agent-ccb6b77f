@@ -33,8 +33,8 @@ export function PromoBanner() {
         <Plane className="h-4 w-4 shrink-0 hidden sm:block" />
         <p className="text-center pr-6">
           <span className="font-semibold">Domestic Flights:</span>{" "}
-          <span className="font-bold">$199 Economy</span> | <span className="font-bold">$399 Business/First</span>
-          <span className="hidden md:inline"> — Valid until Dec 31</span>
+          <span className="font-bold">$99 Economy</span> | <span className="font-bold">$249 Business/First</span>
+          <span className="hidden md:inline"> — Save up to 70%</span>
           <Link 
             to="/request-ticket" 
             className="ml-2 underline underline-offset-2 hover:opacity-80 transition-opacity"
