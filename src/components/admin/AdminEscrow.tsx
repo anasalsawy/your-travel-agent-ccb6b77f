@@ -6,8 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { Copy, ExternalLink, Check, Clock, DollarSign, Plane, Send } from "lucide-react";
+import { Copy, ExternalLink, Check, Clock, DollarSign, Plane, Send, Mail } from "lucide-react";
 import { format } from "date-fns";
+import {
+  notifyBuyerEscrowUpdate,
+  notifySellerEscrowUpdate,
+  notifyEscrowSpareFareListed,
+} from "@/lib/notifications";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface EscrowListing {
   id: string;
@@ -84,6 +90,7 @@ export default function AdminEscrow() {
   const [newStatus, setNewStatus] = useState<EscrowStatus>("none");
   const [updating, setUpdating] = useState(false);
   const [filter, setFilter] = useState<string>("active");
+  const [sendNotifications, setSendNotifications] = useState(true);
 
   useEffect(() => {
     fetchListings();
@@ -191,11 +198,22 @@ export default function AdminEscrow() {
     setUpdating(true);
 
     try {
+      const oldStatus = selectedListing.escrow_status;
       const updates: any = {
         escrow_status: newStatus,
         escrow_notes: escrowNotes,
         sparefare_listing_url: sparefareUrl || null,
       };
+
+      // Track notification timestamps
+      if (sendNotifications && newStatus !== oldStatus) {
+        if (selectedListing.buyer_email) {
+          updates.buyer_notified_at = new Date().toISOString();
+        }
+        if (selectedListing.winning_bid?.seller?.contact_email) {
+          updates.seller_notified_at = new Date().toISOString();
+        }
+      }
 
       if (newStatus === "completed") {
         updates.completed_at = new Date().toISOString();
@@ -208,10 +226,73 @@ export default function AdminEscrow() {
 
       if (error) throw error;
 
-      toast({
-        title: "Updated",
-        description: "Escrow status updated successfully",
-      });
+      // Send notifications if enabled and status changed
+      if (sendNotifications && newStatus !== oldStatus) {
+        const route = `${selectedListing.ticket_request?.origin} → ${selectedListing.ticket_request?.destination}`;
+        const amount = selectedListing.winning_bid?.amount || 0;
+        const departureDate = selectedListing.ticket_request?.departure_date
+          ? format(new Date(selectedListing.ticket_request.departure_date), "MMM dd, yyyy")
+          : "TBD";
+
+        // Check if this is specifically the "on_sparefare" status with a URL
+        const isSpareFareListing = newStatus === "on_sparefare" && sparefareUrl;
+
+        // Notify buyer
+        if (selectedListing.buyer_email) {
+          if (isSpareFareListing) {
+            await notifyEscrowSpareFareListed(selectedListing.buyer_email, {
+              listingId: selectedListing.id,
+              route,
+              sparefareUrl: sparefareUrl!,
+              amount,
+              departureDate,
+              isBuyer: true,
+            });
+          } else {
+            await notifyBuyerEscrowUpdate(selectedListing.buyer_email, {
+              listingId: selectedListing.id,
+              route,
+              escrowStatus: newStatus,
+              sparefareUrl: sparefareUrl || undefined,
+              amount,
+              sellerName: selectedListing.winning_bid?.seller?.business_name || "Seller",
+            });
+          }
+        }
+
+        // Notify seller
+        if (selectedListing.winning_bid?.seller?.contact_email) {
+          if (isSpareFareListing) {
+            await notifyEscrowSpareFareListed(selectedListing.winning_bid.seller.contact_email, {
+              listingId: selectedListing.id,
+              route,
+              sparefareUrl: sparefareUrl!,
+              amount,
+              departureDate,
+              isBuyer: false,
+            });
+          } else {
+            await notifySellerEscrowUpdate(selectedListing.winning_bid.seller.contact_email, {
+              listingId: selectedListing.id,
+              route,
+              escrowStatus: newStatus,
+              sparefareUrl: sparefareUrl || undefined,
+              amount,
+              buyerEmail: selectedListing.buyer_email || "Buyer",
+            });
+          }
+        }
+
+        toast({
+          title: "Updated & Notified",
+          description: "Escrow status updated and notifications sent",
+        });
+      } else {
+        toast({
+          title: "Updated",
+          description: "Escrow status updated successfully",
+        });
+      }
 
       setSelectedListing(null);
       fetchListings();
@@ -442,8 +523,22 @@ export default function AdminEscrow() {
                 />
               </div>
 
-              <div className="p-3 bg-blue-50 rounded-md">
-                <p className="text-sm font-medium text-blue-800 mb-2">Quick Actions:</p>
+              <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-md">
+                <Checkbox
+                  id="send-notifications"
+                  checked={sendNotifications}
+                  onCheckedChange={(checked) => setSendNotifications(checked as boolean)}
+                />
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-blue-600" />
+                  <label htmlFor="send-notifications" className="text-sm font-medium text-blue-800 cursor-pointer">
+                    Send email notifications to buyer & seller
+                  </label>
+                </div>
+              </div>
+
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm font-medium mb-2">Quick Actions:</p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"

@@ -23,7 +23,10 @@ type NotificationType =
   | "balance_under_review"
   | "balance_approved"
   | "balance_rejected"
-  | "balance_past_due";
+  | "balance_past_due"
+  // Escrow/SpareFare notification types
+  | "escrow_status_update"
+  | "escrow_sparefare_listed";
 
 interface NotificationData {
   type: NotificationType;
@@ -431,5 +434,64 @@ export async function notifyBalancePastDue(
     type: "balance_past_due" as NotificationType,
     data: requestData,
     customerEmail,
+  });
+}
+
+// ========== ESCROW/SPAREFARE NOTIFICATIONS ==========
+
+// Notify buyer about escrow status change
+export async function notifyBuyerEscrowUpdate(
+  buyerEmail: string,
+  data: {
+    listingId: string;
+    route: string;
+    escrowStatus: string;
+    sparefareUrl?: string;
+    amount: number;
+    sellerName: string;
+  }
+) {
+  return sendNotification({
+    type: "escrow_status_update" as NotificationType,
+    data,
+    customerEmail: buyerEmail,
+  });
+}
+
+// Notify seller about escrow status change
+export async function notifySellerEscrowUpdate(
+  sellerEmail: string,
+  data: {
+    listingId: string;
+    route: string;
+    escrowStatus: string;
+    sparefareUrl?: string;
+    amount: number;
+    buyerEmail: string;
+  }
+) {
+  return sendNotification({
+    type: "escrow_status_update" as NotificationType,
+    data,
+    customerEmail: sellerEmail,
+  });
+}
+
+// Notify both parties when SpareFare listing is created
+export async function notifyEscrowSpareFareListed(
+  recipientEmail: string,
+  data: {
+    listingId: string;
+    route: string;
+    sparefareUrl: string;
+    amount: number;
+    departureDate: string;
+    isBuyer: boolean;
+  }
+) {
+  return sendNotification({
+    type: "escrow_sparefare_listed" as NotificationType,
+    data,
+    customerEmail: recipientEmail,
   });
 }

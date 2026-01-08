@@ -57,6 +57,9 @@ type NotificationType =
   | "bid_accepted"
   | "bid_rejected"
   | "listing_expired"
+  // Escrow/SpareFare notifications
+  | "escrow_status_update"
+  | "escrow_sparefare_listed"
   // Legacy/misc
   | "payment_under_review"
   | "test_email";
@@ -666,6 +669,68 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
               <p><strong>Route:</strong> ${data.origin} → ${data.destination}</p>
             </div>
             <p>You can create a new listing or request a custom ticket quote.</p>
+          </div>
+        `,
+      };
+
+    // ========== ESCROW/SPAREFARE EMAILS ==========
+    case "escrow_status_update":
+      const statusMessages: Record<string, { title: string; color: string; message: string }> = {
+        awaiting_payment: { title: "Awaiting Payment", color: "#d97706", message: "Payment is being awaited for this transaction." },
+        funds_held: { title: "Funds Secured", color: "#2563eb", message: "Funds have been received and are being held securely." },
+        pending_sparefare: { title: "Ready for Escrow", color: "#7c3aed", message: "Transaction is ready to be listed on SpareFare for secure escrow." },
+        on_sparefare: { title: "Listed on SpareFare", color: "#ea580c", message: "This transaction is now listed on SpareFare for secure escrow completion." },
+        completed: { title: "Transaction Complete", color: "#16a34a", message: "The transaction has been successfully completed!" },
+        cancelled: { title: "Transaction Cancelled", color: "#dc2626", message: "This transaction has been cancelled." },
+      };
+      const statusInfo = statusMessages[data.escrowStatus] || { title: "Status Update", color: "#6b7280", message: "There has been an update to your transaction." };
+      return {
+        subject: `Escrow Update: ${statusInfo.title} - ${data.route}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: ${statusInfo.color};">${statusInfo.title}</h1>
+            <p>${statusInfo.message}</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.route}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+              ${data.sellerName ? `<p><strong>Seller:</strong> ${data.sellerName}</p>` : ""}
+              ${data.buyerEmail ? `<p><strong>Buyer:</strong> ${data.buyerEmail}</p>` : ""}
+            </div>
+            ${data.sparefareUrl ? `
+              <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #f59e0b;">
+                <p style="font-weight: bold; margin: 0 0 10px 0;">🔒 SpareFare Escrow Link:</p>
+                <a href="${data.sparefareUrl}" style="color: #2563eb; word-break: break-all;">${data.sparefareUrl}</a>
+                <p style="font-size: 14px; color: #6b7280; margin: 15px 0 0 0;">Use this link to complete the secure transaction on SpareFare.</p>
+              </div>
+            ` : ""}
+            <p>If you have any questions, please contact our support team.</p>
+          </div>
+        `,
+      };
+
+    case "escrow_sparefare_listed":
+      return {
+        subject: `🔒 Your Transaction is Now on SpareFare - ${data.route}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #ea580c;">Transaction Listed on SpareFare! 🔒</h1>
+            <p>Your ${data.isBuyer ? "ticket purchase" : "ticket sale"} is now protected by SpareFare's secure escrow service.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.route}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+              <p><strong>Departure:</strong> ${data.departureDate}</p>
+            </div>
+            <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #f59e0b;">
+              <p style="font-weight: bold; margin: 0 0 10px 0;">🔗 Complete Your Transaction:</p>
+              <a href="${data.sparefareUrl}" style="color: #2563eb; font-size: 18px; word-break: break-all;">${data.sparefareUrl}</a>
+            </div>
+            <h3>How SpareFare Protects You:</h3>
+            <ul>
+              <li>Funds are held securely until both parties confirm</li>
+              <li>${data.isBuyer ? "Your payment is protected until you receive valid tickets" : "You'll receive payment once the buyer confirms receipt"}</li>
+              <li>Dispute resolution available if issues arise</li>
+            </ul>
+            <p style="font-weight: bold;">Please complete the transaction on SpareFare as soon as possible.</p>
           </div>
         `,
       };
