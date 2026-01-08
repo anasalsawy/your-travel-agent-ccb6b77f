@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { Copy, ExternalLink, Check, Clock, DollarSign, Plane, Send, Mail } from "lucide-react";
+import { Copy, ExternalLink, Check, Clock, DollarSign, Plane, Send, Mail, History } from "lucide-react";
 import { format } from "date-fns";
 import {
   notifyBuyerEscrowUpdate,
@@ -28,6 +28,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+interface NotificationLogEntry {
+  id: string;
+  event_type: string;
+  recipient: string | null;
+  status: string;
+  error: string | null;
+  created_at: string;
+  payload: any;
+}
 
 interface EscrowListing {
   id: string;
@@ -92,6 +103,8 @@ export default function AdminEscrow() {
   const [filter, setFilter] = useState<string>("active");
   const [sendNotifications, setSendNotifications] = useState(true);
   const [notifying, setNotifying] = useState(false);
+  const [notificationHistory, setNotificationHistory] = useState<NotificationLogEntry[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     fetchListings();
@@ -187,11 +200,32 @@ export default function AdminEscrow() {
     }
   };
 
+  const fetchNotificationHistory = async (listingId: string) => {
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from("notification_log")
+        .select("*")
+        .eq("record_id", listingId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      setNotificationHistory(data || []);
+    } catch (error) {
+      console.error("Error fetching notification history:", error);
+      setNotificationHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const openEditDialog = (listing: EscrowListing) => {
     setSelectedListing(listing);
     setSparefareUrl(listing.sparefare_listing_url || "");
     setEscrowNotes(listing.escrow_notes || "");
     setNewStatus((listing.escrow_status || "none") as EscrowStatus);
+    fetchNotificationHistory(listing.id);
   };
 
   const updateEscrowStatus = async () => {
@@ -640,6 +674,50 @@ export default function AdminEscrow() {
                     {notifying ? "Sending..." : "Notify Parties"}
                   </Button>
                 </div>
+              </div>
+
+              {/* Notification History */}
+              <div className="p-3 bg-muted rounded-md">
+                <div className="flex items-center gap-2 mb-2">
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm font-medium">Notification History</p>
+                </div>
+                {loadingHistory ? (
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                ) : notificationHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No notifications sent yet</p>
+                ) : (
+                  <ScrollArea className="h-[120px]">
+                    <div className="space-y-2">
+                      {notificationHistory.map((log) => (
+                        <div key={log.id} className="flex items-start justify-between text-xs border-b border-border pb-2 last:border-0">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <Badge 
+                                variant="outline" 
+                                className={log.status === "sent" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}
+                              >
+                                {log.status}
+                              </Badge>
+                              <span className="text-muted-foreground">
+                                {log.event_type.replace(/_/g, " ")}
+                              </span>
+                            </div>
+                            <p className="text-muted-foreground truncate max-w-[200px]">
+                              → {log.recipient || "Unknown"}
+                            </p>
+                            {log.error && (
+                              <p className="text-red-500 truncate max-w-[200px]">{log.error}</p>
+                            )}
+                          </div>
+                          <span className="text-muted-foreground whitespace-nowrap">
+                            {format(new Date(log.created_at), "MMM d, h:mm a")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
               </div>
             </div>
           )}
