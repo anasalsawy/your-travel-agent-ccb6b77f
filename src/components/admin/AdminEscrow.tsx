@@ -71,26 +71,37 @@ interface EscrowListing {
   buyer_email: string | null;
 }
 
-type EscrowStatus = 'none' | 'awaiting_payment' | 'funds_held' | 'pending_sparefare' | 'on_sparefare' | 'completed' | 'cancelled';
+type EscrowStatus = 'none' | 'pending_sparefare' | 'on_sparefare' | 'awaiting_payment' | 'funds_held' | 'completed' | 'cancelled';
 
 const escrowStatusLabels: Record<EscrowStatus, string> = {
   none: 'No Escrow',
-  awaiting_payment: 'Awaiting Payment',
-  funds_held: 'Funds Held',
   pending_sparefare: 'Ready for SpareFare',
   on_sparefare: 'Listed on SpareFare',
+  awaiting_payment: 'Awaiting Payment',
+  funds_held: 'Funds Held',
   completed: 'Completed',
   cancelled: 'Cancelled',
 };
 
 const escrowStatusColors: Record<EscrowStatus, string> = {
   none: 'bg-muted text-muted-foreground',
-  awaiting_payment: 'bg-yellow-100 text-yellow-800',
-  funds_held: 'bg-blue-100 text-blue-800',
   pending_sparefare: 'bg-purple-100 text-purple-800',
   on_sparefare: 'bg-orange-100 text-orange-800',
+  awaiting_payment: 'bg-yellow-100 text-yellow-800',
+  funds_held: 'bg-blue-100 text-blue-800',
   completed: 'bg-green-100 text-green-800',
   cancelled: 'bg-red-100 text-red-800',
+};
+
+// Workflow progression hints
+const escrowWorkflowHints: Record<EscrowStatus, { next: EscrowStatus | null; action: string }> = {
+  none: { next: 'pending_sparefare', action: 'Accept bid to start escrow' },
+  pending_sparefare: { next: 'on_sparefare', action: '1. Copy summary → 2. Create SpareFare listing → 3. Paste URL below' },
+  on_sparefare: { next: 'funds_held', action: 'Waiting for buyer to complete payment on SpareFare' },
+  awaiting_payment: { next: 'funds_held', action: 'Confirm payment received' },
+  funds_held: { next: 'completed', action: 'Verify ticket transfer, then mark complete' },
+  completed: { next: null, action: 'Transaction finished!' },
+  cancelled: { next: null, action: 'Transaction was cancelled' },
 };
 
 export default function AdminEscrow() {
@@ -630,6 +641,7 @@ export default function AdminEscrow() {
 
           {selectedListing && (
             <div className="space-y-4">
+              {/* Listing Summary */}
               <div className="p-3 bg-muted rounded-md">
                 <p className="font-medium">
                   {selectedListing.ticket_request?.origin} → {selectedListing.ticket_request?.destination}
@@ -641,6 +653,19 @@ export default function AdminEscrow() {
                 </p>
               </div>
 
+              {/* Workflow Hint - Action Required */}
+              {escrowWorkflowHints[(selectedListing.escrow_status || "none") as EscrowStatus] && (
+                <div className="p-3 rounded-md border-2 border-dashed border-primary/40 bg-primary/5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium text-primary">Next Step:</span>
+                  </div>
+                  <p className="text-sm text-foreground">
+                    {escrowWorkflowHints[(selectedListing.escrow_status || "none") as EscrowStatus].action}
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Escrow Status</label>
                 <Select value={newStatus} onValueChange={(v) => setNewStatus(v as EscrowStatus)}>
@@ -649,12 +674,12 @@ export default function AdminEscrow() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Escrow</SelectItem>
-                    <SelectItem value="awaiting_payment">Awaiting Payment</SelectItem>
-                    <SelectItem value="funds_held">Funds Held</SelectItem>
-                    <SelectItem value="pending_sparefare">Ready for SpareFare</SelectItem>
-                    <SelectItem value="on_sparefare">Listed on SpareFare</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="pending_sparefare">🟣 Ready for SpareFare</SelectItem>
+                    <SelectItem value="on_sparefare">🟠 Listed on SpareFare</SelectItem>
+                    <SelectItem value="awaiting_payment">🟡 Awaiting Payment</SelectItem>
+                    <SelectItem value="funds_held">🔵 Funds Held</SelectItem>
+                    <SelectItem value="completed">🟢 Completed</SelectItem>
+                    <SelectItem value="cancelled">🔴 Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -665,7 +690,11 @@ export default function AdminEscrow() {
                   placeholder="https://sparefare.net/listing/..."
                   value={sparefareUrl}
                   onChange={(e) => setSparefareUrl(e.target.value)}
+                  className={newStatus === "on_sparefare" && !sparefareUrl ? "border-orange-400" : ""}
                 />
+                {newStatus === "on_sparefare" && !sparefareUrl && (
+                  <p className="text-xs text-orange-600">⚠️ Add SpareFare URL to send payment link to buyer</p>
+                )}
               </div>
 
               <div className="space-y-2">

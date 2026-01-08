@@ -64,6 +64,7 @@ type NotificationType =
   // Escrow/SpareFare notifications
   | "escrow_status_update"
   | "escrow_sparefare_listed"
+  | "escrow_action_needed"
   // Legacy/misc
   | "payment_under_review"
   | "test_email";
@@ -739,6 +740,34 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
         `,
       };
 
+    case "escrow_action_needed":
+      return {
+        subject: `⚠️ Action Needed: Create SpareFare Listing - ${data.route}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #ea580c;">New Escrow Transaction Ready 🔔</h1>
+            <p>A bid has been accepted and requires SpareFare listing creation.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Route:</strong> ${data.route}</p>
+              <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
+              <p><strong>Seller:</strong> ${data.sellerName}</p>
+              <p><strong>Buyer:</strong> ${data.buyerEmail}</p>
+            </div>
+            <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #f59e0b;">
+              <p style="font-weight: bold; margin: 0 0 10px 0;">📋 Action Required:</p>
+              <ol style="margin: 0; padding-left: 20px;">
+                <li>Go to Admin → Escrow Management</li>
+                <li>Click "Copy SpareFare Summary"</li>
+                <li>Create listing on SpareFare</li>
+                <li>Paste the SpareFare URL back into admin</li>
+                <li>Update status to "Listed on SpareFare"</li>
+              </ol>
+            </div>
+            <p>The buyer and seller are waiting for the payment link.</p>
+          </div>
+        `,
+      };
+
     default:
       return {
         subject: "Notification - Your Travel Agent",
@@ -761,6 +790,7 @@ const ADMIN_NOTIFICATION_TYPES = [
   "ticket_payment_proof_uploaded",
   "admin_ticket_completed",
   "admin_ticket_rejected",
+  "escrow_action_needed",
   "test_email"
 ];
 
