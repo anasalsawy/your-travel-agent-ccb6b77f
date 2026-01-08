@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { Copy, ExternalLink, Check, Clock, DollarSign, Plane, Send, Mail, History } from "lucide-react";
+import { Copy, ExternalLink, Check, Clock, DollarSign, Plane, Send, Mail, History, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import {
   notifyBuyerEscrowUpdate,
   notifySellerEscrowUpdate,
   notifyEscrowSpareFareListed,
+  sendNotification,
 } from "@/lib/notifications";
 import {
   Dialog,
@@ -105,6 +106,7 @@ export default function AdminEscrow() {
   const [notifying, setNotifying] = useState(false);
   const [notificationHistory, setNotificationHistory] = useState<NotificationLogEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchListings();
@@ -710,9 +712,52 @@ export default function AdminEscrow() {
                               <p className="text-red-500 truncate max-w-[200px]">{log.error}</p>
                             )}
                           </div>
-                          <span className="text-muted-foreground whitespace-nowrap">
-                            {format(new Date(log.created_at), "MMM d, h:mm a")}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {log.status === "failed" && log.payload && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                disabled={resendingId === log.id}
+                                onClick={async () => {
+                                  setResendingId(log.id);
+                                  try {
+                                    const result = await sendNotification({
+                                      type: log.event_type as any,
+                                      data: log.payload,
+                                      customerEmail: log.recipient || undefined,
+                                    });
+                                    if (result.success) {
+                                      toast({
+                                        title: "Notification Resent",
+                                        description: `Successfully resent to ${log.recipient}`,
+                                      });
+                                      fetchNotificationHistory(selectedListing!.id);
+                                    } else {
+                                      toast({
+                                        title: "Resend Failed",
+                                        description: result.error || "Unknown error",
+                                        variant: "destructive",
+                                      });
+                                    }
+                                  } catch (error: any) {
+                                    toast({
+                                      title: "Resend Failed",
+                                      description: error.message,
+                                      variant: "destructive",
+                                    });
+                                  } finally {
+                                    setResendingId(null);
+                                  }
+                                }}
+                              >
+                                <RotateCcw className={`h-3 w-3 ${resendingId === log.id ? "animate-spin" : ""}`} />
+                              </Button>
+                            )}
+                            <span className="text-muted-foreground whitespace-nowrap">
+                              {format(new Date(log.created_at), "MMM d, h:mm a")}
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
