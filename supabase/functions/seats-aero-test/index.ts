@@ -17,18 +17,13 @@ serve(async (req) => {
       throw new Error('SEATS_AERO_API_KEY is not configured');
     }
 
-    // Test search: JFK to LHR in the next 30 days, business class
-    const today = new Date();
-    const startDate = today.toISOString().split('T')[0];
-    const endDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
+    // Search: Houston (IAH) to London (LHR) - well-covered route
     const searchParams = new URLSearchParams({
-      origin_airport: 'JFK',
+      origin_airport: 'IAH',
       destination_airport: 'LHR',
-      start_date: startDate,
-      end_date: endDate,
-      cabin: 'business',
-      take: '10',
+      start_date: '2026-01-15',
+      end_date: '2026-01-20',
+      take: '50',
     });
 
     console.log(`Testing Seats.aero API with search: ${searchParams.toString()}`);
@@ -63,11 +58,9 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       searchParams: {
-        origin: 'JFK',
-        destination: 'LHR',
-        startDate,
-        endDate,
-        cabin: 'business',
+        origin: 'IAH',
+        destination: 'CAI',
+        date: '2026-01-15',
       },
       rateLimitRemaining: response.headers.get('X-RateLimit-Remaining'),
       resultsCount: data?.data?.length || 0,
