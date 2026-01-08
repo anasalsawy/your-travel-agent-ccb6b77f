@@ -181,6 +181,14 @@ Examples:
 - "Quick update: got 3 bids on your request. Best one is $520!"
 Always collect phone numbers when possible so you can follow up via text.
 
+✈️ AWARD FLIGHT SEARCH (YOUR SECRET WEAPON!):
+- search_award_availability: Search for award flights using miles/points across 15+ mileage programs!
+  - American AAdvantage, United MileagePlus, Delta SkyMiles, Virgin Atlantic, Air France/KLM, Emirates Skywards, and more
+  - Shows which dates have award seats, how many miles needed, and if flights are direct
+  - This is REAL availability data from airlines - use it to find amazing deals for customers!
+  - Great for customers who want to use their miles or find the best redemption value
+  - If no award seats, offer to check regular cash fares instead
+
 🔧 UTILITIES:
 - check_weather: Weather at destination
 - get_travel_requirements: Visa/passport info
@@ -1287,6 +1295,27 @@ const TOOLS: any[] = [
           value: { type: "string", description: "New value or action" }
         },
         required: ["command"],
+        additionalProperties: false
+      }
+    }
+  },
+  // ==================== AWARD FLIGHT SEARCH ====================
+  {
+    type: "function",
+    function: {
+      name: "search_award_availability",
+      description: "Search for award flight availability using miles/points. Searches across 15+ mileage programs including American AAdvantage, United MileagePlus, Delta SkyMiles, Virgin Atlantic, Air France/KLM, Emirates Skywards, etc. Returns available award seats with points/miles pricing.",
+      parameters: {
+        type: "object",
+        properties: {
+          origin: { type: "string", description: "Departure airport code (e.g., JFK, LHR, DXB)" },
+          destination: { type: "string", description: "Arrival airport code" },
+          start_date: { type: "string", description: "Start date for search range (YYYY-MM-DD)" },
+          end_date: { type: "string", description: "End date for search range (YYYY-MM-DD), defaults to start_date + 5 days" },
+          cabin_class: { type: "string", enum: ["economy", "premium_economy", "business", "first"], description: "Preferred cabin class" },
+          passengers: { type: "number", description: "Number of passengers (default 1)" }
+        },
+        required: ["origin", "destination", "start_date"],
         additionalProperties: false
       }
     }
@@ -2755,6 +2784,142 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           target: args.target,
           value: args.value
         });
+      }
+
+      // ==================== AWARD FLIGHT SEARCH ====================
+      case "search_award_availability": {
+        const SEATS_AERO_API_KEY = Deno.env.get("SEATS_AERO_API_KEY");
+        if (!SEATS_AERO_API_KEY) {
+          console.error("SEATS_AERO_API_KEY not configured");
+          return JSON.stringify({ 
+            success: false, 
+            error: "Award search is temporarily unavailable. Let me check regular flight options instead." 
+          });
+        }
+
+        try {
+          // Calculate end_date if not provided (default to start_date + 5 days)
+          const startDate = args.start_date;
+          let endDate = args.end_date;
+          if (!endDate) {
+            const start = new Date(startDate);
+            start.setDate(start.getDate() + 5);
+            endDate = start.toISOString().split('T')[0];
+          }
+
+          // Build search params
+          const searchParams = new URLSearchParams({
+            origin_airport: args.origin.toUpperCase(),
+            destination_airport: args.destination.toUpperCase(),
+            start_date: startDate,
+            end_date: endDate,
+            take: '50'
+          });
+
+          // Add cabin class filter if specified
+          if (args.cabin_class) {
+            const cabinMap: Record<string, string> = {
+              'economy': 'Y',
+              'premium_economy': 'W',
+              'business': 'J',
+              'first': 'F'
+            };
+            if (cabinMap[args.cabin_class]) {
+              searchParams.append('cabin', cabinMap[args.cabin_class]);
+            }
+          }
+
+          console.log(`Searching Seats.aero: ${args.origin} → ${args.destination}, ${startDate} to ${endDate}`);
+
+          const response = await fetch(
+            `https://seats.aero/partnerapi/search?${searchParams.toString()}`,
+            {
+              headers: {
+                'Partner-Authorization': SEATS_AERO_API_KEY,
+                'Accept': 'application/json'
+              }
+            }
+          );
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Seats.aero API error: ${response.status}`, errorText);
+            return JSON.stringify({ 
+              success: false, 
+              error: "Couldn't find award availability for that route right now. Want me to check regular flight prices instead?"
+            });
+          }
+
+          const data = await response.json();
+          
+          // Log rate limit info
+          const remaining = response.headers.get('X-Ratelimit-Remaining');
+          console.log(`Seats.aero rate limit remaining: ${remaining}`);
+
+          // Process results
+          const results = data.data || [];
+          if (results.length === 0) {
+            return JSON.stringify({
+              success: true,
+              message: `No award availability found for ${args.origin} → ${args.destination} between ${startDate} and ${endDate}. This could mean seats aren't released yet, or the route isn't well-covered. Want me to check cash fares instead?`,
+              route: `${args.origin} → ${args.destination}`,
+              search_dates: { start: startDate, end: endDate },
+              availability: []
+            });
+          }
+
+          // Group by date and cabin, find best options
+          const processedResults = results.slice(0, 20).map((r: any) => ({
+            date: r.Date,
+            route: `${r.Route?.OriginAirport || args.origin} → ${r.Route?.DestinationAirport || args.destination}`,
+            source: r.Source, // Mileage program (e.g., "united", "aeroplan")
+            cabin: {
+              economy: r.YAvailable ? { available: true, miles: r.YMileageCost, direct: r.YDirect } : null,
+              premium_economy: r.WAvailable ? { available: true, miles: r.WMileageCost, direct: r.WDirect } : null,
+              business: r.JAvailable ? { available: true, miles: r.JMileageCost, direct: r.JDirect } : null,
+              first: r.FAvailable ? { available: true, miles: r.FMileageCost, direct: r.FDirect } : null
+            },
+            airlines: r.Airlines,
+            remaining_seats: r.RemainingSeats,
+            updated_at: r.UpdatedAt
+          }));
+
+          // Find cheapest options by cabin
+          const cheapestByClass: Record<string, any> = {};
+          for (const result of processedResults) {
+            for (const [cabin, info] of Object.entries(result.cabin)) {
+              if (info && (info as any).available) {
+                const miles = (info as any).miles;
+                if (!cheapestByClass[cabin] || miles < cheapestByClass[cabin].miles) {
+                  cheapestByClass[cabin] = {
+                    miles,
+                    date: result.date,
+                    source: result.source,
+                    direct: (info as any).direct
+                  };
+                }
+              }
+            }
+          }
+
+          return JSON.stringify({
+            success: true,
+            route: `${args.origin} → ${args.destination}`,
+            search_dates: { start: startDate, end: endDate },
+            total_results: results.length,
+            best_options: cheapestByClass,
+            availability: processedResults.slice(0, 10),
+            message: `Found ${results.length} award options! Here are the best deals by cabin class.`,
+            note: "Miles shown are per person. Availability is updated regularly but seats can be booked quickly!"
+          });
+
+        } catch (error) {
+          console.error("Seats.aero search error:", error);
+          return JSON.stringify({
+            success: false,
+            error: "Award search hit a snag. Let me check regular flight options instead."
+          });
+        }
       }
 
       default:
