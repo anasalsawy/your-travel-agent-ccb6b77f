@@ -1,7 +1,8 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Plane, User, LogOut } from "lucide-react";
+import { Menu, User, LogOut } from "lucide-react";
+import logo from "@/assets/logo-option-1.png";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -61,9 +62,7 @@ export function Header() {
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center group-hover:shadow-glow transition-all duration-300">
-              <Plane className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img src={logo} alt="Your Travel Agent" className="w-10 h-10 object-contain group-hover:scale-105 transition-transform duration-300" />
             <span className="font-display font-bold text-lg hidden sm:block">
               Your Travel Agent
             </span>
