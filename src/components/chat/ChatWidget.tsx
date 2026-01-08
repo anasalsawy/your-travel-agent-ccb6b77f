@@ -45,6 +45,21 @@ export function ChatWidget() {
     setInput("");
     setIsLoading(true);
 
+    // Add acknowledgment message first (human-like delay)
+    const acknowledgments = [
+      "Got your message! Let me take a look... 🙂",
+      "Thanks for reaching out! One moment...",
+      "I see your message! Give me just a sec...",
+      "Hey, I got this! Just checking something for you...",
+    ];
+    const ackMessage = acknowledgments[Math.floor(Math.random() * acknowledgments.length)];
+    
+    setMessages((prev) => [...prev, { role: "assistant", content: ackMessage }]);
+    
+    // Wait 2-4 seconds to simulate human reading/typing delay
+    const delay = 2000 + Math.random() * 2000;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
     let assistantContent = "";
 
     try {
@@ -81,8 +96,12 @@ export function ChatWidget() {
       const decoder = new TextDecoder();
       let textBuffer = "";
 
-      // Add empty assistant message to update
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      // Replace acknowledgment with actual response (start fresh)
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: "assistant", content: "" };
+        return updated;
+      });
 
       while (true) {
         const { done, value } = await reader.read();
@@ -124,13 +143,14 @@ export function ChatWidget() {
       }
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
           role: "assistant",
           content: "Oops, something went wrong on my end! Mind trying that again?",
-        },
-      ]);
+        };
+        return updated;
+      });
     } finally {
       setIsLoading(false);
     }
