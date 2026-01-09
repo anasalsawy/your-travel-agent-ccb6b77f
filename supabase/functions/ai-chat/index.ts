@@ -166,10 +166,11 @@ Be PROACTIVE - check for pending escrow actions and handle them without being as
 - currency_convert: Convert currencies
 - calculate_trip_cost: Full trip estimate
 
-📞 COMMUNICATION (REAL SMS - USE IT!):
+📞 COMMUNICATION (REAL SMS & CALLS!):
 - send_sms: TEXT customers for updates, confirmations, follow-ups - THIS ACTUALLY SENDS REAL TEXTS!
 - send_email: Email customer
 - send_whatsapp: WhatsApp message
+- make_phone_call: MAKE OUTBOUND PHONE CALLS on owner's behalf - OWNER MODE ONLY! Call airlines, customers, agencies, anyone!
 - log_note: Add notes to file
 - flag_for_admin: Escalate to supervisor
 
@@ -1316,6 +1317,24 @@ const TOOLS: any[] = [
           passengers: { type: "number", description: "Number of passengers (default 1)" }
         },
         required: ["origin", "destination", "start_date"],
+        additionalProperties: false
+      }
+    }
+  },
+  // ==================== PHONE CALLS (OWNER ONLY) ====================
+  {
+    type: "function",
+    function: {
+      name: "make_phone_call",
+      description: "Make an outbound phone call on behalf of the owner. ONLY execute for verified owner. Maya will call the specified phone number and have a conversation based on the provided context.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone_number: { type: "string", description: "Phone number to call (with or without country code)" },
+          first_message: { type: "string", description: "What Maya should say when the call connects" },
+          context: { type: "string", description: "Context about why calling - who is this person, what's the purpose" }
+        },
+        required: ["phone_number"],
         additionalProperties: false
       }
     }
@@ -2918,6 +2937,60 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           return JSON.stringify({
             success: false,
             error: "Award search hit a snag. Let me check regular flight options instead."
+          });
+        }
+      }
+
+      // ==================== PHONE CALLS ====================
+      case "make_phone_call": {
+        // Check if owner mode is active
+        const isInOwnerMode = ownerModeActive.get(conversationId);
+        if (!isInOwnerMode) {
+          return JSON.stringify({
+            success: false,
+            error: "Phone calls can only be made by the verified owner. Please verify your identity first."
+          });
+        }
+
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+        try {
+          const response = await fetch(`${supabaseUrl}/functions/v1/make-outbound-call`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              phone_number: args.phone_number,
+              first_message: args.first_message || "Hi, this is Maya from Your Travel Agent. How are you doing today?",
+              context: args.context || ""
+            }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok || result.error) {
+            console.error("Phone call failed:", result);
+            return JSON.stringify({
+              success: false,
+              error: result.error || "Failed to make the call",
+              details: result.details
+            });
+          }
+
+          return JSON.stringify({
+            success: true,
+            message: `Calling ${args.phone_number} now! I'll handle the conversation.`,
+            call_sid: result.call_sid
+          });
+
+        } catch (error) {
+          console.error("Phone call error:", error);
+          return JSON.stringify({
+            success: false,
+            error: "Something went wrong making the call. Let me try again..."
           });
         }
       }
