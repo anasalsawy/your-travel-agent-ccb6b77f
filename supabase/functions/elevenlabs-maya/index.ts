@@ -56,7 +56,31 @@ serve(async (req) => {
       (body && typeof body === "object" ? pickFirstString(body) : "") ||
       "";
 
-    const conversationId = body.conversation_id || body.session_id || crypto.randomUUID();
+
+    // Try to get a stable conversation id from either the payload OR headers.
+    // Some ElevenLabs tool/webhook configurations do NOT include conversation_id in the JSON body.
+    // If we generate a random UUID each turn, Maya will "reset" and re-introduce herself.
+    const headerConversationId =
+      req.headers.get("x-elevenlabs-conversation-id") ||
+      req.headers.get("x-conversation-id") ||
+      req.headers.get("x-session-id") ||
+      req.headers.get("x-elevenlabs-session-id") ||
+      "";
+
+    console.log("[Maya Voice Bridge] Conversation IDs:", {
+      body_conversation_id: body.conversation_id,
+      body_session_id: body.session_id,
+      headerConversationId,
+    });
+
+    const conversationId =
+      body.conversation_id ||
+      body.session_id ||
+      body.conversationId ||
+      body.sessionId ||
+      headerConversationId ||
+      crypto.randomUUID();
+
     const messageHistory = body.history || body.messages || [];
 
     // Dynamic variables from ElevenLabs (if using conversation initiation data)
