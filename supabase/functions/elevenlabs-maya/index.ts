@@ -33,11 +33,32 @@ serve(async (req) => {
     console.log("[Maya Voice Bridge] Received:", JSON.stringify(body, null, 2));
 
     // Extract the user's message and conversation context
-    // ElevenLabs sends different formats depending on configuration
-    const userMessage = body.text || body.message || body.user_message || body.input || "";
+    // ElevenLabs can send different payload shapes depending on tool configuration.
+    const pickFirstString = (obj: Record<string, unknown>) => {
+      for (const v of Object.values(obj)) {
+        if (typeof v === "string" && v.trim()) return v;
+      }
+      return "";
+    };
+
+    const userMessage =
+      // Common direct fields
+      body.text ||
+      body.message ||
+      body.user_message ||
+      body.input ||
+      // Common server-tool shapes
+      body.parameters?.text ||
+      body.parameters?.message ||
+      body.payload?.text ||
+      body.payload?.message ||
+      // Fallback: first non-empty string value on the root object (covers misnamed params)
+      (body && typeof body === "object" ? pickFirstString(body) : "") ||
+      "";
+
     const conversationId = body.conversation_id || body.session_id || crypto.randomUUID();
     const messageHistory = body.history || body.messages || [];
-    
+
     // Dynamic variables from ElevenLabs (if using conversation initiation data)
     const dynamicVars = body.dynamic_variables || body.conversation_initiation_client_data?.dynamic_variables || {};
     
