@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.elevenlabs-maya]
 verify_jwt = false
+
+[functions.maya-voice-conversation]
+verify_jwt = false
