@@ -1132,24 +1132,6 @@ const TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "make_phone_call",
-      description: "Initiate or request a phone call",
-      parameters: {
-        type: "object",
-        properties: {
-          phone_number: { type: "string" },
-          reason: { type: "string" },
-          caller: { type: "string", enum: ["maya", "supervisor", "customer_service"] },
-          message_if_voicemail: { type: "string" }
-        },
-        required: ["phone_number", "reason"],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
       name: "do_anything",
       description: "A catch-all tool for any request that doesn't fit other tools. Maya can try to handle any reasonable request.",
       parameters: {
@@ -2255,19 +2237,6 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "make_phone_call": {
-        await supabase.from("admin_alerts").insert({
-          conversation_id: conversationId,
-          alert_type: "call_requested",
-          message: `Call request: ${args.reason}`,
-          customer_context: JSON.stringify({ phone: args.phone_number, caller: args.caller, voicemail: args.message_if_voicemail })
-        });
-
-        return JSON.stringify({ 
-          success: true, 
-          message: `Got it! ${args.caller === "maya" ? "I'll give them a call" : "I've requested the call for you"}. We'll reach out to ${args.phone_number} shortly!`
-        });
-      }
 
       case "do_anything": {
         // Log the request and flag for human review if needed
