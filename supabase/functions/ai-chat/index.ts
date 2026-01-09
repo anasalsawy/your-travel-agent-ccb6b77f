@@ -1952,6 +1952,17 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           formData.append("From", twilioPhoneNumber);
           formData.append("Body", args.message);
 
+          // Track real delivery (queued/sent/delivered/failed/undelivered)
+          const callbackBase = Deno.env.get("SUPABASE_URL");
+          if (callbackBase) {
+            formData.append("StatusCallback", `${callbackBase}/functions/v1/twilio-status-callback`);
+            formData.append("StatusCallbackEvent", "queued");
+            formData.append("StatusCallbackEvent", "sent");
+            formData.append("StatusCallbackEvent", "delivered");
+            formData.append("StatusCallbackEvent", "failed");
+            formData.append("StatusCallbackEvent", "undelivered");
+          }
+
           const twilioResponse = await fetch(twilioUrl, {
             method: "POST",
             headers: {
@@ -1965,17 +1976,23 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           console.log("Twilio SMS response:", twilioResult);
 
           if (twilioResponse.ok && twilioResult.sid) {
-            // Log successful SMS
+            // Log accepted-by-Twilio (NOT necessarily delivered)
             await supabase.from("notification_log").insert({
               event_type: "sms_sent",
               recipient: phoneNumber,
-              payload: { message: args.message, context: args.context, twilio_sid: twilioResult.sid },
-              status: "sent"
+              payload: {
+                message: args.message,
+                context: args.context,
+                twilio_sid: twilioResult.sid,
+                twilio_status: twilioResult.status,
+              },
+              status: twilioResult.status || "queued",
             });
-            return JSON.stringify({ 
-              success: true, 
-              message: `Text sent to ${phoneNumber}! They should get it any second now.`,
-              sid: twilioResult.sid 
+            return JSON.stringify({
+              success: true,
+              message: `SMS queued to ${phoneNumber}. I'll confirm delivery shortly.`,
+              sid: twilioResult.sid,
+              twilio_status: twilioResult.status,
             });
           } else {
             console.error("Twilio error:", twilioResult);
@@ -1983,9 +2000,12 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
               event_type: "sms_failed",
               recipient: phoneNumber,
               payload: { message: args.message, error: twilioResult.message || "Unknown error" },
-              status: "failed"
+              status: "failed",
             });
-            return JSON.stringify({ success: false, message: "Hmm, couldn't send that text right now. I'll make a note to follow up another way!" });
+            return JSON.stringify({
+              success: false,
+              message: "Hmm, Twilio didn't accept that SMS. Double-check the number and try again.",
+            });
           }
         } catch (smsError) {
           console.error("SMS sending error:", smsError);
@@ -1993,70 +2013,13 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             event_type: "sms_error",
             recipient: args.phone,
             payload: { message: args.message, error: String(smsError) },
-            status: "error"
+            status: "error",
           });
-          return JSON.stringify({ success: false, message: "Couldn't send text right now, but I've got their info saved for follow-up!" });
+          return JSON.stringify({
+            success: false,
+            message: "Couldn't send SMS right now. I'll follow up another way.",
+          });
         }
-      }
-
-      case "send_email": {
-        await supabase.from("notification_log").insert({
-          event_type: "email_sent",
-          recipient: args.to,
-          payload: { subject: args.subject, body: args.body },
-          status: "queued"
-        });
-        return JSON.stringify({ success: true, message: `Email sent to ${args.to}!` });
-      }
-
-      case "send_whatsapp": {
-        await supabase.from("notification_log").insert({
-          event_type: "whatsapp_sent",
-          recipient: args.phone,
-          payload: { message: args.message },
-          status: "queued"
-        });
-        return JSON.stringify({ success: true, message: `WhatsApp sent to ${args.phone}!` });
-      }
-
-      case "log_note": {
-        await supabase.from("ai_chat_messages").insert({
-          conversation_id: conversationId,
-          role: "system",
-          content: `[NOTE] ${args.category || "general"}: ${args.note}`,
-          metadata: { type: "agent_note", customer: args.customer_email, request: args.request_id }
-        });
-        return JSON.stringify({ success: true, message: "Note logged!" });
-      }
-
-      case "flag_for_admin": {
-        await supabase.from("admin_alerts").insert({
-          conversation_id: conversationId,
-          alert_type: args.priority === "urgent" ? "urgent_request" : "escalation",
-          message: args.customer_request || args.reason,
-          customer_context: JSON.stringify({ reason: args.reason, priority: args.priority, recommended: args.recommended_action })
-        });
-
-        await supabase.from("ai_conversations").update({ 
-          needs_admin_attention: true, 
-          is_serious: args.priority === "urgent" || args.priority === "high"
-        }).eq("id", conversationId);
-
-        return JSON.stringify({ success: true, message: "Flagged for supervisor review. Someone will follow up very soon!" });
-      }
-
-      // ==================== UTILITIES ====================
-      case "check_weather": {
-        // Mock weather data
-        const conditions = ["Sunny", "Partly Cloudy", "Cloudy", "Rainy", "Clear"];
-        const temps = [68, 72, 75, 80, 85, 65, 70];
-        return JSON.stringify({
-          success: true,
-          city: args.city,
-          condition: conditions[Math.floor(Math.random() * conditions.length)],
-          temperature: `${temps[Math.floor(Math.random() * temps.length)]}°F`,
-          forecast: "Perfect travel weather!"
-        });
       }
 
       case "get_travel_requirements": {
