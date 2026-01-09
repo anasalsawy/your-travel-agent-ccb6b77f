@@ -3040,7 +3040,38 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, sessionId, conversationId } = await req.json();
+    const body = await req.json();
+    
+    // ========== ELEVENLABS CUSTOM LLM ADAPTER ==========
+    // ElevenLabs sends messages in OpenAI format but expects streaming response
+    // Detect ElevenLabs by checking for their specific headers or message patterns
+    const isElevenLabsRequest = 
+      req.headers.get("user-agent")?.includes("ElevenLabs") ||
+      req.headers.get("x-elevenlabs-agent-id") ||
+      (body.messages && body.messages.some((m: any) => 
+        m.role === "system" && m.content?.includes("ElevenLabs")
+      ));
+    
+    // ElevenLabs sends messages directly, our web client sends { messages, sessionId }
+    let messages = body.messages || [];
+    let sessionId = body.sessionId || body.session_id || `elevenlabs-${Date.now()}`;
+    let conversationId = body.conversationId || body.conversation_id || null;
+    
+    // For ElevenLabs, extract conversation ID from their headers if available
+    if (isElevenLabsRequest) {
+      conversationId = conversationId || 
+        req.headers.get("x-elevenlabs-conversation-id") ||
+        `el-${crypto.randomUUID()}`;
+      sessionId = sessionId || conversationId;
+      
+      console.log("[ElevenLabs Custom LLM] Request received, conversation:", conversationId);
+      
+      // ElevenLabs may include their own system prompt - we'll override with Maya's
+      // Filter out any ElevenLabs system messages
+      messages = messages.filter((m: any) => 
+        !(m.role === "system" && m.content?.includes("ElevenLabs"))
+      );
+    }
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
@@ -3324,8 +3355,74 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       metadata: { tools_used: iterations > 0, iterations }
     });
 
-    // Return response with streaming format for client compatibility
+    // Return response with streaming format
     const encoder = new TextEncoder();
+    
+    // For ElevenLabs Custom LLM, stream word-by-word for natural speech
+    if (isElevenLabsRequest) {
+      console.log("[ElevenLabs Custom LLM] Sending response:", finalContent.substring(0, 100));
+      
+      // Clean up response for voice (remove markdown)
+      const voiceContent = finalContent
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '')
+        .replace(/`/g, '')
+        .replace(/\n\n+/g, '. ')
+        .replace(/\n/g, '. ')
+        .trim();
+      
+      const stream = new ReadableStream({
+        start(controller) {
+          // Stream the content in chunks for more natural TTS
+          const words = voiceContent.split(' ');
+          let chunkSize = 5; // Send 5 words at a time for smoother streaming
+          
+          for (let i = 0; i < words.length; i += chunkSize) {
+            const chunk = words.slice(i, i + chunkSize).join(' ') + ' ';
+            const data = JSON.stringify({
+              id: `chatcmpl-${Date.now()}`,
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model: "maya-custom",
+              choices: [{
+                index: 0,
+                delta: { content: chunk },
+                finish_reason: null
+              }]
+            });
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          }
+          
+          // Send final chunk with finish_reason
+          const finalChunk = JSON.stringify({
+            id: `chatcmpl-${Date.now()}`,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: "maya-custom",
+            choices: [{
+              index: 0,
+              delta: {},
+              finish_reason: "stop"
+            }]
+          });
+          controller.enqueue(encoder.encode(`data: ${finalChunk}\n\n`));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
+      });
+
+      return new Response(stream, {
+        headers: { 
+          ...corsHeaders, 
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "X-Conversation-Id": convId,
+        },
+      });
+    }
+    
+    // Standard response for web clients
     const stream = new ReadableStream({
       start(controller) {
         const data = JSON.stringify({
