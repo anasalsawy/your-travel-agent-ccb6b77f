@@ -22,14 +22,25 @@ serve(async (req) => {
     }
 
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
-    const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
+    const ELEVENLABS_AGENT_ID = Deno.env.get("ELEVENLABS_AGENT_ID");
+    const ELEVENLABS_PHONE_NUMBER_ID = Deno.env.get("ELEVENLABS_PHONE_NUMBER_ID");
 
-    if (!ELEVENLABS_API_KEY || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-      console.error("Missing required environment variables");
+    if (!ELEVENLABS_API_KEY) {
+      console.error("Missing ELEVENLABS_API_KEY");
       return new Response(
-        JSON.stringify({ error: "Server configuration error" }),
+        JSON.stringify({ error: "ElevenLabs API key not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!ELEVENLABS_AGENT_ID || !ELEVENLABS_PHONE_NUMBER_ID) {
+      console.error("Missing ELEVENLABS_AGENT_ID or ELEVENLABS_PHONE_NUMBER_ID");
+      return new Response(
+        JSON.stringify({ 
+          error: "ElevenLabs Agent ID and Phone Number ID are required for outbound calls. Please configure them in your secrets.",
+          setup_needed: true,
+          instructions: "Go to ElevenLabs dashboard > Agents > Your Agent > Phone Numbers to get the agent_id and phone_number_id"
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -46,57 +57,65 @@ serve(async (req) => {
     }
 
     console.log(`Initiating outbound call to: ${formattedPhone}`);
+    console.log(`Using agent: ${ELEVENLABS_AGENT_ID}, phone: ${ELEVENLABS_PHONE_NUMBER_ID}`);
 
-    // Build the system prompt with context
-    const systemPrompt = `You are Maya, an AI travel agent from Your Travel Agent. You're calling on behalf of the business.
-${context ? `Context for this call: ${context}` : ""}
+    // Build conversation initiation data if provided
+    const requestBody: any = {
+      agent_id: ELEVENLABS_AGENT_ID,
+      agent_phone_number_id: ELEVENLABS_PHONE_NUMBER_ID,
+      to_number: formattedPhone,
+    };
 
-Be professional, friendly, and helpful. Introduce yourself naturally. Keep the conversation focused and efficient.
-If they're busy, offer to call back at a better time.`;
+    // Add custom first message and context if provided
+    if (first_message || context) {
+      requestBody.conversation_initiation_client_data = {
+        dynamic_variables: {
+          first_message: first_message || "Hi, this is Maya from Your Travel Agent. How are you doing today?",
+          call_context: context || "General inquiry call"
+        }
+      };
+    }
 
     // Use ElevenLabs Conversational AI to make the outbound call
-    const response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound_call", {
+    const response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
       method: "POST",
       headers: {
         "xi-api-key": ELEVENLABS_API_KEY,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        to: formattedPhone,
-        from: TWILIO_PHONE_NUMBER,
-        twilio_account_sid: TWILIO_ACCOUNT_SID,
-        twilio_auth_token: TWILIO_AUTH_TOKEN,
-        agent_config: {
-          prompt: {
-            prompt: systemPrompt,
-          },
-          first_message: first_message || "Hi, this is Maya from Your Travel Agent. How are you doing today?",
-          language: "en",
-        },
-      }),
+      body: JSON.stringify(requestBody),
     });
 
+    const responseText = await response.text();
+    console.log("ElevenLabs API response:", response.status, responseText);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("ElevenLabs API error:", response.status, errorText);
+      console.error("ElevenLabs API error:", response.status, responseText);
       return new Response(
         JSON.stringify({ 
           error: "Failed to initiate call", 
-          details: errorText,
+          details: responseText,
           status: response.status 
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const result = await response.json();
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      result = { raw: responseText };
+    }
+
     console.log("Call initiated successfully:", result);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: `Calling ${formattedPhone} now...`,
-        call_sid: result.call_sid || result.callSid,
+        call_sid: result.callSid,
+        conversation_id: result.conversation_id,
         ...result 
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
