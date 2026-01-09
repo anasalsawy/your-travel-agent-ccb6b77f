@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.maya-voice-conversation]
 verify_jwt = false
+
+[functions.responses]
+verify_jwt = false
