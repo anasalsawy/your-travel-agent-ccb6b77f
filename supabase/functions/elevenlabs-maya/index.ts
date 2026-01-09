@@ -46,23 +46,38 @@ serve(async (req) => {
       "";
 
     // Get stable conversation identifier
-    // Priority: phone number > conversation_id from body > headers > generate new
-    const callerPhone = 
+    // Priority: phone number > explicit IDs from body > headers > deterministic fingerprint
+    const callerPhone =
       body.caller_phone ||
       body.phone_number ||
       body.from ||
       body.caller_id ||
       "";
-    
+
     const headerConversationId =
       req.headers.get("x-elevenlabs-conversation-id") ||
       req.headers.get("x-conversation-id") ||
+      req.headers.get("x-conversationid") ||
+      req.headers.get("x-session-id") ||
       "";
 
-    // Use phone number as session ID for continuity, or fall back to other IDs
-    const sessionId = callerPhone 
-      ? `phone-${callerPhone.replace(/\D/g, '')}` 
-      : body.conversation_id || body.session_id || headerConversationId || crypto.randomUUID();
+    const explicitBodyId =
+      body.conversation_id ||
+      body.conversationId ||
+      body.session_id ||
+      body.sessionId ||
+      body.parameters?.conversation_id ||
+      body.parameters?.conversationId ||
+      body.parameters?.session_id ||
+      body.parameters?.sessionId ||
+      "";
+
+    // Use phone number as session ID for continuity, otherwise use whatever stable IDs we can find.
+    // If ElevenLabs doesn't provide IDs for tool calls, we fall back to a deterministic fingerprint
+    // (good enough to preserve continuity during a single testing session).
+    const sessionId = callerPhone
+      ? `phone-${callerPhone.replace(/\D/g, "")}`
+      : explicitBodyId || headerConversationId || (await getDeterministicSessionId(req));
 
     console.log("[Phone Maya] Session ID:", sessionId, "| Message:", userMessage.substring(0, 100));
 
@@ -204,3 +219,26 @@ function findFirstString(obj: Record<string, unknown>): string {
   }
   return "";
 }
+
+async function getDeterministicSessionId(req: Request): Promise<string> {
+  // When ElevenLabs tool calls don't include conversation_id/session_id, we still want
+  // some continuity to avoid "identity verify" loops.
+  const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  const userAgent = req.headers.get("user-agent") || "";
+  const acceptLanguage = req.headers.get("accept-language") || "";
+
+  const raw = `${forwardedFor}|${userAgent}|${acceptLanguage}`.trim();
+  if (!raw) return `anon-${crypto.randomUUID()}`;
+
+  const hash = await sha256Hex(raw);
+  return `fp-${hash.slice(0, 32)}`;
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
