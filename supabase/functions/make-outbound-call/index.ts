@@ -66,15 +66,16 @@ serve(async (req) => {
       to_number: formattedPhone,
     };
 
-    // Add custom first message and context if provided
-    if (first_message || context) {
-      requestBody.conversation_initiation_client_data = {
-        dynamic_variables: {
-          first_message: first_message || "Hi, this is Maya from Your Travel Agent. How are you doing today?",
-          call_context: context || "General inquiry call"
-        }
-      };
-    }
+    // Always include conversation initiation data with proper context
+    requestBody.conversation_initiation_client_data = {
+      dynamic_variables: {
+        first_message: first_message || "Hey! This is Maya from Your Travel Agent. How are you doing today?",
+        call_context: context || "General travel inquiry call",
+        company_name: "Your Travel Agent",
+        agent_name: "Maya",
+        conversation_style: "warm, friendly, conversational, take your time, never rush, ask follow-up questions, be genuinely interested"
+      }
+    };
 
     // Use ElevenLabs Conversational AI to make the outbound call
     const response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
