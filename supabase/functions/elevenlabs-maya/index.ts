@@ -67,12 +67,22 @@ serve(async (req) => {
     console.log("[Phone Maya] Session ID:", sessionId, "| Message:", userMessage.substring(0, 100));
 
     if (!userMessage) {
-      return new Response(JSON.stringify({ 
-        response: "Hi! This is Maya from Your Travel Agent. How can I help you today?",
-        text: "Hi! This is Maya from Your Travel Agent. How can I help you today?",
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const greeting = "Hi! This is Maya from Your Travel Agent. How can I help you today?";
+      return new Response(
+        JSON.stringify({
+          // Common conventions various ElevenLabs tool runners look for
+          result: greeting,
+          output: greeting,
+
+          // Backwards compatible keys
+          response: greeting,
+          text: greeting,
+          message: greeting,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     // Add phone context to first message
@@ -98,13 +108,21 @@ serve(async (req) => {
       const errorText = await aiChatResponse.text();
       console.error("[Phone Maya] ai-chat error:", aiChatResponse.status, errorText);
       
-      return new Response(JSON.stringify({
-        response: "Hmm, I hit a little snag. Can you try that again?",
-        text: "Hmm, I hit a little snag. Can you try that again?",
-      }), {
-        status: 200, // Return 200 so ElevenLabs can speak the error
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const fallback = "Hmm, I hit a little snag. Can you try that again?";
+
+      return new Response(
+        JSON.stringify({
+          result: fallback,
+          output: fallback,
+          response: fallback,
+          text: fallback,
+          message: fallback,
+        }),
+        {
+          status: 200, // Return 200 so ElevenLabs can speak the error
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     // Parse SSE response from ai-chat
@@ -136,26 +154,44 @@ serve(async (req) => {
     console.log("[Phone Maya] Response:", mayaResponse.substring(0, 200));
 
     // Return in format ElevenLabs expects
-    return new Response(JSON.stringify({
-      response: mayaResponse,
-      text: mayaResponse,
-      message: mayaResponse,
-      session_id: sessionId,
-      conversation_id: sessionId,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        // Common conventions various ElevenLabs tool runners look for
+        result: mayaResponse,
+        output: mayaResponse,
+
+        // Backwards compatible keys
+        response: mayaResponse,
+        text: mayaResponse,
+        message: mayaResponse,
+
+        // Helpful for continuity if ElevenLabs passes these through
+        session_id: sessionId,
+        conversation_id: sessionId,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
 
   } catch (error) {
     console.error("[Phone Maya] Error:", error);
-    
-    return new Response(JSON.stringify({
-      response: "I'm having a moment here. Can you try that again?",
-      text: "I'm having a moment here. Can you try that again?",
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+
+    const fallback = "I'm having a moment here. Can you try that again?";
+
+    return new Response(
+      JSON.stringify({
+        result: fallback,
+        output: fallback,
+        response: fallback,
+        text: fallback,
+        message: fallback,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   }
 });
 
