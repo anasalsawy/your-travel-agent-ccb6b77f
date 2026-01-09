@@ -3251,6 +3251,9 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       ...messages,
     ];
 
+    // Use faster model for phone calls to reduce latency
+    const modelToUse = isElevenLabsRequest ? "google/gemini-2.5-flash-lite" : "google/gemini-2.5-flash";
+    
     // First API call - may include tool calls
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -3259,7 +3262,7 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: modelToUse,
         messages: apiMessages,
         tools: activeTools,
         stream: false,
@@ -3320,7 +3323,7 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
         ...toolResults,
       ];
 
-      // Get follow-up response
+      // Get follow-up response (use same model as initial call)
       const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -3328,7 +3331,7 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: modelToUse,
           messages: updatedMessages,
           tools: TOOLS,
           stream: false,
