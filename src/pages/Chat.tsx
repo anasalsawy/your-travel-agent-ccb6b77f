@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useVoiceChat } from "@/hooks/useVoiceChat";
+import { VoiceButton } from "@/components/chat/VoiceButton";
 
 type Message = {
   role: "user" | "assistant";
@@ -28,6 +30,11 @@ const Chat = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+
+  const voice = useVoiceChat({
+    onError: (error) => console.error("Voice error:", error),
+  });
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -70,12 +77,13 @@ const Chat = () => {
     setThinkingPhase(null);
   }, []);
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+  const sendMessage = async (textOverride?: string, speakResponse = false) => {
+    const messageText = textOverride || input.trim();
+    if (!messageText || isLoading) return;
 
-    const userMessage: Message = { role: "user", content: input.trim() };
+    const userMessage: Message = { role: "user", content: messageText };
     setMessages((prev) => [...prev, userMessage]);
-    setInput("");
+    if (!textOverride) setInput("");
     setIsLoading(true);
 
     // Start human-like thinking phases
@@ -162,6 +170,11 @@ const Chat = () => {
           }
         }
       }
+
+      // If voice mode, speak the response
+      if (speakResponse && voiceEnabled && assistantContent) {
+        await voice.speakText(assistantContent);
+      }
     } catch (error) {
       console.error("Chat error:", error);
       stopThinkingPhases();
@@ -174,6 +187,31 @@ const Chat = () => {
       ]);
     } finally {
       setIsLoading(false);
+      voice.setIdle();
+    }
+  };
+
+  const handleVoicePress = () => {
+    if (voice.isSpeaking) {
+      voice.stopSpeaking();
+      return;
+    }
+    voice.startRecording();
+  };
+
+  const handleVoiceRelease = async () => {
+    if (!voice.isRecording) return;
+    
+    const audioBlob = await voice.stopRecording();
+    if (!audioBlob || audioBlob.size < 1000) {
+      voice.setIdle();
+      return; // Too short
+    }
+
+    const transcription = await voice.transcribeAudio(audioBlob);
+    if (transcription) {
+      voice.setProcessing();
+      await sendMessage(transcription, true);
     }
   };
 
@@ -204,7 +242,12 @@ const Chat = () => {
             </div>
             <div>
               <h1 className="text-xl font-semibold text-foreground">Chat with Maya</h1>
-              <p className="text-sm text-muted-foreground">Your personal travel consultant • Online now</p>
+              <p className="text-sm text-muted-foreground">
+                {voice.isRecording ? "🎤 Listening..." : 
+                 voice.isTranscribing ? "Processing audio..." :
+                 voice.isSpeaking ? "🔊 Maya is speaking..." :
+                 "Your personal travel consultant • Online now"}
+              </p>
             </div>
           </div>
 
@@ -303,8 +346,15 @@ const Chat = () => {
                 disabled={isLoading}
                 className="flex-1 rounded-full bg-background border focus-visible:ring-1 h-12 px-5"
               />
+              <VoiceButton
+                state={voice.state}
+                onPress={handleVoicePress}
+                onRelease={handleVoiceRelease}
+                disabled={isLoading}
+                className="h-12 w-12"
+              />
               <Button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={!input.trim() || isLoading}
                 size="lg"
                 className="rounded-full h-12 px-6"
