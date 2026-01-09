@@ -35,3 +35,7 @@ verify_jwt = false
 
 [functions.chat]
 verify_jwt = false
+
+[functions.twilio-status-callback]
+verify_jwt = false
+
