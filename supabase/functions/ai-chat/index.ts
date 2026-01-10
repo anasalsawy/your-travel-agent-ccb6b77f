@@ -3186,25 +3186,76 @@ serve(async (req) => {
 
     // Get or create conversation
     let convId = conversationId;
+    let existingConversation = false;
+    
     if (!convId) {
-      const { data: conv, error: convError } = await supabase
+      // Check if conversation exists for this session
+      const { data: existingConv } = await supabase
         .from("ai_conversations")
-        .insert({ session_id: sessionId })
         .select("id")
-        .single();
+        .eq("session_id", sessionId)
+        .maybeSingle();
       
-      if (convError) throw convError;
-      convId = conv.id;
+      if (existingConv) {
+        convId = existingConv.id;
+        existingConversation = true;
+      } else {
+        const { data: conv, error: convError } = await supabase
+          .from("ai_conversations")
+          .insert({ session_id: sessionId })
+          .select("id")
+          .single();
+        
+        if (convError) throw convError;
+        convId = conv.id;
+      }
+    } else {
+      existingConversation = true;
+    }
+
+    // Load conversation history if this is an existing conversation
+    // This is CRITICAL for maintaining context across messages (especially WhatsApp)
+    if (existingConversation && messages.length <= 1) {
+      console.log(`[ai-chat] Loading conversation history for ${convId}`);
+      const { data: history } = await supabase
+        .from("ai_chat_messages")
+        .select("role, content")
+        .eq("conversation_id", convId)
+        .order("created_at", { ascending: true })
+        .limit(50); // Keep last 50 messages for context
+      
+      if (history && history.length > 0) {
+        // Prepend history to current messages (current message is the new one)
+        const lastUserMessage = messages[messages.length - 1];
+        messages = [
+          ...history.map((m: any) => ({ role: m.role, content: m.content })),
+          ...(lastUserMessage ? [lastUserMessage] : [])
+        ];
+        console.log(`[ai-chat] Loaded ${history.length} previous messages`);
+      }
     }
 
     // Save user message
     const lastUserMessage = messages[messages.length - 1];
     if (lastUserMessage?.role === "user") {
-      await supabase.from("ai_chat_messages").insert({
-        conversation_id: convId,
-        role: "user",
-        content: lastUserMessage.content,
-      });
+      // Check if this message is already saved (avoid duplicates)
+      const { data: existingMsg } = await supabase
+        .from("ai_chat_messages")
+        .select("id")
+        .eq("conversation_id", convId)
+        .eq("content", lastUserMessage.content)
+        .eq("role", "user")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (!existingMsg) {
+        await supabase.from("ai_chat_messages").insert({
+          conversation_id: convId,
+          role: "user",
+          content: lastUserMessage.content,
+        });
+      }
     }
 
     // ========== OWNER VERIFICATION FLOW ==========
