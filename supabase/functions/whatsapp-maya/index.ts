@@ -61,6 +61,8 @@ serve(async (req) => {
     console.log("[WhatsApp Maya] Session:", sessionId);
 
     // Route to our ai-chat (Maya's brain)
+    // IMPORTANT: Do NOT pass conversationId from WhatsApp.
+    // ai-chat will map sessionId -> a real DB conversation UUID for persistence.
     const aiChatResponse = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
       method: "POST",
       headers: {
@@ -70,7 +72,6 @@ serve(async (req) => {
       body: JSON.stringify({
         messages: [{ role: "user", content: `[WHATSAPP from ${fromNumber}] ${messageBody}` }],
         sessionId: sessionId,
-        conversationId: sessionId,
       }),
     });
 
