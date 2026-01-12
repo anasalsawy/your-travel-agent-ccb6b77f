@@ -107,6 +107,7 @@ export type Database = {
           is_serious: boolean | null
           last_discount_requested: string | null
           needs_admin_attention: boolean | null
+          owner_verified: boolean | null
           session_id: string
           status: string | null
           updated_at: string
@@ -122,6 +123,7 @@ export type Database = {
           is_serious?: boolean | null
           last_discount_requested?: string | null
           needs_admin_attention?: boolean | null
+          owner_verified?: boolean | null
           session_id: string
           status?: string | null
           updated_at?: string
@@ -137,6 +139,7 @@ export type Database = {
           is_serious?: boolean | null
           last_discount_requested?: string | null
           needs_admin_attention?: boolean | null
+          owner_verified?: boolean | null
           session_id?: string
           status?: string | null
           updated_at?: string
