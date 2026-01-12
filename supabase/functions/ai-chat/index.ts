@@ -3063,8 +3063,20 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
 
       // ==================== PHONE CALLS ====================
       case "make_phone_call": {
-        // Check if owner mode is active
-        const isInOwnerMode = ownerModeActive.get(conversationId);
+        // Check if owner mode is active - LOAD FROM DATABASE (edge functions are stateless!)
+        const ownerCheckUrl = Deno.env.get("SUPABASE_URL")!;
+        const ownerCheckKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabaseForOwnerCheck = createClient(ownerCheckUrl, ownerCheckKey);
+        
+        const { data: convCheck } = await supabaseForOwnerCheck
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        const isInOwnerMode = convCheck?.owner_verified === true;
+        console.log(`[make_phone_call] Owner mode check for ${conversationId}: ${isInOwnerMode}`);
+        
         if (!isInOwnerMode) {
           return JSON.stringify({
             success: false,
@@ -3072,15 +3084,15 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           });
         }
 
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+        const callSupabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const callAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
         try {
-          const response = await fetch(`${supabaseUrl}/functions/v1/make-outbound-call`, {
+          const response = await fetch(`${callSupabaseUrl}/functions/v1/make-outbound-call`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${supabaseAnonKey}`,
+              "Authorization": `Bearer ${callAnonKey}`,
             },
             body: JSON.stringify({
               phone_number: args.phone_number,
@@ -3284,9 +3296,18 @@ serve(async (req) => {
     }
 
     // ========== OWNER VERIFICATION FLOW ==========
+    // CRITICAL: Load owner_verified from DATABASE, not in-memory (edge functions are stateless!)
+    const { data: convData } = await supabase
+      .from("ai_conversations")
+      .select("owner_verified")
+      .eq("id", convId)
+      .single();
+    
+    let isOwnerMode = convData?.owner_verified || false;
     const verificationState = ownerVerificationStates.get(convId) || { awaitingPin: false, attempts: 0 };
-    let isOwnerMode = ownerModeActive.get(convId) || false; // Check if already in owner mode
     let ownerModeJustVerified = false;
+
+    console.log(`[ai-chat] Owner mode for ${convId}: ${isOwnerMode}`);
 
     // Check if user is providing a PIN (when we're awaiting one)
     if (verificationState.awaitingPin && lastUserMessage?.role === "user") {
@@ -3297,7 +3318,12 @@ serve(async (req) => {
         isOwnerMode = true;
         ownerModeJustVerified = true;
         ownerVerificationStates.delete(convId);
-        ownerModeActive.set(convId, true); // Persist owner mode for this conversation
+        
+        // CRITICAL: Persist owner mode to DATABASE (not just in-memory)
+        await supabase
+          .from("ai_conversations")
+          .update({ owner_verified: true })
+          .eq("id", convId);
         
         // Log successful verification
         await supabase.from("admin_alerts").insert({
