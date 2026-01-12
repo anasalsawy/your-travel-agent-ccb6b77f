@@ -3185,17 +3185,44 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get or create conversation
+    // NOTE: conversationId must be a real ai_conversations.id (UUID).
+    // Some channels (e.g. WhatsApp) may send a non-UUID conversationId like "whatsapp-...".
+    // If we accept that, message persistence breaks and Maya "re-introduces" every time.
+    const isUuid = (value: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
     let convId = conversationId;
     let existingConversation = false;
-    
+
+    if (convId && !isUuid(convId)) {
+      console.log(`[ai-chat] Ignoring non-UUID conversationId: ${convId}`);
+      convId = null;
+    }
+
+    if (convId) {
+      // Verify it actually exists
+      const { data: existingConvById } = await supabase
+        .from("ai_conversations")
+        .select("id")
+        .eq("id", convId)
+        .maybeSingle();
+
+      if (existingConvById) {
+        existingConversation = true;
+      } else {
+        console.log(`[ai-chat] conversationId not found in DB: ${convId} (will fallback to sessionId)`);
+        convId = null;
+      }
+    }
+
     if (!convId) {
-      // Check if conversation exists for this session
+      // Find or create by session_id
       const { data: existingConv } = await supabase
         .from("ai_conversations")
         .select("id")
         .eq("session_id", sessionId)
         .maybeSingle();
-      
+
       if (existingConv) {
         convId = existingConv.id;
         existingConversation = true;
@@ -3205,12 +3232,10 @@ serve(async (req) => {
           .insert({ session_id: sessionId })
           .select("id")
           .single();
-        
+
         if (convError) throw convError;
         convId = conv.id;
       }
-    } else {
-      existingConversation = true;
     }
 
     // Load conversation history if this is an existing conversation
