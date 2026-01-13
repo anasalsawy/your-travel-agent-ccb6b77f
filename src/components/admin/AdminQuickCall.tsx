@@ -41,11 +41,14 @@ export function AdminQuickCall() {
       }
 
       // Call the make-outbound-call function directly
+      // Pass purpose as first_message so Maya speaks it immediately
+      // and as context so she remembers her mission throughout the call
       const { data, error } = await supabase.functions.invoke("make-outbound-call", {
         body: {
           phone_number: phoneNumber.replace(/[^\d+]/g, ""), // Clean number
-          purpose: purpose,
-          context: `Admin initiated call from dashboard`,
+          first_message: `Hi, this is Maya calling on behalf of Your Travel Agent. I'm calling to ${purpose}`,
+          context: `MISSION: ${purpose}. You are Maya, calling on behalf of the travel agency. Be professional, persistent, and get the information needed. Take notes mentally and be ready to report back. Do NOT give up easily - if put on hold, wait patiently. If transferred, re-explain the situation.`,
+          use_maya_brain: true, // Ensure full Maya intelligence is used
         },
       });
 
