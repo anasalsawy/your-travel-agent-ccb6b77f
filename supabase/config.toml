@@ -39,3 +39,6 @@ verify_jwt = false
 [functions.twilio-status-callback]
 verify_jwt = false
 
+[functions.openhands-agent]
+verify_jwt = false
+
