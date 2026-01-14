@@ -1,176 +1,233 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// supabase/functions/openhands-agent/index.ts
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const OPENHANDS_BASE_URL = "https://app.all-hands.dev/api";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    },
+  });
+}
+
+function extractLatestAssistantText(eventsData: any): string {
+  const events = Array.isArray(eventsData)
+    ? eventsData
+    : (eventsData?.events ?? eventsData?.data ?? []);
+
+  for (const ev of events) {
+    const role = ev?.role ?? ev?.author ?? ev?.speaker;
+    if (role !== "assistant") continue;
+
+    const content = ev?.content;
+
+    if (typeof content === "string" && content.trim()) return content;
+
+    if (Array.isArray(content)) {
+      const t = content.find((c: any) => c?.type === "text" && c?.text);
+      if (t?.text) return t.text;
+    }
+
+    if (content?.text && typeof content.text === "string") return content.text;
   }
 
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  return "";
+}
+
+async function ohCreateConversation(apiKey: string, initialMsg: string) {
+  const resp = await fetch("https://app.all-hands.dev/api/conversations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-API-Key": apiKey,
+    },
+    body: JSON.stringify({
+      initial_user_msg: initialMsg,
+    }),
+  });
+
+  const text = await resp.text();
+  let data: any = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!resp.ok) {
+    throw new Error(
+      `OpenHands create failed (${resp.status}): ${text?.slice(0, 300)}`
     );
+  }
+
+  const conversationId = data?.conversation_id ?? data?.id;
+  if (!conversationId) {
+    throw new Error(
+      `OpenHands create returned no conversation id: ${text?.slice(0, 300)}`
+    );
+  }
+  return conversationId as string;
+}
+
+async function ohSendMessage(
+  apiKey: string,
+  conversationId: string,
+  msg: string
+) {
+  const resp = await fetch(
+    `https://app.all-hands.dev/api/conversations/${encodeURIComponent(
+      conversationId
+    )}/events`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session-API-Key": apiKey,
+      },
+      body: JSON.stringify({
+        role: "user",
+        content: [{ type: "text", text: msg }],
+        run: true,
+      }),
+    }
+  );
+
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(
+      `OpenHands send failed (${resp.status}): ${text?.slice(0, 300)}`
+    );
+  }
+}
+
+async function ohFetchEvents(apiKey: string, conversationId: string) {
+  const resp = await fetch(
+    `https://app.all-hands.dev/api/conversations/${encodeURIComponent(
+      conversationId
+    )}/events?limit=30&reverse=true`,
+    {
+      headers: {
+        "X-Session-API-Key": apiKey,
+      },
+    }
+  );
+
+  const text = await resp.text();
+  let data: any = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!resp.ok) {
+    throw new Error(
+      `OpenHands events failed (${resp.status}): ${text?.slice(0, 300)}`
+    );
+  }
+
+  return data;
+}
+
+async function pollForAssistantReply(
+  apiKey: string,
+  conversationId: string,
+  timeoutMs = 25000,
+  intervalMs = 1500
+) {
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    const eventsData = await ohFetchEvents(apiKey, conversationId);
+    const reply = extractLatestAssistantText(eventsData);
+    if (reply) return reply;
+    await sleep(intervalMs);
+  }
+
+  return ""; // timed out
+}
+
+serve(async (req) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+
+  const OPENHANDS_API_KEY = Deno.env.get("OPENHANDS_API_KEY");
+  if (!OPENHANDS_API_KEY) {
+    return jsonResponse({ error: "Missing OPENHANDS_API_KEY secret" }, 500);
+  }
+
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch {
+    return jsonResponse({ error: "Invalid JSON body" }, 400);
+  }
+
+  // Accept flexible input names so your frontend doesn't have to be perfect.
+  const message: string =
+    body?.message ?? body?.text ?? body?.prompt ?? body?.input ?? "";
+  let conversationId: string =
+    body?.conversation_id ?? body?.conversationId ?? "";
+
+  if (!message || typeof message !== "string") {
+    return jsonResponse({ error: "Missing 'message' (string)" }, 400);
   }
 
   try {
-    const apiKey = Deno.env.get('OPENHANDS_API_KEY');
-    if (!apiKey) {
-      console.error('OPENHANDS_API_KEY not configured');
-      return new Response(
-        JSON.stringify({ error: 'OPENHANDS_API_KEY not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { message, conversation_id } = await req.json();
-
-    if (!message || typeof message !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'message is required and must be a string' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`OpenHands request - message: "${message.substring(0, 100)}...", conversation_id: ${conversation_id || 'new'}`);
-
-    let activeConversationId = conversation_id;
-
-    // Step 1: Create new conversation if no conversation_id provided
-    if (!activeConversationId) {
-      console.log('Creating new OpenHands conversation...');
-      
-      const createResponse = await fetch(`${OPENHANDS_BASE_URL}/conversations`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-API-Key': apiKey,
-        },
-        body: JSON.stringify({ initial_user_msg: message }),
-      });
-
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.error(`Failed to create conversation: ${createResponse.status} - ${errorText}`);
-        return new Response(
-          JSON.stringify({ error: `Failed to create conversation: ${errorText}` }),
-          { status: createResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const createData = await createResponse.json();
-      activeConversationId = createData.conversation_id || createData.id;
-      console.log(`Created new conversation: ${activeConversationId}`);
+    // If new conversation: create it with the first message
+    if (!conversationId) {
+      conversationId = await ohCreateConversation(OPENHANDS_API_KEY, message);
     } else {
-      // Step 2: Send message to existing conversation
-      console.log(`Sending message to existing conversation: ${activeConversationId}`);
-      
-      const eventResponse = await fetch(`${OPENHANDS_BASE_URL}/conversations/${activeConversationId}/events`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-API-Key': apiKey,
-        },
-        body: JSON.stringify({
-          role: 'user',
-          content: [{ type: 'text', text: message }],
-          run: true,
-        }),
+      // Existing conversation: send message into it
+      await ohSendMessage(OPENHANDS_API_KEY, conversationId, message);
+    }
+
+    // Poll for assistant reply
+    const reply = await pollForAssistantReply(
+      OPENHANDS_API_KEY,
+      conversationId,
+      25000,
+      1500
+    );
+
+    // If OpenHands is slow/paused/maintenance, we return pending cleanly.
+    if (!reply) {
+      return jsonResponse({
+        status: "pending",
+        conversation_id: conversationId,
+        reply:
+          "Still processing. If this keeps happening, OpenHands may be temporarily unavailable. Tap retry in a few seconds.",
       });
-
-      if (!eventResponse.ok) {
-        const errorText = await eventResponse.text();
-        console.error(`Failed to send message: ${eventResponse.status} - ${errorText}`);
-        return new Response(
-          JSON.stringify({ error: `Failed to send message: ${errorText}` }),
-          { status: eventResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.log('Message sent successfully');
     }
 
-    // Step 3: Fetch latest assistant reply
-    console.log('Fetching latest events...');
-    
-    const eventsResponse = await fetch(
-      `${OPENHANDS_BASE_URL}/conversations/${activeConversationId}/events?limit=20&reverse=true`,
+    return jsonResponse({
+      status: "ok",
+      conversation_id: conversationId,
+      reply,
+    });
+  } catch (err) {
+    return jsonResponse(
       {
-        method: 'GET',
-        headers: {
-          'X-Session-API-Key': apiKey,
-        },
-      }
-    );
-
-    if (!eventsResponse.ok) {
-      const errorText = await eventsResponse.text();
-      console.error(`Failed to fetch events: ${eventsResponse.status} - ${errorText}`);
-      return new Response(
-        JSON.stringify({ error: `Failed to fetch events: ${errorText}` }),
-        { status: eventsResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const eventsData = await eventsResponse.json();
-    console.log('Events response:', JSON.stringify(eventsData).substring(0, 500));
-    
-    // Handle different response formats - could be array or object with events property
-    const events = Array.isArray(eventsData) ? eventsData : (eventsData.events || eventsData.data || []);
-    console.log(`Fetched ${Array.isArray(events) ? events.length : 0} events`);
-
-    // Find the latest assistant message
-    let reply = null;
-    if (Array.isArray(events)) {
-      for (const event of events) {
-        if (event.role === 'assistant' || event.type === 'assistant' || event.source === 'agent') {
-          if (event.content) {
-            if (Array.isArray(event.content)) {
-              const textContent = event.content.find((c: any) => c.type === 'text');
-              if (textContent) {
-                reply = textContent.text;
-                break;
-              }
-            } else if (typeof event.content === 'string') {
-              reply = event.content;
-              break;
-            }
-          }
-          if (event.message) {
-            reply = event.message;
-            break;
-          }
-          if (event.args?.thought) {
-            reply = event.args.thought;
-            break;
-          }
-        }
-      }
-    }
-
-    console.log(`Reply found: ${reply ? 'yes' : 'no'}`);
-
-    return new Response(
-      JSON.stringify({
-        conversation_id: activeConversationId,
-        reply: reply || 'No response yet. The agent may still be processing.',
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    console.error('OpenHands agent error:', error);
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        status: "error",
+        error: String(err),
+      },
+      500
     );
   }
 });
