@@ -119,28 +119,38 @@ serve(async (req) => {
       );
     }
 
-    const events = await eventsResponse.json();
-    console.log(`Fetched ${events.length} events`);
+    const eventsData = await eventsResponse.json();
+    console.log('Events response:', JSON.stringify(eventsData).substring(0, 500));
+    
+    // Handle different response formats - could be array or object with events property
+    const events = Array.isArray(eventsData) ? eventsData : (eventsData.events || eventsData.data || []);
+    console.log(`Fetched ${Array.isArray(events) ? events.length : 0} events`);
 
     // Find the latest assistant message
     let reply = null;
-    for (const event of events) {
-      if (event.role === 'assistant' || event.type === 'assistant') {
-        if (event.content) {
-          if (Array.isArray(event.content)) {
-            const textContent = event.content.find((c: any) => c.type === 'text');
-            if (textContent) {
-              reply = textContent.text;
+    if (Array.isArray(events)) {
+      for (const event of events) {
+        if (event.role === 'assistant' || event.type === 'assistant' || event.source === 'agent') {
+          if (event.content) {
+            if (Array.isArray(event.content)) {
+              const textContent = event.content.find((c: any) => c.type === 'text');
+              if (textContent) {
+                reply = textContent.text;
+                break;
+              }
+            } else if (typeof event.content === 'string') {
+              reply = event.content;
               break;
             }
-          } else if (typeof event.content === 'string') {
-            reply = event.content;
+          }
+          if (event.message) {
+            reply = event.message;
             break;
           }
-        }
-        if (event.message) {
-          reply = event.message;
-          break;
+          if (event.args?.thought) {
+            reply = event.args.thought;
+            break;
+          }
         }
       }
     }
