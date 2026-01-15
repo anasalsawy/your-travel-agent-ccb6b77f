@@ -1508,6 +1508,123 @@ const TOOLS: any[] = [
         additionalProperties: false
       }
     }
+  },
+  // ==================== DEVELOPER TOOLS (BOSS MODE ONLY) ====================
+  {
+    type: "function",
+    function: {
+      name: "github_read_file",
+      description: "Read a file from the GitHub repository. ONLY execute for verified owner in Boss Mode. Use this to view current code before making changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path relative to repo root (e.g., 'src/pages/Index.tsx')" },
+          branch: { type: "string", description: "Branch name (default: main)" }
+        },
+        required: ["path"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "github_write_file",
+      description: "Write or update a file in the GitHub repository. ONLY execute for verified owner in Boss Mode. Creates a commit with the changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path relative to repo root" },
+          content: { type: "string", description: "New file content" },
+          commit_message: { type: "string", description: "Commit message describing the change" },
+          branch: { type: "string", description: "Branch name (default: main)" }
+        },
+        required: ["path", "content", "commit_message"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "github_list_files",
+      description: "List files in a directory of the GitHub repository. ONLY execute for verified owner in Boss Mode.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Directory path (e.g., 'src/components'). Use empty string or '/' for root." },
+          branch: { type: "string", description: "Branch name (default: main)" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "github_delete_file",
+      description: "Delete a file from the GitHub repository. ONLY execute for verified owner in Boss Mode.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path to delete" },
+          commit_message: { type: "string", description: "Commit message" },
+          branch: { type: "string", description: "Branch name (default: main)" }
+        },
+        required: ["path", "commit_message"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_edge_function_logs",
+      description: "Read recent logs from a Supabase edge function. ONLY execute for verified owner in Boss Mode. Use this to diagnose issues.",
+      parameters: {
+        type: "object",
+        properties: {
+          function_name: { type: "string", description: "Name of the edge function (e.g., 'ai-chat', 'send-notification')" },
+          search: { type: "string", description: "Optional search term to filter logs" },
+          limit: { type: "number", description: "Number of log entries (default: 50)" }
+        },
+        required: ["function_name"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "diagnose_issue",
+      description: "Diagnose an issue by analyzing logs, code, and error messages. ONLY execute for verified owner in Boss Mode.",
+      parameters: {
+        type: "object",
+        properties: {
+          issue_description: { type: "string", description: "Description of the problem" },
+          affected_area: { type: "string", description: "What part of the system is affected (e.g., 'chat', 'payments', 'marketplace')" },
+          error_message: { type: "string", description: "Any error messages seen" }
+        },
+        required: ["issue_description"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "perplexity_search",
+      description: "Search the web using Perplexity AI for accurate, up-to-date information with citations. Use this for any web search needs.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query" },
+          search_recency: { type: "string", enum: ["day", "week", "month", "year"], description: "Filter results by recency" }
+        },
+        required: ["query"],
+        additionalProperties: false
+      }
+    }
   }
 ];
 
@@ -2373,15 +2490,61 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
       }
 
       case "web_search": {
-        // Simulate web search
-        return JSON.stringify({
-          success: true,
-          query: args.query,
-          results: [
-            { title: `Top results for "${args.query}"`, snippet: "Found relevant travel information..." }
-          ],
-          note: "Let me summarize what I found for you!"
-        });
+        // Use Perplexity for real web search
+        const perplexityKey = Deno.env.get("PERPLEXITY_API_KEY");
+        
+        if (!perplexityKey) {
+          console.error("PERPLEXITY_API_KEY not configured");
+          return JSON.stringify({
+            success: false,
+            error: "Web search is temporarily unavailable."
+          });
+        }
+        
+        try {
+          const perplexityResponse = await fetch("https://api.perplexity.ai/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${perplexityKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "sonar",
+              messages: [
+                { role: "system", content: "You are a helpful search assistant. Provide concise, accurate answers with key facts. Focus on travel-related information when relevant." },
+                { role: "user", content: args.query }
+              ],
+              search_recency_filter: args.type === "flights" ? "day" : undefined
+            }),
+          });
+          
+          if (!perplexityResponse.ok) {
+            const errText = await perplexityResponse.text();
+            console.error("Perplexity error:", errText);
+            return JSON.stringify({
+              success: false,
+              error: "Search failed. Please try again."
+            });
+          }
+          
+          const perplexityData = await perplexityResponse.json();
+          const answer = perplexityData.choices?.[0]?.message?.content || "No results found.";
+          const citations = perplexityData.citations || [];
+          
+          return JSON.stringify({
+            success: true,
+            query: args.query,
+            answer: answer,
+            citations: citations.slice(0, 3),
+            searched_at: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error("Web search error:", error);
+          return JSON.stringify({
+            success: false,
+            error: "Search failed unexpectedly."
+          });
+        }
       }
 
 
@@ -3246,6 +3409,441 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             success: false,
             error: "Something went wrong making the call. Let me try again..."
           });
+        }
+      }
+
+      // ==================== DEVELOPER TOOLS (BOSS MODE ONLY) ====================
+      case "github_read_file": {
+        // Check owner mode from database
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command requires Boss Mode. Verify your identity first." });
+        }
+        
+        const githubToken = Deno.env.get("GITHUB_TOKEN");
+        if (!githubToken) {
+          return JSON.stringify({ success: false, error: "GitHub integration not configured." });
+        }
+        
+        try {
+          // Get repo info from env or use default
+          const repoOwner = Deno.env.get("GITHUB_REPO_OWNER") || "wpczgwxsriezaubncuom";
+          const repoName = Deno.env.get("GITHUB_REPO_NAME") || "your-travel-agent";
+          const branch = args.branch || "main";
+          
+          const response = await fetch(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${args.path}?ref=${branch}`,
+            {
+              headers: {
+                "Authorization": `Bearer ${githubToken}`,
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "Maya-AI-Agent"
+              }
+            }
+          );
+          
+          if (!response.ok) {
+            const errData = await response.json();
+            return JSON.stringify({ success: false, error: `File not found: ${errData.message}` });
+          }
+          
+          const data = await response.json();
+          const content = atob(data.content.replace(/\n/g, ""));
+          
+          return JSON.stringify({
+            success: true,
+            path: args.path,
+            content: content.slice(0, 10000), // Limit content size
+            sha: data.sha,
+            size: data.size,
+            truncated: content.length > 10000
+          });
+        } catch (error) {
+          console.error("GitHub read error:", error);
+          return JSON.stringify({ success: false, error: "Failed to read file from GitHub." });
+        }
+      }
+
+      case "github_write_file": {
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command requires Boss Mode. Verify your identity first." });
+        }
+        
+        const githubToken = Deno.env.get("GITHUB_TOKEN");
+        if (!githubToken) {
+          return JSON.stringify({ success: false, error: "GitHub integration not configured." });
+        }
+        
+        try {
+          const repoOwner = Deno.env.get("GITHUB_REPO_OWNER") || "wpczgwxsriezaubncuom";
+          const repoName = Deno.env.get("GITHUB_REPO_NAME") || "your-travel-agent";
+          const branch = args.branch || "main";
+          
+          // First, try to get the current file SHA (needed for updates)
+          let sha: string | undefined;
+          const getResponse = await fetch(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${args.path}?ref=${branch}`,
+            {
+              headers: {
+                "Authorization": `Bearer ${githubToken}`,
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "Maya-AI-Agent"
+              }
+            }
+          );
+          
+          if (getResponse.ok) {
+            const existingFile = await getResponse.json();
+            sha = existingFile.sha;
+          }
+          
+          // Create or update the file
+          const putBody: any = {
+            message: args.commit_message || `Maya: Updated ${args.path}`,
+            content: btoa(args.content),
+            branch: branch
+          };
+          if (sha) putBody.sha = sha;
+          
+          const response = await fetch(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${args.path}`,
+            {
+              method: "PUT",
+              headers: {
+                "Authorization": `Bearer ${githubToken}`,
+                "Accept": "application/vnd.github.v3+json",
+                "Content-Type": "application/json",
+                "User-Agent": "Maya-AI-Agent"
+              },
+              body: JSON.stringify(putBody)
+            }
+          );
+          
+          if (!response.ok) {
+            const errData = await response.json();
+            console.error("GitHub write error:", errData);
+            return JSON.stringify({ success: false, error: `Failed to write file: ${errData.message}` });
+          }
+          
+          const data = await response.json();
+          
+          return JSON.stringify({
+            success: true,
+            message: `Successfully ${sha ? "updated" : "created"} ${args.path}`,
+            commit_sha: data.commit?.sha,
+            commit_url: data.commit?.html_url
+          });
+        } catch (error) {
+          console.error("GitHub write error:", error);
+          return JSON.stringify({ success: false, error: "Failed to write file to GitHub." });
+        }
+      }
+
+      case "github_list_files": {
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command requires Boss Mode." });
+        }
+        
+        const githubToken = Deno.env.get("GITHUB_TOKEN");
+        if (!githubToken) {
+          return JSON.stringify({ success: false, error: "GitHub integration not configured." });
+        }
+        
+        try {
+          const repoOwner = Deno.env.get("GITHUB_REPO_OWNER") || "wpczgwxsriezaubncuom";
+          const repoName = Deno.env.get("GITHUB_REPO_NAME") || "your-travel-agent";
+          const branch = args.branch || "main";
+          const path = args.path || "";
+          
+          const response = await fetch(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${path}?ref=${branch}`,
+            {
+              headers: {
+                "Authorization": `Bearer ${githubToken}`,
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "Maya-AI-Agent"
+              }
+            }
+          );
+          
+          if (!response.ok) {
+            const errData = await response.json();
+            return JSON.stringify({ success: false, error: `Directory not found: ${errData.message}` });
+          }
+          
+          const data = await response.json();
+          const files = Array.isArray(data) ? data.map((f: any) => ({
+            name: f.name,
+            type: f.type,
+            path: f.path,
+            size: f.size
+          })) : [];
+          
+          return JSON.stringify({
+            success: true,
+            path: path || "/",
+            files: files.slice(0, 50),
+            count: files.length
+          });
+        } catch (error) {
+          console.error("GitHub list error:", error);
+          return JSON.stringify({ success: false, error: "Failed to list files." });
+        }
+      }
+
+      case "github_delete_file": {
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command requires Boss Mode." });
+        }
+        
+        const githubToken = Deno.env.get("GITHUB_TOKEN");
+        if (!githubToken) {
+          return JSON.stringify({ success: false, error: "GitHub integration not configured." });
+        }
+        
+        try {
+          const repoOwner = Deno.env.get("GITHUB_REPO_OWNER") || "wpczgwxsriezaubncuom";
+          const repoName = Deno.env.get("GITHUB_REPO_NAME") || "your-travel-agent";
+          const branch = args.branch || "main";
+          
+          // Get current file SHA
+          const getResponse = await fetch(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${args.path}?ref=${branch}`,
+            {
+              headers: {
+                "Authorization": `Bearer ${githubToken}`,
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "Maya-AI-Agent"
+              }
+            }
+          );
+          
+          if (!getResponse.ok) {
+            return JSON.stringify({ success: false, error: "File not found." });
+          }
+          
+          const fileData = await getResponse.json();
+          
+          const response = await fetch(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${args.path}`,
+            {
+              method: "DELETE",
+              headers: {
+                "Authorization": `Bearer ${githubToken}`,
+                "Accept": "application/vnd.github.v3+json",
+                "Content-Type": "application/json",
+                "User-Agent": "Maya-AI-Agent"
+              },
+              body: JSON.stringify({
+                message: args.commit_message,
+                sha: fileData.sha,
+                branch: branch
+              })
+            }
+          );
+          
+          if (!response.ok) {
+            const errData = await response.json();
+            return JSON.stringify({ success: false, error: `Delete failed: ${errData.message}` });
+          }
+          
+          return JSON.stringify({
+            success: true,
+            message: `Deleted ${args.path}`
+          });
+        } catch (error) {
+          console.error("GitHub delete error:", error);
+          return JSON.stringify({ success: false, error: "Failed to delete file." });
+        }
+      }
+
+      case "read_edge_function_logs": {
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command requires Boss Mode." });
+        }
+        
+        // Query edge function logs from analytics
+        try {
+          const limit = args.limit || 50;
+          const functionName = args.function_name;
+          
+          // Query notification_log as a proxy for function activity
+          let query = supabase
+            .from("notification_log")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(limit);
+          
+          if (args.search) {
+            query = query.or(`event_type.ilike.%${args.search}%,error.ilike.%${args.search}%`);
+          }
+          
+          const { data: logs, error } = await query;
+          
+          if (error) {
+            console.error("Log query error:", error);
+          }
+          
+          return JSON.stringify({
+            success: true,
+            function_name: functionName,
+            logs: (logs || []).slice(0, 20).map((l: any) => ({
+              timestamp: l.created_at,
+              event: l.event_type,
+              status: l.status,
+              error: l.error,
+              recipient: l.recipient
+            })),
+            note: "Showing recent activity logs. For detailed edge function logs, check the admin dashboard."
+          });
+        } catch (error) {
+          console.error("Logs error:", error);
+          return JSON.stringify({ success: false, error: "Failed to retrieve logs." });
+        }
+      }
+
+      case "diagnose_issue": {
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command requires Boss Mode." });
+        }
+        
+        try {
+          // Gather diagnostic info
+          const diagnostics: any = {
+            issue: args.issue_description,
+            area: args.affected_area,
+            error: args.error_message,
+            checks: []
+          };
+          
+          // Check recent errors in notification_log
+          const { data: recentErrors } = await supabase
+            .from("notification_log")
+            .select("*")
+            .eq("status", "error")
+            .order("created_at", { ascending: false })
+            .limit(5);
+          
+          diagnostics.checks.push({
+            check: "Recent Errors",
+            found: recentErrors?.length || 0,
+            details: recentErrors?.map((e: any) => `${e.event_type}: ${e.error}`).slice(0, 3)
+          });
+          
+          // Check admin alerts
+          const { data: recentAlerts } = await supabase
+            .from("admin_alerts")
+            .select("*")
+            .eq("is_read", false)
+            .order("created_at", { ascending: false })
+            .limit(5);
+          
+          diagnostics.checks.push({
+            check: "Unread Alerts",
+            found: recentAlerts?.length || 0,
+            details: recentAlerts?.map((a: any) => a.message).slice(0, 3)
+          });
+          
+          // Analysis and recommendations
+          diagnostics.analysis = `Analyzed ${args.affected_area || "system"} for: "${args.issue_description}"`;
+          diagnostics.recommendations = [
+            "Check the edge function logs for detailed error traces",
+            "Review recent code changes that might affect this area",
+            "Test the specific workflow that's failing"
+          ];
+          
+          return JSON.stringify({
+            success: true,
+            diagnostics
+          });
+        } catch (error) {
+          console.error("Diagnosis error:", error);
+          return JSON.stringify({ success: false, error: "Failed to run diagnostics." });
+        }
+      }
+
+      case "perplexity_search": {
+        const perplexityKey = Deno.env.get("PERPLEXITY_API_KEY");
+        
+        if (!perplexityKey) {
+          return JSON.stringify({ success: false, error: "Perplexity not configured." });
+        }
+        
+        try {
+          const searchBody: any = {
+            model: "sonar",
+            messages: [
+              { role: "system", content: "Provide accurate, concise search results. Include key facts and cite sources." },
+              { role: "user", content: args.query }
+            ]
+          };
+          
+          if (args.search_recency) {
+            searchBody.search_recency_filter = args.search_recency;
+          }
+          
+          const response = await fetch("https://api.perplexity.ai/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${perplexityKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(searchBody),
+          });
+          
+          if (!response.ok) {
+            const errText = await response.text();
+            console.error("Perplexity error:", errText);
+            return JSON.stringify({ success: false, error: "Search failed." });
+          }
+          
+          const data = await response.json();
+          
+          return JSON.stringify({
+            success: true,
+            query: args.query,
+            answer: data.choices?.[0]?.message?.content || "No results found.",
+            citations: data.citations || [],
+            searched_at: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error("Perplexity error:", error);
+          return JSON.stringify({ success: false, error: "Search failed unexpectedly." });
         }
       }
 
