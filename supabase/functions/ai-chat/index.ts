@@ -1626,20 +1626,142 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
       }
 
       case "search_flights": {
-        // Simulated flight search - in production would call external API
-        const mockFlights = [
-          { airline: "United", price: Math.floor(Math.random() * 300) + 200, stops: 0, duration: "2h 30m" },
-          { airline: "Delta", price: Math.floor(Math.random() * 300) + 180, stops: 0, duration: "2h 45m" },
-          { airline: "American", price: Math.floor(Math.random() * 300) + 190, stops: 1, duration: "4h 15m" },
-          { airline: "Southwest", price: Math.floor(Math.random() * 200) + 150, stops: 0, duration: "2h 35m" },
-        ];
-        return JSON.stringify({ 
-          success: true, 
-          flights: mockFlights,
-          route: `${args.origin} → ${args.destination}`,
-          date: args.date,
-          note: "These are estimated prices. Actual prices through our platform are typically 15-40% lower!"
-        });
+        // Real Amadeus Flight Offers Search API
+        const amadeusApiKey = Deno.env.get("AMADEUS_API_KEY");
+        const amadeusApiSecret = Deno.env.get("AMADEUS_API_SECRET");
+        
+        if (!amadeusApiKey || !amadeusApiSecret) {
+          console.error("Amadeus API credentials not configured");
+          return JSON.stringify({ 
+            success: false, 
+            error: "Flight search is temporarily unavailable. Please try again later or contact support."
+          });
+        }
+        
+        try {
+          // Step 1: Get OAuth token
+          const tokenResponse = await fetch("https://test.api.amadeus.com/v1/security/oauth2/token", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: new URLSearchParams({
+              grant_type: "client_credentials",
+              client_id: amadeusApiKey,
+              client_secret: amadeusApiSecret
+            })
+          });
+          
+          if (!tokenResponse.ok) {
+            const tokenError = await tokenResponse.text();
+            console.error("Amadeus token error:", tokenError);
+            return JSON.stringify({ 
+              success: false, 
+              error: "Unable to verify flight prices at this time. I cannot provide pricing without confirmed data."
+            });
+          }
+          
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          
+          // Step 2: Search for flights
+          const searchParams = new URLSearchParams({
+            originLocationCode: args.origin?.toUpperCase() || "",
+            destinationLocationCode: args.destination?.toUpperCase() || "",
+            departureDate: args.date || "",
+            adults: String(args.passengers || 1),
+            max: "10",
+            currencyCode: "USD"
+          });
+          
+          if (args.return_date) {
+            searchParams.append("returnDate", args.return_date);
+          }
+          
+          if (args.cabin_class) {
+            const cabinMap: Record<string, string> = {
+              "economy": "ECONOMY",
+              "premium_economy": "PREMIUM_ECONOMY", 
+              "business": "BUSINESS",
+              "first": "FIRST"
+            };
+            searchParams.append("travelClass", cabinMap[args.cabin_class] || "ECONOMY");
+          }
+          
+          const flightResponse = await fetch(
+            `https://test.api.amadeus.com/v2/shopping/flight-offers?${searchParams.toString()}`,
+            {
+              headers: {
+                "Authorization": `Bearer ${accessToken}`
+              }
+            }
+          );
+          
+          if (!flightResponse.ok) {
+            const flightError = await flightResponse.text();
+            console.error("Amadeus flight search error:", flightError);
+            return JSON.stringify({ 
+              success: false, 
+              error: "No verified flight prices available for this route/date combination. I won't guess at prices."
+            });
+          }
+          
+          const flightData = await flightResponse.json();
+          const offers = flightData.data || [];
+          
+          if (offers.length === 0) {
+            return JSON.stringify({ 
+              success: false, 
+              error: "No flights found for this route and date. Try different dates or airports."
+            });
+          }
+          
+          // Sort by price and take top 3 cheapest
+          const sortedOffers = offers
+            .sort((a: any, b: any) => parseFloat(a.price.total) - parseFloat(b.price.total))
+            .slice(0, 3);
+          
+          const pricesCheckedAt = new Date().toISOString();
+          
+          const flights = sortedOffers.map((offer: any) => {
+            const segments = offer.itineraries?.[0]?.segments || [];
+            const firstSegment = segments[0];
+            const lastSegment = segments[segments.length - 1];
+            
+            // Get airline codes used in this offer
+            const airlines = [...new Set(segments.map((s: any) => s.carrierCode))].join(", ");
+            
+            // Calculate total duration
+            const departure = firstSegment?.departure?.at || "";
+            const arrival = lastSegment?.arrival?.at || "";
+            
+            return {
+              airline: airlines,
+              price: parseFloat(offer.price.total),
+              currency: offer.price.currency,
+              stops: segments.length - 1,
+              departure_time: departure,
+              arrival_time: arrival,
+              flight_numbers: segments.map((s: any) => `${s.carrierCode}${s.number}`).join(" → ")
+            };
+          });
+          
+          return JSON.stringify({ 
+            success: true, 
+            flights,
+            route: `${args.origin?.toUpperCase()} → ${args.destination?.toUpperCase()}`,
+            date: args.date,
+            prices_checked: pricesCheckedAt,
+            note: "Live verified prices from Amadeus. Our service fee may apply."
+          });
+          
+        } catch (error) {
+          console.error("Amadeus API error:", error);
+          return JSON.stringify({ 
+            success: false, 
+            error: "Flight search failed. I cannot provide unverified pricing information."
+          });
+        }
       }
 
       case "apply_discount": {
