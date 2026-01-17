@@ -218,7 +218,7 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
         const { error: updateError } = await supabase
           .from("ticket_requests")
           .update({
-            payment_method: paymentMethod,
+            payment_method: paymentMethod as "bitcoin" | "zelle" | "paypal",
             payment_status: "processing",
             payment_plan: "full",
             proof_upload_url: proofValue,
@@ -229,13 +229,15 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
 
         if (updateError) throw updateError;
 
+        const paymentMethodLabel = paymentMethod === "bitcoin" ? "Bitcoin" : paymentMethod === "paypal" ? "PayPal" : "Zelle";
+
         await Promise.allSettled([
           notifyTicketPaymentProofUploaded({
             requestId: request.id,
             origin: request.origin,
             destination: request.destination,
             amount: Number(request.quoted_price),
-            paymentMethod: paymentMethod === "bitcoin" ? "Bitcoin" : "Zelle",
+            paymentMethod: paymentMethodLabel,
           }),
           notifyCustomerTicketPaymentUnderReview(request.contact_email, {
             requestId: request.id,
@@ -256,7 +258,7 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
         const { error: updateError } = await supabase
           .from("ticket_requests")
           .update({
-            payment_method: paymentMethod,
+            payment_method: paymentMethod as "bitcoin" | "zelle" | "paypal",
             payment_plan: "deposit",
             deposit_status: "under_review",
             deposit_amount: depositAmount,
@@ -270,13 +272,15 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
 
         if (updateError) throw updateError;
 
+        const paymentMethodLabel = paymentMethod === "bitcoin" ? "Bitcoin" : paymentMethod === "paypal" ? "PayPal" : "Zelle";
+
         await Promise.allSettled([
           notifyDepositProofUploaded({
             requestId: request.id,
             origin: request.origin,
             destination: request.destination,
             depositAmount: depositAmount,
-            paymentMethod: paymentMethod === "bitcoin" ? "Bitcoin" : "Zelle",
+            paymentMethod: paymentMethodLabel,
           }),
           notifyCustomerDepositUnderReview(request.contact_email, {
             requestId: request.id,
@@ -302,13 +306,15 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
 
         if (updateError) throw updateError;
 
+        const paymentMethodLabel = paymentMethod === "bitcoin" ? "Bitcoin" : paymentMethod === "paypal" ? "PayPal" : "Zelle";
+
         await Promise.allSettled([
           notifyBalanceProofUploaded({
             requestId: request.id,
             origin: request.origin,
             destination: request.destination,
             balanceAmount: balanceAmount,
-            paymentMethod: paymentMethod === "bitcoin" ? "Bitcoin" : "Zelle",
+            paymentMethod: paymentMethodLabel,
           }),
           notifyCustomerBalanceUnderReview(request.contact_email, {
             requestId: request.id,
