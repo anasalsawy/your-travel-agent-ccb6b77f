@@ -13,7 +13,7 @@ import type { Tables } from "@/integrations/supabase/types";
 // Notifications are now handled by database triggers - no client-side calls needed
 
 type Voucher = Tables<"vouchers">;
-type PaymentMethod = "bitcoin" | "zelle";
+type PaymentMethod = "bitcoin" | "zelle" | "paypal";
 
 export default function CheckoutPage() {
   const { id } = useParams();
@@ -27,6 +27,7 @@ export default function CheckoutPage() {
   const [btcAddress, setBtcAddress] = useState("");
   const [btcRate, setBtcRate] = useState("43500");
   const [zelleEmail, setZelleEmail] = useState("Amalmsaid4@gmail.com");
+  const [paypalEmail, setPaypalEmail] = useState("");
   const [copied, setCopied] = useState(false);
   const [txHash, setTxHash] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -59,15 +60,17 @@ export default function CheckoutPage() {
       const { data: settings } = await supabase
         .from("site_settings")
         .select("*")
-        .in("key", ["btc_address", "btc_rate", "zelle_email"]);
+        .in("key", ["btc_address", "btc_rate", "zelle_email", "paypal_email"]);
       
       if (settings) {
         const address = settings.find(s => s.key === "btc_address");
         const rate = settings.find(s => s.key === "btc_rate");
         const zelle = settings.find(s => s.key === "zelle_email");
+        const paypal = settings.find(s => s.key === "paypal_email");
         if (address?.value) setBtcAddress(address.value);
         if (rate?.value) setBtcRate(rate.value);
         if (zelle?.value) setZelleEmail(zelle.value);
+        if (paypal?.value) setPaypalEmail(paypal.value);
       }
 
       setLoading(false);
@@ -403,6 +406,23 @@ export default function CheckoutPage() {
                       </div>
                     </Label>
                   </div>
+
+                  <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
+                    paymentMethod === "paypal" ? "border-primary bg-primary/5" : "border-border"
+                  }`}>
+                    <RadioGroupItem value="paypal" id="paypal" />
+                    <Label htmlFor="paypal" className="flex items-center gap-3 cursor-pointer flex-1">
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 3.72a.773.773 0 0 1 .763-.654h6.18c2.098 0 3.564.563 4.368 1.67.349.481.562 1.005.653 1.607.096.63.05 1.398-.138 2.335l-.004.016v.467l.365.206c.308.166.555.358.751.577.317.354.523.793.613 1.304.093.532.069 1.165-.071 1.881-.161.823-.422 1.539-.779 2.126-.332.545-.755 1.001-1.253 1.35a4.88 4.88 0 0 1-1.608.732c-.596.152-1.259.227-1.969.227h-.467a1.426 1.426 0 0 0-1.406 1.2l-.035.2-.59 3.748-.027.144a.159.159 0 0 1-.159.136H7.076Z" fill="#253B80"/>
+                        <path d="M19.817 7.86c-.014.093-.03.188-.048.286-.616 3.163-2.726 4.255-5.42 4.255H12.7a.667.667 0 0 0-.658.563l-.848 5.379-.24 1.525a.35.35 0 0 0 .346.406h2.431a.585.585 0 0 0 .578-.494l.024-.125.458-2.9.029-.16a.585.585 0 0 1 .577-.494h.365c2.355 0 4.2-.957 4.74-3.724.226-.757.11-1.541-.486-2.035a1.724 1.724 0 0 0-.199-.148Z" fill="#179BD7"/>
+                        <path d="M18.817 7.465a4.79 4.79 0 0 0-.59-.131 7.47 7.47 0 0 0-1.188-.087h-3.594a.577.577 0 0 0-.578.494l-.76 4.846-.023.145a.667.667 0 0 1 .658-.563h1.65c2.693 0 4.803-1.092 5.42-4.255.018-.098.034-.193.047-.286a3.009 3.009 0 0 0-.458-.196c-.172-.013-.323.02-.584.033Z" fill="#222D65"/>
+                      </svg>
+                      <div>
+                        <p className="font-medium">PayPal</p>
+                        <p className="text-xs text-muted-foreground">Send payment via PayPal</p>
+                      </div>
+                    </Label>
+                  </div>
                 </RadioGroup>
 
                 {paymentMethod === "zelle" && (
@@ -527,6 +547,62 @@ export default function CheckoutPage() {
                     <Button variant="hero" size="lg" className="w-full" onClick={handleBitcoinSubmit} disabled={processing}>
                       {processing && <Loader2 className="w-4 h-4 animate-spin" />}
                       Submit Payment Proof
+                    </Button>
+                  </div>
+                )}
+
+                {paymentMethod === "paypal" && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-xl bg-[#0070BA]/10 border border-[#0070BA]/30 space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Amount to Send</span>
+                        <span className="font-bold text-lg">{formatCurrency(Number(voucher.sale_price), voucher.currency || "USD")}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Send PayPal payment to:</Label>
+                      <div className="flex gap-2">
+                        <Input value={paypalEmail || "Not configured"} readOnly className="bg-card font-mono text-sm" />
+                        <Button variant="outline" size="icon" onClick={() => copyToClipboard(paypalEmail)} disabled={!paypalEmail}>
+                          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+                      <p className="font-medium mb-2">Instructions:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-xs">
+                        <li>Open PayPal app or website</li>
+                        <li>Send <strong>{formatCurrency(Number(voucher.sale_price))}</strong> to <strong>{paypalEmail}</strong></li>
+                        <li>Select "Friends & Family" to avoid fees</li>
+                        <li>Take a screenshot of the confirmation</li>
+                        <li>Upload the screenshot below</li>
+                      </ol>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Upload Payment Screenshot *</Label>
+                      <div className="border border-dashed border-border rounded-xl p-4 text-center">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="paypalProofUpload"
+                        />
+                        <label htmlFor="paypalProofUpload" className="cursor-pointer">
+                          <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">
+                            {proofFile ? proofFile.name : "Click to upload screenshot"}
+                          </p>
+                        </label>
+                      </div>
+                    </div>
+
+                    <Button variant="hero" size="lg" className="w-full" onClick={handlePayPalSubmit} disabled={processing || !proofFile || !paypalEmail}>
+                      {processing && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Submit PayPal Payment
                     </Button>
                   </div>
                 )}
