@@ -286,6 +286,72 @@ export default function CheckoutPage() {
     }
   };
 
+  const handlePayPalSubmit = async () => {
+    if (!voucher || !user || !proofFile) {
+      toast({
+        title: "Error",
+        description: "Please upload a screenshot of your PayPal payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setProcessing(true);
+    
+    try {
+      const fileExt = proofFile.name.split('.').pop();
+      const fileName = `${user.id}/paypal-${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("proof-uploads")
+        .upload(fileName, proofFile);
+      
+      if (uploadError) {
+        throw new Error("Failed to upload proof file");
+      }
+
+      // First create order with pending status
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          user_id: user.id,
+          voucher_id: voucher.id,
+          amount_paid: Number(voucher.sale_price),
+          payment_method: "paypal",
+          payment_status: "pending",
+          order_status: "pending",
+          customer_email: user.email,
+        })
+        .select()
+        .single();
+
+      if (orderError || !order) throw orderError || new Error("Failed to create order");
+
+      // Submit proof atomically (this updates status + creates payment_proof record)
+      const { error: submitError } = await supabase.rpc("submit_order_payment_proof", {
+        p_order_id: order.id,
+        p_proof_upload_url: fileName,
+      });
+
+      if (submitError) throw submitError;
+
+      toast({
+        title: "Payment Submitted!",
+        description: "Your payment is now under review. We'll notify you once verified.",
+      });
+
+      navigate("/dashboard?payment_submitted=true");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit payment.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const resetProof = () => {
     setProofFile(null);
     setTxHash("");
