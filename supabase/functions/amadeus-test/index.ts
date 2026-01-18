@@ -68,6 +68,8 @@ serve(async (req) => {
       "los angeles": "LAX", "la": "LAX",
       "chicago": "ORD",
       "miami": "MIA",
+      "london": "LHR",
+      "paris": "CDG",
       "cyprus": "LCA", "larnaca": "LCA"
     };
     
@@ -77,9 +79,9 @@ serve(async (req) => {
       return cityToAirport[normalized] || input.toUpperCase();
     };
     
-    // Test with city names
-    const origin = "New York";
-    const destination = "Los Angeles";
+    // Test with international route
+    const origin = "London";
+    const destination = "New York";
     const originCode = toAirportCode(origin);
     const destCode = toAirportCode(destination);
     
