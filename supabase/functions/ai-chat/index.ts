@@ -1762,8 +1762,8 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         }
         
         try {
-          // Step 1: Get OAuth token (using production API)
-          const tokenResponse = await fetch("https://api.amadeus.com/v1/security/oauth2/token", {
+          // Step 1: Get OAuth token (using test API)
+          const tokenResponse = await fetch("https://test.api.amadeus.com/v1/security/oauth2/token", {
             method: "POST",
             headers: {
               "Content-Type": "application/x-www-form-urlencoded"
@@ -1789,7 +1789,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           const tokenData = await tokenResponse.json();
           const accessToken = tokenData.access_token;
           
-          // Step 2: Search for flights (using production API)
+          // Step 2: Search for flights (using test API)
           const searchParams = new URLSearchParams({
             originLocationCode: args.origin?.toUpperCase() || "",
             destinationLocationCode: args.destination?.toUpperCase() || "",
@@ -1816,7 +1816,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           console.log("Amadeus search params:", searchParams.toString());
           
           const flightResponse = await fetch(
-            `https://api.amadeus.com/v2/shopping/flight-offers?${searchParams.toString()}`,
+            `https://test.api.amadeus.com/v2/shopping/flight-offers?${searchParams.toString()}`,
             {
               headers: {
                 "Authorization": `Bearer ${accessToken}`
