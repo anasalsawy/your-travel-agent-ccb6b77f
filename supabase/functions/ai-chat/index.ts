@@ -1744,8 +1744,12 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
 
       case "search_flights": {
         // Real Amadeus Flight Offers Search API
+        console.log("search_flights called with args:", JSON.stringify(args));
+        
         const amadeusApiKey = Deno.env.get("AMADEUS_API_KEY");
         const amadeusApiSecret = Deno.env.get("AMADEUS_API_SECRET");
+        
+        console.log("Amadeus credentials check:", { hasKey: !!amadeusApiKey, hasSecret: !!amadeusApiSecret });
         
         if (!amadeusApiKey || !amadeusApiSecret) {
           console.error("Amadeus API credentials not configured");
