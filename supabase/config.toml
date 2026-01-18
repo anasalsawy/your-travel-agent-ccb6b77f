@@ -42,3 +42,6 @@ verify_jwt = false
 [functions.openhands-agent]
 verify_jwt = false
 
+[functions.amadeus-test]
+verify_jwt = false
+
