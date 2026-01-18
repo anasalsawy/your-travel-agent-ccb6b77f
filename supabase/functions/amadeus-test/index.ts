@@ -62,17 +62,37 @@ serve(async (req) => {
     const accessToken = tokenData.access_token;
     console.log("Got access token:", !!accessToken);
 
-    // Step 2: Test flight search with CITY NAMES (not codes)
+    // City to airport mapping
+    const cityToAirport: Record<string, string> = {
+      "new york": "JFK", "nyc": "JFK",
+      "los angeles": "LAX", "la": "LAX",
+      "chicago": "ORD",
+      "miami": "MIA",
+      "cyprus": "LCA", "larnaca": "LCA"
+    };
+    
+    const toAirportCode = (input: string): string => {
+      const normalized = input.toLowerCase().trim();
+      if (/^[a-zA-Z]{3}$/.test(normalized)) return normalized.toUpperCase();
+      return cityToAirport[normalized] || input.toUpperCase();
+    };
+    
+    // Test with city names
+    const origin = "New York";
+    const destination = "Los Angeles";
+    const originCode = toAirportCode(origin);
+    const destCode = toAirportCode(destination);
+    
+    console.log(`Converting: "${origin}" -> "${originCode}", "${destination}" -> "${destCode}"`);
+    
     const searchParams = new URLSearchParams({
-      originLocationCode: "New York",
-      destinationLocationCode: "Los Angeles",
+      originLocationCode: originCode,
+      destinationLocationCode: destCode,
       departureDate: "2026-03-15",
       adults: "1",
       max: "3",
       currencyCode: "USD"
     });
-    
-    console.log("Testing with city names: New York -> Los Angeles");
 
     console.log("Searching flights...");
     const flightResponse = await fetch(
