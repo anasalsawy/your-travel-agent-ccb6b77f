@@ -62,15 +62,17 @@ serve(async (req) => {
     const accessToken = tokenData.access_token;
     console.log("Got access token:", !!accessToken);
 
-    // Step 2: Test flight search
+    // Step 2: Test flight search with CITY NAMES (not codes)
     const searchParams = new URLSearchParams({
-      originLocationCode: "JFK",
-      destinationLocationCode: "LAX",
+      originLocationCode: "New York",
+      destinationLocationCode: "Los Angeles",
       departureDate: "2026-03-15",
       adults: "1",
       max: "3",
       currencyCode: "USD"
     });
+    
+    console.log("Testing with city names: New York -> Los Angeles");
 
     console.log("Searching flights...");
     const flightResponse = await fetch(
