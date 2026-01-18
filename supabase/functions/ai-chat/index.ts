@@ -1748,6 +1748,158 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         // Real Amadeus Flight Offers Search API
         console.log("search_flights called with args:", JSON.stringify(args));
         
+        // City to airport code mapping
+        const cityToAirport: Record<string, string> = {
+          // United States
+          "new york": "JFK", "nyc": "JFK", "new york city": "JFK", "manhattan": "JFK",
+          "los angeles": "LAX", "la": "LAX", "hollywood": "LAX",
+          "chicago": "ORD", "chi": "ORD",
+          "miami": "MIA",
+          "san francisco": "SFO", "sf": "SFO",
+          "las vegas": "LAS", "vegas": "LAS",
+          "seattle": "SEA",
+          "boston": "BOS",
+          "denver": "DEN",
+          "atlanta": "ATL",
+          "dallas": "DFW",
+          "houston": "IAH",
+          "phoenix": "PHX",
+          "orlando": "MCO",
+          "washington": "DCA", "dc": "DCA", "washington dc": "DCA",
+          "philadelphia": "PHL",
+          "san diego": "SAN",
+          "detroit": "DTW",
+          "minneapolis": "MSP",
+          "tampa": "TPA",
+          "portland": "PDX",
+          "austin": "AUS",
+          "nashville": "BNA",
+          "new orleans": "MSY",
+          "honolulu": "HNL", "hawaii": "HNL",
+          
+          // Europe
+          "london": "LHR", "heathrow": "LHR",
+          "paris": "CDG",
+          "rome": "FCO", "roma": "FCO",
+          "milan": "MXP", "milano": "MXP",
+          "madrid": "MAD",
+          "barcelona": "BCN",
+          "amsterdam": "AMS",
+          "frankfurt": "FRA",
+          "munich": "MUC",
+          "berlin": "BER",
+          "zurich": "ZRH",
+          "vienna": "VIE",
+          "brussels": "BRU",
+          "dublin": "DUB",
+          "lisbon": "LIS",
+          "athens": "ATH",
+          "prague": "PRG",
+          "budapest": "BUD",
+          "warsaw": "WAW",
+          "copenhagen": "CPH",
+          "stockholm": "ARN",
+          "oslo": "OSL",
+          "helsinki": "HEL",
+          "istanbul": "IST",
+          "moscow": "SVO",
+          
+          // Middle East
+          "dubai": "DXB",
+          "abu dhabi": "AUH",
+          "doha": "DOH",
+          "tel aviv": "TLV",
+          "riyadh": "RUH",
+          "jeddah": "JED",
+          "cairo": "CAI",
+          "amman": "AMM",
+          "beirut": "BEY",
+          "kuwait": "KWI",
+          "bahrain": "BAH",
+          "muscat": "MCT",
+          
+          // Asia
+          "tokyo": "NRT", "narita": "NRT",
+          "osaka": "KIX",
+          "beijing": "PEK",
+          "shanghai": "PVG",
+          "hong kong": "HKG",
+          "singapore": "SIN",
+          "bangkok": "BKK",
+          "seoul": "ICN",
+          "taipei": "TPE",
+          "kuala lumpur": "KUL", "kl": "KUL",
+          "manila": "MNL",
+          "jakarta": "CGK",
+          "delhi": "DEL", "new delhi": "DEL",
+          "mumbai": "BOM", "bombay": "BOM",
+          "bangalore": "BLR",
+          "chennai": "MAA",
+          "kolkata": "CCU",
+          "hyderabad": "HYD",
+          
+          // Africa
+          "johannesburg": "JNB",
+          "cape town": "CPT",
+          "nairobi": "NBO",
+          "lagos": "LOS",
+          "casablanca": "CMN",
+          "addis ababa": "ADD",
+          
+          // Oceania
+          "sydney": "SYD",
+          "melbourne": "MEL",
+          "brisbane": "BNE",
+          "auckland": "AKL",
+          "perth": "PER",
+          
+          // Americas
+          "toronto": "YYZ",
+          "vancouver": "YVR",
+          "montreal": "YUL",
+          "mexico city": "MEX",
+          "cancun": "CUN",
+          "sao paulo": "GRU",
+          "rio de janeiro": "GIG", "rio": "GIG",
+          "buenos aires": "EZE",
+          "lima": "LIM",
+          "bogota": "BOG",
+          "santiago": "SCL",
+          
+          // Caribbean
+          "nassau": "NAS",
+          "san juan": "SJU",
+          "jamaica": "MBJ", "montego bay": "MBJ",
+          "punta cana": "PUJ",
+          "aruba": "AUA",
+          
+          // Cyprus & Mediterranean
+          "cyprus": "LCA", "larnaca": "LCA",
+          "paphos": "PFO",
+          "nicosia": "LCA",
+          "malta": "MLA",
+          "crete": "HER",
+          "santorini": "JTR",
+          "mykonos": "JMK"
+        };
+        
+        // Function to convert city name to airport code
+        const toAirportCode = (input: string): string => {
+          if (!input) return "";
+          const normalized = input.toLowerCase().trim();
+          // If it's already a 3-letter code, return it uppercase
+          if (/^[a-zA-Z]{3}$/.test(normalized)) {
+            return normalized.toUpperCase();
+          }
+          // Look up in mapping
+          return cityToAirport[normalized] || input.toUpperCase();
+        };
+        
+        const originCode = toAirportCode(args.origin || "");
+        const destinationCode = toAirportCode(args.destination || "");
+        
+        console.log(`City conversion: "${args.origin}" -> "${originCode}", "${args.destination}" -> "${destinationCode}"`);
+        
         const amadeusApiKey = Deno.env.get("AMADEUS_API_KEY");
         const amadeusApiSecret = Deno.env.get("AMADEUS_API_SECRET");
         
@@ -1791,8 +1943,8 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           
           // Step 2: Search for flights (using test API)
           const searchParams = new URLSearchParams({
-            originLocationCode: args.origin?.toUpperCase() || "",
-            destinationLocationCode: args.destination?.toUpperCase() || "",
+            originLocationCode: originCode,
+            destinationLocationCode: destinationCode,
             departureDate: args.date || "",
             adults: String(args.passengers || 1),
             max: "10",
