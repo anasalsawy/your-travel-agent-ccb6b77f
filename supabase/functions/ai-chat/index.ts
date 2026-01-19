@@ -1751,16 +1751,24 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
       case "search_flights": {
         // Real Amadeus Flight Offers Search API
         console.log("search_flights called with args:", JSON.stringify(args));
-        
-        // City to airport code mapping
+
+        // City to airport code mapping (fast-path). Anything not found will be resolved via Amadeus Locations API.
         const cityToAirport: Record<string, string> = {
           // United States
-          "new york": "JFK", "nyc": "JFK", "new york city": "JFK", "manhattan": "JFK",
-          "los angeles": "LAX", "la": "LAX", "hollywood": "LAX",
-          "chicago": "ORD", "chi": "ORD",
+          "new york": "JFK",
+          "nyc": "JFK",
+          "new york city": "JFK",
+          "manhattan": "JFK",
+          "los angeles": "LAX",
+          "la": "LAX",
+          "hollywood": "LAX",
+          "chicago": "ORD",
+          "chi": "ORD",
           "miami": "MIA",
-          "san francisco": "SFO", "sf": "SFO",
-          "las vegas": "LAS", "vegas": "LAS",
+          "san francisco": "SFO",
+          "sf": "SFO",
+          "las vegas": "LAS",
+          "vegas": "LAS",
           "seattle": "SEA",
           "boston": "BOS",
           "denver": "DEN",
@@ -1769,7 +1777,9 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           "houston": "IAH",
           "phoenix": "PHX",
           "orlando": "MCO",
-          "washington": "DCA", "dc": "DCA", "washington dc": "DCA",
+          "washington": "DCA",
+          "dc": "DCA",
+          "washington dc": "DCA",
           "philadelphia": "PHL",
           "san diego": "SAN",
           "detroit": "DTW",
@@ -1779,13 +1789,20 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           "austin": "AUS",
           "nashville": "BNA",
           "new orleans": "MSY",
-          "honolulu": "HNL", "hawaii": "HNL",
-          
+          "honolulu": "HNL",
+          "hawaii": "HNL",
+          // Commonly requested (fixes PIT/CLT route)
+          "pittsburgh": "PIT",
+          "charlotte": "CLT",
+
           // Europe
-          "london": "LHR", "heathrow": "LHR",
+          "london": "LHR",
+          "heathrow": "LHR",
           "paris": "CDG",
-          "rome": "FCO", "roma": "FCO",
-          "milan": "MXP", "milano": "MXP",
+          "rome": "FCO",
+          "roma": "FCO",
+          "milan": "MXP",
+          "milano": "MXP",
           "madrid": "MAD",
           "barcelona": "BCN",
           "amsterdam": "AMS",
@@ -1807,7 +1824,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           "helsinki": "HEL",
           "istanbul": "IST",
           "moscow": "SVO",
-          
+
           // Middle East
           "dubai": "DXB",
           "abu dhabi": "AUH",
@@ -1821,9 +1838,10 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           "kuwait": "KWI",
           "bahrain": "BAH",
           "muscat": "MCT",
-          
+
           // Asia
-          "tokyo": "NRT", "narita": "NRT",
+          "tokyo": "NRT",
+          "narita": "NRT",
           "osaka": "KIX",
           "beijing": "PEK",
           "shanghai": "PVG",
@@ -1832,16 +1850,19 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           "bangkok": "BKK",
           "seoul": "ICN",
           "taipei": "TPE",
-          "kuala lumpur": "KUL", "kl": "KUL",
+          "kuala lumpur": "KUL",
+          "kl": "KUL",
           "manila": "MNL",
           "jakarta": "CGK",
-          "delhi": "DEL", "new delhi": "DEL",
-          "mumbai": "BOM", "bombay": "BOM",
+          "delhi": "DEL",
+          "new delhi": "DEL",
+          "mumbai": "BOM",
+          "bombay": "BOM",
           "bangalore": "BLR",
           "chennai": "MAA",
           "kolkata": "CCU",
           "hyderabad": "HYD",
-          
+
           // Africa
           "johannesburg": "JNB",
           "cape town": "CPT",
@@ -1849,14 +1870,14 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           "lagos": "LOS",
           "casablanca": "CMN",
           "addis ababa": "ADD",
-          
+
           // Oceania
           "sydney": "SYD",
           "melbourne": "MEL",
           "brisbane": "BNE",
           "auckland": "AKL",
           "perth": "PER",
-          
+
           // Americas
           "toronto": "YYZ",
           "vancouver": "YVR",
@@ -1864,87 +1885,143 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           "mexico city": "MEX",
           "cancun": "CUN",
           "sao paulo": "GRU",
-          "rio de janeiro": "GIG", "rio": "GIG",
+          "rio de janeiro": "GIG",
+          "rio": "GIG",
           "buenos aires": "EZE",
           "lima": "LIM",
           "bogota": "BOG",
           "santiago": "SCL",
-          
+
           // Caribbean
           "nassau": "NAS",
           "san juan": "SJU",
-          "jamaica": "MBJ", "montego bay": "MBJ",
+          "jamaica": "MBJ",
+          "montego bay": "MBJ",
           "punta cana": "PUJ",
           "aruba": "AUA",
-          
+
           // Cyprus & Mediterranean
-          "cyprus": "LCA", "larnaca": "LCA",
+          "cyprus": "LCA",
+          "larnaca": "LCA",
           "paphos": "PFO",
           "nicosia": "LCA",
           "malta": "MLA",
           "crete": "HER",
           "santorini": "JTR",
-          "mykonos": "JMK"
+          "mykonos": "JMK",
         };
-        
-        // Function to convert city name to airport code
-        const toAirportCode = (input: string): string => {
+
+        // Best-effort hint. Unknown cities return "" and will be resolved via API.
+        const toAirportCodeHint = (input: string): string => {
           if (!input) return "";
           const normalized = input.toLowerCase().trim();
-          // If it's already a 3-letter code, return it uppercase
-          if (/^[a-zA-Z]{3}$/.test(normalized)) {
-            return normalized.toUpperCase();
-          }
-          // Look up in mapping
-          return cityToAirport[normalized] || input.toUpperCase();
+          if (/^[a-zA-Z]{3}$/.test(normalized)) return normalized.toUpperCase();
+          return cityToAirport[normalized] || "";
         };
-        
-        const originCode = toAirportCode(args.origin || "");
-        const destinationCode = toAirportCode(args.destination || "");
-        
-        console.log(`City conversion: "${args.origin}" -> "${originCode}", "${args.destination}" -> "${destinationCode}"`);
-        
+
+        const originCodeHint = toAirportCodeHint(args.origin || "");
+        const destinationCodeHint = toAirportCodeHint(args.destination || "");
+        console.log(
+          `City conversion (hint): "${args.origin}" -> "${originCodeHint || "(needs lookup)"}", "${args.destination}" -> "${destinationCodeHint || "(needs lookup)"}`,
+        );
+
         const amadeusApiKey = Deno.env.get("AMADEUS_API_KEY");
         const amadeusApiSecret = Deno.env.get("AMADEUS_API_SECRET");
-        
-        console.log("Amadeus credentials check:", { hasKey: !!amadeusApiKey, hasSecret: !!amadeusApiSecret });
-        
+        console.log("Amadeus credentials check:", {
+          hasKey: !!amadeusApiKey,
+          hasSecret: !!amadeusApiSecret,
+        });
+
         if (!amadeusApiKey || !amadeusApiSecret) {
           console.error("Amadeus API credentials not configured");
-          return JSON.stringify({ 
-            success: false, 
-            error: "Flight search is temporarily unavailable. Please try again later or contact support."
+          return JSON.stringify({
+            success: false,
+            error:
+              "Flight search is temporarily unavailable. Please try again later or contact support.",
           });
         }
-        
+
         try {
           // Step 1: Get OAuth token (using test API)
-          const tokenResponse = await fetch("https://test.api.amadeus.com/v1/security/oauth2/token", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded"
+          const tokenResponse = await fetch(
+            "https://test.api.amadeus.com/v1/security/oauth2/token",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                grant_type: "client_credentials",
+                client_id: amadeusApiKey,
+                client_secret: amadeusApiSecret,
+              }),
             },
-            body: new URLSearchParams({
-              grant_type: "client_credentials",
-              client_id: amadeusApiKey,
-              client_secret: amadeusApiSecret
-            })
-          });
-          
+          );
+
           console.log("Amadeus token response status:", tokenResponse.status);
-          
+
           if (!tokenResponse.ok) {
             const tokenError = await tokenResponse.text();
             console.error("Amadeus token error:", tokenError);
-            return JSON.stringify({ 
-              success: false, 
-              error: "Unable to verify flight prices at this time. I cannot provide pricing without confirmed data."
+            return JSON.stringify({
+              success: false,
+              error:
+                "Unable to verify flight prices at this time. I cannot provide pricing without confirmed data.",
             });
           }
-          
+
           const tokenData = await tokenResponse.json();
           const accessToken = tokenData.access_token;
-          
+
+          // Step 1.5: Resolve to valid IATA codes (prevents INVALID FORMAT errors)
+          const resolveAirportCode = async (
+            input: string,
+            hint: string,
+          ): Promise<string> => {
+            if (hint) return hint;
+            const keyword = (input || "").trim();
+            if (!keyword) return "";
+
+            const url = new URL(
+              "https://test.api.amadeus.com/v1/reference-data/locations",
+            );
+            url.searchParams.set("subType", "CITY,AIRPORT");
+            url.searchParams.set("keyword", keyword);
+            url.searchParams.set("page[limit]", "1");
+
+            const r = await fetch(url.toString(), {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+
+            if (!r.ok) {
+              console.error("Amadeus locations lookup error:", await r.text());
+              return "";
+            }
+
+            const j = await r.json();
+            const code = j?.data?.[0]?.iataCode;
+            return typeof code === "string" ? code.toUpperCase() : "";
+          };
+
+          const originCode = await resolveAirportCode(
+            args.origin || "",
+            originCodeHint,
+          );
+          const destinationCode = await resolveAirportCode(
+            args.destination || "",
+            destinationCodeHint,
+          );
+
+          console.log(
+            `City conversion (resolved): "${args.origin}" -> "${originCode || "(unresolved)"}", "${args.destination}" -> "${destinationCode || "(unresolved)"}`,
+          );
+
+          if (!originCode || !destinationCode) {
+            return JSON.stringify({
+              success: false,
+              error:
+                "I can’t verify prices yet because I need valid airport/city codes. Please try again using 3-letter airport codes (e.g., PIT → CLT), or tell me the nearest major airport for each city.",
+            });
+          }
+
           // Step 2: Search for flights (using test API)
           const searchParams = new URLSearchParams({
             originLocationCode: originCode,
@@ -1952,72 +2029,76 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             departureDate: args.date || "",
             adults: String(args.passengers || 1),
             max: "10",
-            currencyCode: "USD"
+            currencyCode: "USD",
           });
-          
-          if (args.return_date) {
-            searchParams.append("returnDate", args.return_date);
-          }
-          
+
+          if (args.return_date) searchParams.append("returnDate", args.return_date);
+
           if (args.cabin_class) {
             const cabinMap: Record<string, string> = {
-              "economy": "ECONOMY",
-              "premium_economy": "PREMIUM_ECONOMY", 
-              "business": "BUSINESS",
-              "first": "FIRST"
+              economy: "ECONOMY",
+              premium_economy: "PREMIUM_ECONOMY",
+              business: "BUSINESS",
+              first: "FIRST",
             };
-            searchParams.append("travelClass", cabinMap[args.cabin_class] || "ECONOMY");
+            searchParams.append(
+              "travelClass",
+              cabinMap[args.cabin_class] || "ECONOMY",
+            );
           }
-          
+
           console.log("Amadeus search params:", searchParams.toString());
-          
+
           const flightResponse = await fetch(
             `https://test.api.amadeus.com/v2/shopping/flight-offers?${searchParams.toString()}`,
             {
-              headers: {
-                "Authorization": `Bearer ${accessToken}`
-              }
-            }
+              headers: { Authorization: `Bearer ${accessToken}` },
+            },
           );
-          
+
           if (!flightResponse.ok) {
             const flightError = await flightResponse.text();
             console.error("Amadeus flight search error:", flightError);
-            return JSON.stringify({ 
-              success: false, 
-              error: "No verified flight prices available for this route/date combination. I won't guess at prices."
+            return JSON.stringify({
+              success: false,
+              error:
+                "No verified flight prices available for this route/date combination. I won't guess at prices.",
             });
           }
-          
+
           const flightData = await flightResponse.json();
           const offers = flightData.data || [];
-          
+
           if (offers.length === 0) {
-            return JSON.stringify({ 
-              success: false, 
-              error: "No flights found for this route and date. Try different dates or airports."
+            return JSON.stringify({
+              success: false,
+              error:
+                "No flights found for this route and date. Try different dates or airports.",
             });
           }
-          
+
           // Sort by price and take top 3 cheapest
           const sortedOffers = offers
-            .sort((a: any, b: any) => parseFloat(a.price.total) - parseFloat(b.price.total))
+            .sort(
+              (a: any, b: any) =>
+                parseFloat(a.price.total) - parseFloat(b.price.total),
+            )
             .slice(0, 3);
-          
+
           const pricesCheckedAt = new Date().toISOString();
-          
+
           const flights = sortedOffers.map((offer: any) => {
             const segments = offer.itineraries?.[0]?.segments || [];
             const firstSegment = segments[0];
             const lastSegment = segments[segments.length - 1];
-            
-            // Get airline codes used in this offer
-            const airlines = [...new Set(segments.map((s: any) => s.carrierCode))].join(", ");
-            
-            // Calculate total duration
+
+            const airlines = [...new Set(segments.map((s: any) => s.carrierCode))].join(
+              ", ",
+            );
+
             const departure = firstSegment?.departure?.at || "";
             const arrival = lastSegment?.arrival?.at || "";
-            
+
             return {
               airline: airlines,
               price: parseFloat(offer.price.total),
@@ -2025,27 +2106,30 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
               stops: segments.length - 1,
               departure_time: departure,
               arrival_time: arrival,
-              flight_numbers: segments.map((s: any) => `${s.carrierCode}${s.number}`).join(" → ")
+              flight_numbers: segments
+                .map((s: any) => `${s.carrierCode}${s.number}`)
+                .join(" → "),
             };
           });
-          
-          return JSON.stringify({ 
-            success: true, 
+
+          return JSON.stringify({
+            success: true,
             flights,
-            route: `${args.origin?.toUpperCase()} → ${args.destination?.toUpperCase()}`,
+            route: `${(args.origin || originCode).toString().toUpperCase()} → ${(args.destination || destinationCode).toString().toUpperCase()}`,
             date: args.date,
             prices_checked: pricesCheckedAt,
-            note: "Live verified prices from Amadeus. Our service fee may apply."
+            note: "Live verified prices from Amadeus. Our service fee may apply.",
           });
-          
         } catch (error) {
           console.error("Amadeus API error:", error);
-          return JSON.stringify({ 
-            success: false, 
-            error: "Flight search failed. I cannot provide unverified pricing information."
+          return JSON.stringify({
+            success: false,
+            error:
+              "Flight search failed. I cannot provide unverified pricing information.",
           });
         }
       }
+
 
       case "apply_discount": {
         // Log the discount application
