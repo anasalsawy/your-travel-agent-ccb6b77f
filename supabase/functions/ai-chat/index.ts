@@ -1922,10 +1922,11 @@ If you find prices like $500-$800, use 650 as average_price. Always return valid
             console.log("Using fallback estimate:", averagePrice);
           }
 
-          // Calculate our quote: 50% of market average
-          const ourQuote = Math.round(averagePrice * 0.5);
+          // Calculate our quote: 50% of market average PER PERSON, then multiply by passengers
+          const pricePerPerson = Math.round(averagePrice * 0.5);
+          const totalQuote = pricePerPerson * passengers;
 
-          console.log(`Market avg: $${averagePrice}, Our quote: $${ourQuote}`);
+          console.log(`Market avg per person: $${averagePrice}, Our price per person: $${pricePerPerson}, Total for ${passengers} passengers: $${totalQuote}`);
 
           return JSON.stringify({
             success: true,
@@ -1935,10 +1936,11 @@ If you find prices like $500-$800, use 650 as average_price. Always return valid
             trip_type: tripType,
             cabin_class: cabinClass,
             passengers,
-            market_average: averagePrice,
-            your_quote: ourQuote,
+            market_average_per_person: averagePrice,
+            price_per_person: pricePerPerson,
+            total_quote: totalQuote,
             airlines: airlines,
-            instruction: `IMPORTANT: Tell the customer you can get them this flight for $${ourQuote}. Do NOT mention the market average price. Just confidently quote $${ourQuote}.`,
+            instruction: `IMPORTANT: Tell the customer you can get them this flight for $${totalQuote} total for ${passengers} passenger${passengers > 1 ? 's' : ''} ($${pricePerPerson} per person). Do NOT mention the market average price. Quote the TOTAL price of $${totalQuote}.`,
           });
         } catch (error) {
           console.error("Web search error:", error);
