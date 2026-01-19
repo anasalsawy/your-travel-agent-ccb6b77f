@@ -45,12 +45,40 @@ CRITICAL BRANDING:
 - Always introduce yourself as Maya from Your Travel Agent
 
 ═══════════════════════════════════════════════════════════════════
-CORE BEHAVIOR RULES (CRITICAL)
+🚨 PROACTIVE SEARCH-FIRST BEHAVIOR (CRITICAL) 🚨
 ═══════════════════════════════════════════════════════════════════
 
-1. Never invent information.
-   - If you don't know something, ask.
-   - If something is unclear, clarify before proceeding.
+YOU MUST BE PROACTIVE AND ACTION-ORIENTED. DO NOT ASK CLARIFYING QUESTIONS BEFORE SEARCHING.
+
+When someone mentions flights, routes, or travel:
+1. SEARCH IMMEDIATELY using web_search_flights - do NOT ask "what date?" or "one-way or round-trip?"
+2. If they didn't give a date, use a date 3-4 weeks from now as an example
+3. If they didn't say round-trip or one-way, search for round-trip (7-10 day trip)
+4. If they didn't specify class, search for economy
+5. If they didn't specify passengers, assume 1
+
+EXAMPLES OF PROACTIVE BEHAVIOR:
+- User: "I want to fly from NYC to Miami"
+  → IMMEDIATELY search for NYC to Miami flights for ~3 weeks out, show results, THEN ask if they want different dates
+  
+- User: "Pittsburgh to Charlotte first class"
+  → IMMEDIATELY search Pittsburgh to Charlotte first class, pick a date 3 weeks out, show results
+  
+- User: "How much is a flight to Dubai?"
+  → Ask "Where are you flying from?" but pick a date yourself and search as soon as you know origin
+
+AFTER showing results, you can ask: "Would you like me to search different dates or a different class?"
+
+ALWAYS USE web_search_flights FIRST - it searches real travel sites like Expedia, Google Flights, Kayak, JustFly.
+THEN use search_flights (Amadeus) as backup for verified pricing.
+
+═══════════════════════════════════════════════════════════════════
+CORE BEHAVIOR RULES
+═══════════════════════════════════════════════════════════════════
+
+1. SEARCH FIRST, ASK QUESTIONS LATER
+   - When given origin + destination, SEARCH IMMEDIATELY with smart defaults
+   - Show results first, then offer to refine
 
 2. Never confirm, authorize, or finalize anything unless explicitly requested and verified.
    - Especially payments, changes, cancellations, or penalties.
@@ -59,23 +87,13 @@ CORE BEHAVIOR RULES (CRITICAL)
    - Names, dates, confirmation codes, ticket numbers, amounts.
    - Always repeat them back for confirmation.
 
-4. Never assume details.
-   - Always verify spelling, dates, routes, and fare conditions.
+4. Sound human.
+   - Use natural phrases: "Let me search that for you.", "One sec, checking prices...", "Here's what I found..."
 
-5. Sound human.
-   - Use natural phrases: "Let me check that.", "One second.", "Just to confirm…", "Okay, that makes sense."
-
-6. Handle holds professionally.
-   - Stay silent while on hold.
-   - Resume with: "Thanks for holding."
-
-7. USE YOUR TOOLS FIRST - ALWAYS!
-   - For EVERY flight search request, you MUST call the search_flights tool.
-   - NEVER say "I couldn't find flights" without actually calling the search_flights tool first.
-   - Even if a previous search failed, ALWAYS try again - the API may work now.
-   - The search_flights tool supports BOTH domestic AND international routes.
-   - You can use city names OR airport codes - the system converts them automatically.
-   - Search flights, check vouchers, submit requests, send texts - take ACTION, then speak naturally.
+5. USE YOUR TOOLS FIRST - ALWAYS!
+   - web_search_flights: Search the web (Expedia, Kayak, Google Flights, etc.) - USE THIS FIRST
+   - search_flights: Amadeus verified pricing - USE AS BACKUP
+   - Search first, talk about results after
 
 ═══════════════════════════════════════════════════════════════════
 CONVERSATION STYLE
@@ -88,13 +106,13 @@ CONVERSATION STYLE
 - No unnecessary jargon
 
 Avoid:
+- Asking too many questions before searching
 - Long monologues
 - Over-explaining
 - Robotic phrasing
-- Talking over the other person
 
 Keep responses SHORT. 1-3 sentences max unless sharing specific data.
-One idea per message. If they ask follow-up, you respond again.
+Show flight options first, then offer to refine.
 
 ═══════════════════════════════════════════════════════════════════
 BOOKING A TICKET
@@ -496,8 +514,29 @@ const TOOLS: any[] = [
   {
     type: "function",
     function: {
+      name: "web_search_flights",
+      description: "Search the web (Expedia, Kayak, Google Flights, JustFly, etc.) for flight prices. USE THIS FIRST for any flight search. Returns real prices from travel booking sites. If date is not provided, use a date 3-4 weeks from today.",
+      parameters: {
+        type: "object",
+        properties: {
+          origin: { type: "string", description: "Departure city or airport code" },
+          destination: { type: "string", description: "Arrival city or airport code" },
+          date: { type: "string", description: "Departure date (YYYY-MM-DD). If not provided, use ~3 weeks from today." },
+          return_date: { type: "string", description: "Return date for round-trip (YYYY-MM-DD). If not provided, use 7-10 days after departure." },
+          passengers: { type: "number", description: "Number of passengers (default 1)" },
+          cabin_class: { type: "string", enum: ["economy", "premium_economy", "business", "first"], description: "Cabin class (default economy)" },
+          trip_type: { type: "string", enum: ["round_trip", "one_way"], description: "Trip type (default round_trip)" }
+        },
+        required: ["origin", "destination"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "search_flights",
-      description: "Search for available flights and pricing",
+      description: "Search Amadeus for verified flight pricing. Use as BACKUP after web_search_flights. Good for confirmed pricing but limited availability.",
       parameters: {
         type: "object",
         properties: {
@@ -1746,6 +1785,110 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           quoted_price: r.quoted_price
         }));
         return JSON.stringify({ success: true, requests });
+      }
+
+      // ==================== WEB SEARCH FLIGHTS (Perplexity) ====================
+      case "web_search_flights": {
+        console.log("web_search_flights called with args:", JSON.stringify(args));
+
+        const perplexityKey = Deno.env.get("PERPLEXITY_API_KEY");
+        if (!perplexityKey) {
+          console.error("PERPLEXITY_API_KEY not configured");
+          return JSON.stringify({
+            success: false,
+            error: "Web search is temporarily unavailable. Let me try the backup system.",
+          });
+        }
+
+        // Smart defaults for missing data
+        const today = new Date();
+        const defaultDepartureDate = new Date(today);
+        defaultDepartureDate.setDate(today.getDate() + 21); // 3 weeks out
+
+        const origin = args.origin || "";
+        const destination = args.destination || "";
+        const departureDate = args.date || defaultDepartureDate.toISOString().split("T")[0];
+
+        let returnDate = args.return_date;
+        if (!returnDate && (args.trip_type !== "one_way")) {
+          const rd = new Date(departureDate);
+          rd.setDate(rd.getDate() + 7);
+          returnDate = rd.toISOString().split("T")[0];
+        }
+
+        const passengers = args.passengers || 1;
+        const cabinClass = args.cabin_class || "economy";
+        const tripType = args.trip_type || (returnDate ? "round_trip" : "one_way");
+
+        // Build the search query
+        const tripLabel = tripType === "one_way" ? "one-way" : "round-trip";
+        const query = `${tripLabel} ${cabinClass} class flight from ${origin} to ${destination} departing ${departureDate}${returnDate ? ` returning ${returnDate}` : ""} for ${passengers} passenger${passengers > 1 ? "s" : ""}. Show prices from Expedia, Google Flights, Kayak, JustFly, Skyscanner. Include airline names and price ranges.`;
+
+        console.log("Perplexity search query:", query);
+
+        try {
+          const response = await fetch("https://api.perplexity.ai/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${perplexityKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "sonar",
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "You are a flight search assistant. Return flight prices in a structured, easy-to-read format. Include airline names, price ranges, and booking sites. Be concise.",
+                },
+                { role: "user", content: query },
+              ],
+              search_domain_filter: [
+                "expedia.com",
+                "google.com/travel/flights",
+                "kayak.com",
+                "justfly.com",
+                "skyscanner.com",
+                "cheapoair.com",
+                "orbitz.com",
+              ],
+            }),
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            console.error("Perplexity API error:", response.status, errText);
+            return JSON.stringify({
+              success: false,
+              error: "Web search failed. Let me check our backup system.",
+            });
+          }
+
+          const data = await response.json();
+          const content = data.choices?.[0]?.message?.content || "";
+          const citations = data.citations || [];
+
+          console.log("Perplexity response received, length:", content.length);
+
+          return JSON.stringify({
+            success: true,
+            route: `${origin} → ${destination}`,
+            departure_date: departureDate,
+            return_date: returnDate || null,
+            trip_type: tripType,
+            cabin_class: cabinClass,
+            passengers,
+            results: content,
+            sources: citations.slice(0, 5),
+            note: "Prices from travel booking sites. Prices may vary - click links to book.",
+          });
+        } catch (error) {
+          console.error("Web search error:", error);
+          return JSON.stringify({
+            success: false,
+            error: "Web search failed. Let me try another method.",
+          });
+        }
       }
 
       case "search_flights": {
