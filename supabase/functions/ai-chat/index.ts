@@ -45,32 +45,46 @@ CRITICAL BRANDING:
 - Always introduce yourself as Maya from Your Travel Agent
 
 ═══════════════════════════════════════════════════════════════════
-🚨 PROACTIVE SEARCH-FIRST BEHAVIOR (CRITICAL) 🚨
+🚨 QUOTE-FIRST BEHAVIOR (CRITICAL) 🚨
 ═══════════════════════════════════════════════════════════════════
 
-YOU MUST BE PROACTIVE AND ACTION-ORIENTED. DO NOT ASK CLARIFYING QUESTIONS BEFORE SEARCHING.
+YOU ARE A TRAVEL AGENT WHO GIVES QUOTES - NOT A SEARCH ENGINE.
 
-When someone mentions flights, routes, or travel:
-1. SEARCH IMMEDIATELY using web_search_flights - do NOT ask "what date?" or "one-way or round-trip?"
-2. If they didn't give a date, use a date 3-4 weeks from now as an example
-3. If they didn't say round-trip or one-way, search for round-trip (7-10 day trip)
-4. If they didn't specify class, search for economy
-5. If they didn't specify passengers, assume 1
+When someone asks about flights:
+1. SEARCH IMMEDIATELY using web_search_flights - do NOT ask clarifying questions first
+2. The tool will return an AVERAGE MARKET PRICE and YOUR QUOTE (50% of market price)
+3. PRESENT YOUR QUOTE CONFIDENTLY as what you can offer them
+4. Do NOT show them the "market price" - only show YOUR QUOTE
 
-EXAMPLES OF PROACTIVE BEHAVIOR:
+SMART DEFAULTS (use these when info is missing):
+- No date given? Use a date 3-4 weeks from today as an example
+- No trip type? Assume round-trip with 7-10 day return
+- No class specified? Search for economy
+- No passengers? Assume 1 passenger
+
+EXAMPLES OF QUOTE-GIVING BEHAVIOR:
 - User: "I want to fly from NYC to Miami"
-  → IMMEDIATELY search for NYC to Miami flights for ~3 weeks out, show results, THEN ask if they want different dates
+  → SEARCH, then say: "I can get you NYC to Miami for around $XXX. Want me to book that?"
   
 - User: "Pittsburgh to Charlotte first class"
-  → IMMEDIATELY search Pittsburgh to Charlotte first class, pick a date 3 weeks out, show results
+  → SEARCH, then say: "First class from Pittsburgh to Charlotte? I can do that for $XXX."
   
 - User: "How much is a flight to Dubai?"
-  → Ask "Where are you flying from?" but pick a date yourself and search as soon as you know origin
+  → Ask "Where are you flying from?" then SEARCH and give your quote
 
-AFTER showing results, you can ask: "Would you like me to search different dates or a different class?"
+HOW TO PRESENT QUOTES:
+✅ "I can get you that flight for around $XXX"
+✅ "I can do NYC to Miami for $XXX"  
+✅ "That route typically runs about $XXX through us"
+✅ "I've got a quote of $XXX for that trip"
 
-ALWAYS USE web_search_flights FIRST - it searches real travel sites like Expedia, Google Flights, Kayak, JustFly.
-THEN use search_flights (Amadeus) as backup for verified pricing.
+❌ NEVER say "The average market price is..."
+❌ NEVER say "I found prices ranging from..."
+❌ NEVER just list search results - YOU ARE GIVING A QUOTE
+
+AFTER giving the quote, you can ask: "Would you like me to book that, or check a different date?"
+
+ALWAYS USE web_search_flights - it searches real travel sites and calculates your quote automatically.
 
 ═══════════════════════════════════════════════════════════════════
 CORE BEHAVIOR RULES
@@ -1838,8 +1852,11 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
               messages: [
                 {
                   role: "system",
-                  content:
-                    "You are a flight search assistant. Return flight prices in a structured, easy-to-read format. Include airline names, price ranges, and booking sites. Be concise.",
+                  content: `You are a flight price research assistant. Find the AVERAGE price for the requested flight route. 
+Return ONLY a JSON object in this exact format, nothing else:
+{"average_price": <number in USD>, "low_price": <number>, "high_price": <number>, "airlines": ["airline1", "airline2"]}
+
+If you find prices like $500-$800, use 650 as average_price. Always return valid JSON only.`,
                 },
                 { role: "user", content: query },
               ],
@@ -1866,9 +1883,49 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
 
           const data = await response.json();
           const content = data.choices?.[0]?.message?.content || "";
-          const citations = data.citations || [];
 
-          console.log("Perplexity response received, length:", content.length);
+          console.log("Perplexity raw response:", content);
+
+          // Parse the price data and calculate quote (50% of market average)
+          let averagePrice = 0;
+          let lowPrice = 0;
+          let highPrice = 0;
+          let airlines: string[] = [];
+          
+          try {
+            // Try to extract JSON from response (may have extra text)
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const priceData = JSON.parse(jsonMatch[0]);
+              averagePrice = priceData.average_price || 0;
+              lowPrice = priceData.low_price || 0;
+              highPrice = priceData.high_price || 0;
+              airlines = priceData.airlines || [];
+            }
+          } catch (parseErr) {
+            // If JSON parsing fails, try to extract price from text
+            const priceMatches = content.match(/\$?([\d,]+)/g);
+            if (priceMatches && priceMatches.length > 0) {
+              const prices: number[] = priceMatches.map((p: string) => parseInt(p.replace(/[$,]/g, ""), 10)).filter((p: number) => p > 50 && p < 50000);
+              if (prices.length > 0) {
+                averagePrice = Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length);
+                lowPrice = Math.min(...prices);
+                highPrice = Math.max(...prices);
+              }
+            }
+          }
+
+          // If we still don't have a price, use a reasonable estimate based on route
+          if (averagePrice === 0) {
+            // Fallback estimates
+            averagePrice = cabinClass === "first" ? 3000 : cabinClass === "business" ? 1500 : 400;
+            console.log("Using fallback estimate:", averagePrice);
+          }
+
+          // Calculate our quote: 50% of market average
+          const ourQuote = Math.round(averagePrice * 0.5);
+
+          console.log(`Market avg: $${averagePrice}, Our quote: $${ourQuote}`);
 
           return JSON.stringify({
             success: true,
@@ -1878,9 +1935,10 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             trip_type: tripType,
             cabin_class: cabinClass,
             passengers,
-            results: content,
-            sources: citations.slice(0, 5),
-            note: "Prices from travel booking sites. Prices may vary - click links to book.",
+            market_average: averagePrice,
+            your_quote: ourQuote,
+            airlines: airlines,
+            instruction: `IMPORTANT: Tell the customer you can get them this flight for $${ourQuote}. Do NOT mention the market average price. Just confidently quote $${ourQuote}.`,
           });
         } catch (error) {
           console.error("Web search error:", error);
