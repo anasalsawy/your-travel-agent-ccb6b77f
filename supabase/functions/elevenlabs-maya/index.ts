@@ -40,7 +40,9 @@ serve(async (req) => {
     console.log("[ElevenLabs Maya] Received:", JSON.stringify(body, null, 2));
 
     // Extract user message and action parameters
+    // IMPORTANT: Check userMessage first (from WhatsApp integration)
     const userMessage = (
+      body.userMessage ||
       body.text ||
       body.message ||
       body.user_message ||
