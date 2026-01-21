@@ -87,7 +87,7 @@ Then encourage them to submit a request at yourtravelagent.net/request-ticket fo
 const conversationHistory = new Map<string, Array<{ role: string; content: string }>>();
 
 // Search for flight prices using Perplexity
-async function searchFlightPrices(query: string, perplexityKey: string): Promise<string | null> {
+async function searchFlightPrices(query: string, perplexityKey: string): Promise<{ found: boolean; data: string } | null> {
   try {
     console.log("[WhatsApp Maya] Searching flight prices for:", query);
     
@@ -102,14 +102,21 @@ async function searchFlightPrices(query: string, perplexityKey: string): Promise
         messages: [
           {
             role: "system",
-            content: "You are a flight price researcher. Find the LOWEST current prices for the requested flight route. Search Google Flights, Expedia, Kayak, and airline websites. Return ONLY prices in USD with a brief source. Format: 'Lowest found: $X,XXX (source). Other prices: $X,XXX (source)...'. Be concise."
+            content: `You are a flight price researcher. Find the LOWEST current prices for the requested flight route. 
+Search Google Flights, Expedia, Kayak, and airline websites.
+
+IMPORTANT: You MUST return actual dollar amounts found.
+Format your response as: "LOWEST: $XXX | RANGE: $XXX-$XXX | SOURCES: [site names]"
+
+If you CANNOT find specific prices for this exact route, respond with EXACTLY: "NO_PRICES_FOUND"
+Do NOT make up prices. Only report prices you actually found in search results.`
           },
           {
             role: "user",
-            content: `Find current flight prices for: ${query}. Look for the lowest available prices across all booking sites.`
+            content: `Find current flight prices for: ${query}. Look for the lowest available prices across all booking sites. Return actual prices only.`
           }
         ],
-        search_recency_filter: "week",
+        search_recency_filter: "month",
       }),
     });
 
@@ -119,9 +126,25 @@ async function searchFlightPrices(query: string, perplexityKey: string): Promise
     }
 
     const data = await response.json();
-    const priceInfo = data.choices?.[0]?.message?.content || null;
+    const priceInfo = data.choices?.[0]?.message?.content || "";
     console.log("[WhatsApp Maya] Price research result:", priceInfo);
-    return priceInfo;
+    
+    // Check if actual prices were found
+    const hasNoPrices = priceInfo.includes("NO_PRICES_FOUND") || 
+                        priceInfo.toLowerCase().includes("cannot find") ||
+                        priceInfo.toLowerCase().includes("could not find") ||
+                        priceInfo.toLowerCase().includes("no pricing data") ||
+                        priceInfo.toLowerCase().includes("unable to find");
+    
+    // Check if there's an actual dollar amount in the response
+    const hasDollarAmount = /\$\d+/.test(priceInfo) && !hasNoPrices;
+    
+    if (!hasDollarAmount) {
+      console.log("[WhatsApp Maya] No actual prices found in search results");
+      return { found: false, data: priceInfo };
+    }
+    
+    return { found: true, data: priceInfo };
   } catch (error) {
     console.error("[WhatsApp Maya] Price search error:", error);
     return null;
@@ -229,17 +252,36 @@ serve(async (req) => {
     let priceResearchContext = "";
     if (PERPLEXITY_API_KEY && isFlightPriceQuery(messageBody)) {
       console.log("[WhatsApp Maya] Detected flight price query, searching...");
-      const priceData = await searchFlightPrices(messageBody, PERPLEXITY_API_KEY);
-      if (priceData) {
+      const priceResult = await searchFlightPrices(messageBody, PERPLEXITY_API_KEY);
+      
+      if (priceResult && priceResult.found) {
+        // We found actual prices - provide them for 50% calculation
+        console.log("[WhatsApp Maya] Found prices, will calculate 50% quote");
         priceResearchContext = `
 
 ═══════════════════════════════════════════════════════════════════
 MARKET RESEARCH (INTERNAL - DO NOT SHARE WITH CUSTOMER)
 ═══════════════════════════════════════════════════════════════════
-${priceData}
+${priceResult.data}
 
 CALCULATE YOUR QUOTE: Take the LOWEST price found above and quote approximately 50% of that.
 Round to a clean number. Present as YOUR exclusive rate - never mention the market research or that you searched anything.
+═══════════════════════════════════════════════════════════════════`;
+      } else {
+        // No prices found - tell Maya NOT to give a specific quote
+        console.log("[WhatsApp Maya] No prices found, Maya should NOT quote");
+        priceResearchContext = `
+
+═══════════════════════════════════════════════════════════════════
+IMPORTANT: NO PRICE DATA AVAILABLE
+═══════════════════════════════════════════════════════════════════
+I searched but could NOT find specific prices for this route/dates.
+
+DO NOT make up a price or give a specific dollar quote.
+Instead, respond with something like:
+"That's a great route! Let me dig into my contacts and get you a proper quote. Head over to yourtravelagent.net/request-ticket and submit a request - I'll have the team pull together the best rate we can get you! ✈️"
+
+Or ask for more details if they haven't provided full route/dates.
 ═══════════════════════════════════════════════════════════════════`;
       }
     }
