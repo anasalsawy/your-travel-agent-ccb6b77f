@@ -19,9 +19,11 @@ import {
   MessageSquare,
   AlertTriangle,
   Clock,
-  Shield
+  Shield,
+  ExternalLink
 } from "lucide-react";
 import { PayPalBuyerProtection, PayPalIcon, PayPalTrustBadge } from "@/components/payment/PayPalBuyerProtection";
+import { EscrowBuyerProtection, EscrowIcon, EscrowTrustBadge, EscrowHowItWorks } from "@/components/payment/EscrowBuyerProtection";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
 import { 
@@ -43,7 +45,7 @@ type TicketRequest = Tables<"ticket_requests"> & {
   deposit_proof_url?: string | null;
   balance_proof_url?: string | null;
 };
-type PaymentMethod = "zelle" | "paypal";
+type PaymentMethod = "zelle" | "paypal" | "escrow";
 
 interface TicketRequestDetailProps {
   request: TicketRequest;
@@ -361,6 +363,24 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
         </Label>
       </div>
 
+      <div className={`relative flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
+        paymentMethod === "escrow" ? "border-[#00A651] bg-[#00A651]/5" : "border-border"
+      }`}>
+        <RadioGroupItem value="escrow" id="escrow" />
+        <Label htmlFor="escrow" className="flex items-center gap-3 cursor-pointer flex-1">
+          <EscrowIcon className="w-5 h-5" />
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <p className="font-medium">Escrow.com</p>
+              <EscrowTrustBadge compact />
+            </div>
+            <p className="text-xs text-muted-foreground">Maximum buyer protection - funds held until verified</p>
+          </div>
+        </Label>
+        {paymentMethod === "escrow" && (
+          <Shield className="w-4 h-4 text-[#00A651] absolute top-2 right-2" />
+        )}
+      </div>
 
       <div className={`relative flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
         paymentMethod === "paypal" ? "border-[#0070BA] bg-[#0070BA]/5" : "border-border"
@@ -422,6 +442,55 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {paymentMethod === "escrow" && (
+        <div className="space-y-4">
+          {/* Escrow.com Buyer Protection Banner */}
+          <EscrowBuyerProtection />
+
+          <div className="p-4 rounded-xl bg-[#00A651]/10 border border-[#00A651]/30 space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Amount</span>
+              <span className="font-bold text-lg">{formatCurrency(amount)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Escrow Fee (est.)</span>
+              <span>~3.25%</span>
+            </div>
+          </div>
+
+          <EscrowHowItWorks />
+
+          <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+            <p className="font-medium mb-2">How to pay with Escrow.com:</p>
+            <ol className="list-decimal list-inside space-y-1 text-xs">
+              <li>Click the button below to start an Escrow.com transaction</li>
+              <li>Complete payment on Escrow.com's secure platform</li>
+              <li>We'll issue your ticket once funds are secured</li>
+              <li>Verify everything works, then approve the release</li>
+            </ol>
+          </div>
+
+          <Button 
+            size="lg" 
+            className="w-full bg-[#00A651] hover:bg-[#008c44] text-white gap-2" 
+            onClick={() => {
+              toast({
+                title: "Escrow.com Integration",
+                description: "You'll be contacted to complete the Escrow.com transaction. Check your email for details.",
+              });
+            }}
+          >
+            <Shield className="w-4 h-4" />
+            Start Secure Escrow Transaction
+            <ExternalLink className="w-4 h-4" />
+          </Button>
+          
+          <p className="text-center text-[10px] text-muted-foreground">
+            Your payment is protected by Escrow.com, a licensed escrow company since 1999.
+          </p>
         </div>
       )}
 
