@@ -1,34 +1,9 @@
 import { Link } from "react-router-dom";
-import { useEffect } from "react";
 import { Mail, Shield, Lock } from "lucide-react";
 import { SupportButtons, FacebookLink } from "@/components/SupportButtons";
 import logo from "@/assets/logo-black-gold-shield.png";
 
-// Declare custom element type for ElevenLabs widget
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'elevenlabs-convai': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & { 'agent-id': string }, HTMLElement>;
-    }
-  }
-}
-
 export function Footer() {
-  // Load ElevenLabs widget script (only once, don't remove on unmount)
-  useEffect(() => {
-    // Check if script already exists
-    if (document.querySelector('script[src*="elevenlabs/convai-widget-embed"]')) {
-      return;
-    }
-    
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
-    script.async = true;
-    document.body.appendChild(script);
-    
-    // Don't remove script on unmount - widget should persist
-  }, []);
-
   return (
     <footer className="bg-card border-t border-border">
       <div className="container mx-auto px-4 py-12 md:py-16">
@@ -123,9 +98,6 @@ export function Footer() {
           <p className="text-xs text-muted-foreground">Travel vouchers are subject to airline terms and conditions.</p>
         </div>
       </div>
-      
-      {/* ElevenLabs Voice Widget */}
-      <elevenlabs-convai agent-id="agent_2601kffzj5hhfyt9j1ec1t39jejg"></elevenlabs-convai>
     </footer>
   );
 }
