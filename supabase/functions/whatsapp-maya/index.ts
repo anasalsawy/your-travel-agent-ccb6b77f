@@ -339,7 +339,7 @@ serve(async (req) => {
     const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL");
     
     // Get admin phone from site_settings or use a default
-    let adminPhone = "+17604419108"; // Fallback
+    let adminPhone = "+17134698336"; // Your phone number
     try {
       const { data } = await supabase
         .from("site_settings")
