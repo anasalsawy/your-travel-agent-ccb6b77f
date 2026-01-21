@@ -14,16 +14,19 @@ declare global {
 }
 
 export function Footer() {
-  // Load ElevenLabs widget script
+  // Load ElevenLabs widget script (only once, don't remove on unmount)
   useEffect(() => {
+    // Check if script already exists
+    if (document.querySelector('script[src*="elevenlabs/convai-widget-embed"]')) {
+      return;
+    }
+    
     const script = document.createElement('script');
     script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
     script.async = true;
     document.body.appendChild(script);
     
-    return () => {
-      document.body.removeChild(script);
-    };
+    // Don't remove script on unmount - widget should persist
   }, []);
 
   return (
