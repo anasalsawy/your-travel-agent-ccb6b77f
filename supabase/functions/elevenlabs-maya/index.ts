@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,16 +7,18 @@ const corsHeaders = {
 };
 
 /**
- * ELEVENLABS MAYA - PHONE VOICE BRIDGE
+ * ELEVENLABS MAYA - DATA PROVIDER
  * 
- * This webhook is called by ElevenLabs phone agent.
- * ElevenLabs handles the voice (STT/TTS).
- * We route ALL intelligence to our ai-chat function.
+ * This webhook returns STRUCTURED DATA for the ElevenLabs agent to use.
+ * The ElevenLabs agent is the BRAIN - it decides what to say.
+ * This function just provides the data it needs.
  * 
- * Phone Maya = Website Maya = ONE MAYA brain!
- * 
- * IMPORTANT: For conversation continuity, we use the caller's phone number
- * as a stable session identifier since ElevenLabs may not send conversation_id.
+ * Supported intents:
+ * - vouchers: Search/get available vouchers
+ * - flights: Search award flights
+ * - orders: Check order status
+ * - ticket_request: Submit or check ticket requests
+ * - general: General info about the service
  */
 
 serve(async (req) => {
@@ -24,183 +27,212 @@ serve(async (req) => {
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-  const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   try {
     const body = await req.json();
-    console.log("[Phone Maya] Received:", JSON.stringify(body, null, 2));
+    console.log("[ElevenLabs Maya] Received:", JSON.stringify(body, null, 2));
 
-    // Extract user message - ElevenLabs sends various formats
-    const userMessage =
+    // Extract user message
+    const userMessage = (
       body.text ||
       body.message ||
       body.user_message ||
       body.input ||
-      body.Mayabrain ||
       body.parameters?.text ||
       body.parameters?.message ||
-      body.payload?.text ||
-      body.payload?.message ||
-      // Fallback: first non-empty string value
-      (body && typeof body === "object" ? findFirstString(body) : "") ||
-      "";
+      ""
+    ).toLowerCase();
 
-    // Get stable conversation identifier
-    // Priority: phone number > explicit IDs from body > headers > deterministic fingerprint
-    const callerPhone =
-      body.caller_phone ||
-      body.phone_number ||
-      body.from ||
-      body.caller_id ||
-      "";
+    console.log("[ElevenLabs Maya] User message:", userMessage);
 
-    const headerConversationId =
-      req.headers.get("x-elevenlabs-conversation-id") ||
-      req.headers.get("x-conversation-id") ||
-      req.headers.get("x-conversationid") ||
-      req.headers.get("x-session-id") ||
-      "";
+    // Detect intent and get relevant data
+    let responseData: any = {};
+    let intent = "general";
 
-    const explicitBodyId =
-      body.conversation_id ||
-      body.conversationId ||
-      body.session_id ||
-      body.sessionId ||
-      body.parameters?.conversation_id ||
-      body.parameters?.conversationId ||
-      body.parameters?.session_id ||
-      body.parameters?.sessionId ||
-      "";
-
-    // Use phone number as session ID for continuity, otherwise use whatever stable IDs we can find.
-    // If ElevenLabs doesn't provide IDs for tool calls, we fall back to a deterministic fingerprint
-    // (good enough to preserve continuity during a single testing session).
-    const sessionId = callerPhone
-      ? `phone-${callerPhone.replace(/\D/g, "")}`
-      : explicitBodyId || headerConversationId || (await getDeterministicSessionId(req));
-
-    console.log("[Phone Maya] Session ID:", sessionId, "| Message:", userMessage.substring(0, 100));
-
-    if (!userMessage) {
-      const greeting = "Hi! This is Maya from Your Travel Agent. How can I help you today?";
-      return new Response(
-        JSON.stringify({
-          // Common conventions various ElevenLabs tool runners look for
-          result: greeting,
-          output: greeting,
-
-          // Backwards compatible keys
-          response: greeting,
-          text: greeting,
-          message: greeting,
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Add phone context to first message
-    const contextPrefix = callerPhone 
-      ? `[PHONE CALL from ${callerPhone}] ` 
-      : "[PHONE CALL] ";
-
-    // Route to OUR ai-chat (Maya's brain with ALL tools)
-    const aiChatResponse = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: contextPrefix + userMessage }],
-        sessionId: sessionId,
-        conversationId: sessionId, // Use same ID for both
-      }),
-    });
-
-    if (!aiChatResponse.ok) {
-      const errorText = await aiChatResponse.text();
-      console.error("[Phone Maya] ai-chat error:", aiChatResponse.status, errorText);
+    // VOUCHERS
+    if (userMessage.includes("voucher") || userMessage.includes("credit") || userMessage.includes("deal")) {
+      intent = "vouchers";
       
-      const fallback = "Hmm, I hit a little snag. Can you try that again?";
+      const { data: vouchers, error } = await supabase
+        .from("vouchers")
+        .select("id, airline, title, face_value, sale_price, discount_percent, expiry_date, currency, type")
+        .eq("status", "available")
+        .order("discount_percent", { ascending: false })
+        .limit(10);
 
-      return new Response(
-        JSON.stringify({
-          result: fallback,
-          output: fallback,
-          response: fallback,
-          text: fallback,
-          message: fallback,
-        }),
-        {
-          status: 200, // Return 200 so ElevenLabs can speak the error
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      if (error) {
+        console.error("Vouchers error:", error);
+        responseData = { error: "Could not fetch vouchers", vouchers: [] };
+      } else {
+        responseData = {
+          vouchers: vouchers || [],
+          count: vouchers?.length || 0,
+          message: vouchers?.length 
+            ? `Found ${vouchers.length} available vouchers` 
+            : "No vouchers available right now"
+        };
+      }
     }
-
-    // Parse SSE response from ai-chat
-    const responseText = await aiChatResponse.text();
-    let mayaResponse = "";
     
-    for (const line of responseText.split("\n")) {
-      if (line.startsWith("data: ") && !line.includes("[DONE]")) {
-        try {
-          const data = JSON.parse(line.substring(6));
-          if (data.choices?.[0]?.delta?.content) {
-            mayaResponse += data.choices[0].delta.content;
-          }
-        } catch (e) {
-          // Skip non-JSON lines
+    // ORDERS / ORDER STATUS
+    else if (userMessage.includes("order") || userMessage.includes("status") || userMessage.includes("purchase")) {
+      intent = "orders";
+      
+      // Get recent orders (in production, would filter by user)
+      const { data: orders, error } = await supabase
+        .from("orders")
+        .select("id, amount_paid, payment_status, order_status, delivery_status, created_at, voucher_id")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error("Orders error:", error);
+        responseData = { error: "Could not fetch orders", orders: [] };
+      } else {
+        responseData = {
+          orders: orders || [],
+          count: orders?.length || 0,
+          message: orders?.length 
+            ? `Found ${orders.length} recent orders` 
+            : "No orders found"
+        };
+      }
+    }
+    
+    // TICKET REQUESTS / FLIGHT BOOKING
+    else if (
+      userMessage.includes("ticket") || 
+      userMessage.includes("flight") || 
+      userMessage.includes("book") ||
+      userMessage.includes("fly") ||
+      userMessage.includes("travel")
+    ) {
+      intent = "ticket_requests";
+      
+      // Check if they're asking about existing requests or want to create one
+      if (userMessage.includes("request") || userMessage.includes("submit") || userMessage.includes("new")) {
+        responseData = {
+          action: "create_ticket_request",
+          required_fields: ["origin", "destination", "departure_date", "passengers", "cabin_class", "contact_email"],
+          optional_fields: ["return_date", "budget", "flexibility", "preferred_airline", "special_notes"],
+          message: "To submit a ticket request, I need: origin, destination, travel date, number of passengers, cabin class, and your email."
+        };
+      } else {
+        // Get recent ticket requests
+        const { data: requests, error } = await supabase
+          .from("ticket_requests")
+          .select("id, origin, destination, departure_date, return_date, passengers, cabin_class, status, quoted_price, payment_status")
+          .order("created_at", { ascending: false })
+          .limit(5);
+
+        if (error) {
+          console.error("Ticket requests error:", error);
+          responseData = { error: "Could not fetch requests", requests: [] };
+        } else {
+          responseData = {
+            requests: requests || [],
+            count: requests?.length || 0,
+            message: requests?.length 
+              ? `Found ${requests.length} ticket requests` 
+              : "No ticket requests found"
+          };
         }
       }
     }
+    
+    // AWARD FLIGHTS / MILES / POINTS
+    else if (
+      userMessage.includes("award") || 
+      userMessage.includes("miles") || 
+      userMessage.includes("points") ||
+      userMessage.includes("redeem")
+    ) {
+      intent = "award_flights";
+      responseData = {
+        action: "search_award_flights",
+        supported_programs: ["United MileagePlus", "American AAdvantage", "Delta SkyMiles", "Air Canada Aeroplan", "Alaska Mileage Plan", "British Airways Avios", "Emirates Skywards", "Singapore KrisFlyer"],
+        required_fields: ["origin", "destination", "date"],
+        message: "I can search award flight availability. Tell me where you want to go, when, and I'll check availability across major programs."
+      };
+    }
+    
+    // PRICING / COST
+    else if (userMessage.includes("price") || userMessage.includes("cost") || userMessage.includes("how much")) {
+      intent = "pricing";
+      responseData = {
+        pricing_info: {
+          service_fee: "We charge a small service fee on bookings",
+          voucher_discount: "Vouchers are sold at 10-30% below face value",
+          payment_methods: ["Credit Card", "PayPal", "Bitcoin", "Bank Transfer"]
+        },
+        message: "Our vouchers are discounted 10-30% below face value. We accept multiple payment methods."
+      };
+    }
+    
+    // HELP / SUPPORT
+    else if (userMessage.includes("help") || userMessage.includes("support") || userMessage.includes("contact")) {
+      intent = "support";
+      responseData = {
+        support_options: {
+          email: "support@yourtravelagent.com",
+          chat: "Available 24/7",
+          phone: "Callback available"
+        },
+        message: "I'm here to help! I can assist with vouchers, flight bookings, and orders."
+      };
+    }
+    
+    // GENERAL / GREETING
+    else {
+      intent = "general";
+      
+      // Get some stats to make it informative
+      const { count: voucherCount } = await supabase
+        .from("vouchers")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "available");
 
-    // Clean up response for voice (remove markdown, etc.)
-    mayaResponse = mayaResponse
-      .replace(/\*\*/g, '') // Remove bold markdown
-      .replace(/\*/g, '')   // Remove italic markdown
-      .replace(/`/g, '')    // Remove code ticks
-      .replace(/\n\n+/g, '. ') // Replace multiple newlines with pause
-      .replace(/\n/g, '. ')    // Replace single newlines
-      .trim();
+      responseData = {
+        services: [
+          "Discounted airline vouchers and travel credits",
+          "Flight booking assistance",
+          "Award flight searches",
+          "Order tracking and support"
+        ],
+        available_vouchers: voucherCount || 0,
+        message: `Welcome! We have ${voucherCount || 0} vouchers available. I can help with vouchers, flight bookings, or order status.`
+      };
+    }
 
-    console.log("[Phone Maya] Response:", mayaResponse.substring(0, 200));
+    // Build response
+    const response = {
+      intent,
+      data: responseData,
+      timestamp: new Date().toISOString()
+    };
 
-    // Return in format ElevenLabs expects
+    console.log("[ElevenLabs Maya] Response:", JSON.stringify(response, null, 2));
+
     return new Response(
-      JSON.stringify({
-        // Common conventions various ElevenLabs tool runners look for
-        result: mayaResponse,
-        output: mayaResponse,
-
-        // Backwards compatible keys
-        response: mayaResponse,
-        text: mayaResponse,
-        message: mayaResponse,
-
-        // Helpful for continuity if ElevenLabs passes these through
-        session_id: sessionId,
-        conversation_id: sessionId,
-      }),
+      JSON.stringify(response),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
 
   } catch (error) {
-    console.error("[Phone Maya] Error:", error);
-
-    const fallback = "I'm having a moment here. Can you try that again?";
+    console.error("[ElevenLabs Maya] Error:", error);
 
     return new Response(
       JSON.stringify({
-        result: fallback,
-        output: fallback,
-        response: fallback,
-        text: fallback,
-        message: fallback,
+        intent: "error",
+        data: {
+          error: "Something went wrong",
+          message: "I'm having trouble processing that. Could you try again?"
+        }
       }),
       {
         status: 200,
@@ -209,36 +241,3 @@ serve(async (req) => {
     );
   }
 });
-
-// Helper to find first non-empty string in object
-function findFirstString(obj: Record<string, unknown>): string {
-  for (const value of Object.values(obj)) {
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-  }
-  return "";
-}
-
-async function getDeterministicSessionId(req: Request): Promise<string> {
-  // When ElevenLabs tool calls don't include conversation_id/session_id, we still want
-  // some continuity to avoid "identity verify" loops.
-  const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-  const userAgent = req.headers.get("user-agent") || "";
-  const acceptLanguage = req.headers.get("accept-language") || "";
-
-  const raw = `${forwardedFor}|${userAgent}|${acceptLanguage}`.trim();
-  if (!raw) return `anon-${crypto.randomUUID()}`;
-
-  const hash = await sha256Hex(raw);
-  return `fp-${hash.slice(0, 32)}`;
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
