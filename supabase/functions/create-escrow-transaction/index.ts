@@ -177,8 +177,14 @@ serve(async (req) => {
 
     console.log("Order created:", order.id);
 
-    // Return the Escrow.com transaction details with payment URL
-    const escrowPaymentUrl = `https://www.escrow.com/transactions/${escrowData.id}`;
+    // Find the buyer's next_step URL from the parties array
+    const buyerParty = escrowData.parties?.find(
+      (party: { role: string; next_step?: string }) => party.role === "buyer"
+    );
+    const escrowPaymentUrl = buyerParty?.next_step || 
+      `https://www.escrow.com/transactions/${escrowData.id}`;
+    
+    console.log("Buyer redirect URL:", escrowPaymentUrl);
     
     return new Response(
       JSON.stringify({
