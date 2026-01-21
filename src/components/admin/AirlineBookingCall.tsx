@@ -44,6 +44,10 @@ export interface BookingDetails {
   // Special requests
   seatPreference: string;
   specialRequests: string;
+
+  // Customer contact (for confirmation emails from airline)
+  customerEmail: string;
+  customerPhone: string;
 }
 
 export interface AirlineBookingCallProps {
@@ -51,8 +55,10 @@ export interface AirlineBookingCallProps {
   initialBooking?: Partial<BookingDetails>;
   /** Pre-select airline by value (e.g., "alaska", "delta") or by name */
   initialAirline?: string;
+  /** Link to a ticket request ID for call logging */
+  ticketRequestId?: string;
   /** Callback when call is initiated */
-  onCallStarted?: (callResult: { success: boolean; message: string }) => void;
+  onCallStarted?: (callResult: { success: boolean; message: string; callLogId?: string }) => void;
 }
 
 export const AIRLINES = [
@@ -96,14 +102,16 @@ const DEFAULT_BOOKING: BookingDetails = {
   billingZip: "",
   seatPreference: "",
   specialRequests: "",
+  customerEmail: "",
+  customerPhone: "",
 };
 
-export function AirlineBookingCall({ initialBooking, initialAirline, onCallStarted }: AirlineBookingCallProps = {}) {
+export function AirlineBookingCall({ initialBooking, initialAirline, ticketRequestId, onCallStarted }: AirlineBookingCallProps = {}) {
   const [selectedAirline, setSelectedAirline] = useState<string>("");
   const [customPhone, setCustomPhone] = useState<string>("");
   const [pin, setPin] = useState("");
   const [calling, setCalling] = useState(false);
-  const [callResult, setCallResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [callResult, setCallResult] = useState<{ success: boolean; message: string; callLogId?: string } | null>(null);
   const { toast } = useToast();
 
   const [booking, setBooking] = useState<BookingDetails>({ ...DEFAULT_BOOKING, ...initialBooking });
@@ -156,6 +164,12 @@ CABIN CLASS: ${CABIN_CLASSES.find(c => c.value === booking.cabinClass)?.label ||
 ${booking.seatPreference ? `SEAT PREFERENCE: ${booking.seatPreference}` : ""}
 ${booking.specialRequests ? `SPECIAL REQUESTS: ${booking.specialRequests}` : ""}
 
+=== CUSTOMER CONTACT FOR CONFIRMATION ===
+When the booking is complete, tell the airline to send confirmation to:
+- Email: ${booking.customerEmail || "Will provide when asked"}
+- Phone: ${booking.customerPhone || "Will provide when asked"}
+IMPORTANT: Make sure to provide this info so the customer gets their confirmation!
+
 === PAYMENT INFORMATION ===
 When ready to pay, you have authorization to use:
 - Card Type: ${booking.cardType.toUpperCase()}
@@ -163,8 +177,9 @@ When ready to pay, you have authorization to use:
 - Last 4 digits: ${booking.cardLastFour}
 - Billing Zip: ${booking.billingZip}
 
-IMPORTANT: Tell the agent you will provide the FULL card number when they're ready. 
-For security, we will handle the actual card number entry separately.
+IMPORTANT: When they ask for the full card number, say "Please hold while I get the card."
+Then PAUSE and wait - the admin will enter the card number using the secure keypad.
+Do NOT make up a card number.
 
 === IVR NAVIGATION ===
 When you encounter automated phone menus:
@@ -278,6 +293,12 @@ Provide a complete summary including:
           context: systemPrompt,
           use_maya_brain: true,
           call_type: "airline_booking",
+          // New fields for call logging
+          ticket_request_id: ticketRequestId || null,
+          airline: getAirline()?.label || "Unknown",
+          customer_email: booking.customerEmail || null,
+          customer_phone: booking.customerPhone || null,
+          passenger_names: booking.passengerNames || null,
         },
       });
 
@@ -287,6 +308,7 @@ Provide a complete summary including:
         const result = {
           success: true,
           message: `Call initiated to ${getAirline()?.label}! Maya is now booking your flight.`,
+          callLogId: data.call_log_id,
         };
         setCallResult(result);
         onCallStarted?.(result);
@@ -443,6 +465,27 @@ Provide a complete summary including:
               onChange={(e) => updateBooking("passengerNames", e.target.value)}
               placeholder="John Smith, Jane Smith (as on ID)"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Customer Email (for confirmation)</Label>
+              <Input
+                type="email"
+                value={booking.customerEmail}
+                onChange={(e) => updateBooking("customerEmail", e.target.value)}
+                placeholder="customer@email.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Customer Phone</Label>
+              <Input
+                type="tel"
+                value={booking.customerPhone}
+                onChange={(e) => updateBooking("customerPhone", e.target.value)}
+                placeholder="+1 555-123-4567"
+              />
+            </div>
           </div>
         </div>
 

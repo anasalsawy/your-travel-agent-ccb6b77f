@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,19 +10,7 @@ const corsHeaders = {
  * MAKE OUTBOUND CALL
  * 
  * Initiates an outbound phone call using ElevenLabs Conversational AI.
- * 
- * IMPORTANT: For the call to use OUR Maya's brain, you must configure
- * the ElevenLabs agent to use a Server Tool that calls our elevenlabs-maya endpoint.
- * 
- * ElevenLabs Agent Configuration:
- * 1. Create agent in ElevenLabs dashboard
- * 2. Set a minimal system prompt (just routing instructions)
- * 3. Add Server Tool pointing to: https://wpwdxtyufpewdyffxlgo.supabase.co/functions/v1/elevenlabs-maya
- * 4. Configure the tool to be called for ALL user messages
- * 
- * This way:
- * - ElevenLabs handles voice (STT/TTS) and phone infrastructure
- * - OUR Maya handles all intelligence, tools, and responses
+ * Logs the call to the database and links it to the ticket request.
  */
 
 serve(async (req) => {
@@ -30,7 +19,21 @@ serve(async (req) => {
   }
 
   try {
-    const { phone_number, first_message, context, use_maya_brain } = await req.json();
+    const { 
+      phone_number, 
+      first_message, 
+      context, 
+      use_maya_brain,
+      call_type,
+      // Ticket request linking
+      ticket_request_id,
+      // Customer info for the call
+      customer_email,
+      customer_phone,
+      passenger_names,
+      // Airline info
+      airline
+    } = await req.json();
 
     if (!phone_number) {
       return new Response(
@@ -43,6 +46,7 @@ serve(async (req) => {
     const ELEVENLABS_AGENT_ID = Deno.env.get("ELEVENLABS_AGENT_ID");
     const ELEVENLABS_PHONE_NUMBER_ID = Deno.env.get("ELEVENLABS_PHONE_NUMBER_ID");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!ELEVENLABS_API_KEY) {
       console.error("Missing ELEVENLABS_API_KEY");
@@ -64,16 +68,15 @@ serve(async (req) => {
             "3. Get the Agent ID and Phone Number ID",
             "4. Add them as secrets: ELEVENLABS_AGENT_ID, ELEVENLABS_PHONE_NUMBER_ID",
             "",
-            "IMPORTANT: To use OUR Maya's brain for calls:",
-            "5. In ElevenLabs Agent → Tools → Add Server Tool",
-            `6. Set URL to: ${SUPABASE_URL}/functions/v1/elevenlabs-maya`,
-            "7. Configure the agent to call this tool for ALL user messages",
-            "8. Set minimal system prompt: 'Route all conversation through the server tool'"
+            "IMPORTANT: Enable the 'Play Keypad Touch Tone' system tool for IVR navigation"
           ]
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Initialize Supabase client for logging
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     // Format phone number - ensure it has country code
     let formattedPhone = phone_number.replace(/[^0-9+]/g, "");
@@ -87,7 +90,9 @@ serve(async (req) => {
 
     console.log(`[Outbound Call] Initiating call to: ${formattedPhone}`);
     console.log(`[Outbound Call] Using agent: ${ELEVENLABS_AGENT_ID}`);
-    console.log(`[Outbound Call] Maya brain endpoint: ${SUPABASE_URL}/functions/v1/elevenlabs-maya`);
+    if (ticket_request_id) {
+      console.log(`[Outbound Call] Linked to ticket request: ${ticket_request_id}`);
+    }
 
     // Build request body for ElevenLabs
     const requestBody: any = {
@@ -102,12 +107,14 @@ serve(async (req) => {
         company_name: "Your Travel Agent",
         agent_name: "Maya",
         maya_brain_url: `${SUPABASE_URL}/functions/v1/elevenlabs-maya`,
-        use_maya_brain: use_maya_brain !== false
+        use_maya_brain: use_maya_brain !== false,
+        ticket_request_id: ticket_request_id || null,
+        customer_email: customer_email || null,
+        customer_phone: customer_phone || null,
       }
     };
 
     // If a system_prompt is provided, override the agent's default prompt
-    // This allows each call to have completely custom behavior
     if (context) {
       requestBody.conversation_config_override = {
         agent: {
@@ -119,7 +126,6 @@ serve(async (req) => {
       };
       console.log("[Outbound Call] Using custom system prompt override");
     } else if (first_message) {
-      // Just override the first message if no full context
       requestBody.conversation_config_override = {
         agent: {
           first_message: first_message
@@ -161,14 +167,52 @@ serve(async (req) => {
 
     console.log("[Outbound Call] Call initiated successfully:", result);
 
+    // Log the call to the database
+    const callLogData = {
+      ticket_request_id: ticket_request_id || null,
+      call_sid: result.callSid || result.call_sid || null,
+      conversation_id: result.conversation_id || null,
+      airline: airline || "Unknown",
+      phone_number: formattedPhone,
+      call_type: call_type || "airline_booking",
+      status: "initiated",
+      customer_email: customer_email || null,
+      customer_phone: customer_phone || null,
+      passenger_names: passenger_names || null,
+      started_at: new Date().toISOString(),
+    };
+
+    const { data: callLog, error: logError } = await supabase
+      .from("call_logs")
+      .insert(callLogData)
+      .select()
+      .single();
+
+    if (logError) {
+      console.error("[Outbound Call] Failed to log call:", logError);
+    } else {
+      console.log("[Outbound Call] Call logged with ID:", callLog.id);
+
+      // Update ticket request with active call reference
+      if (ticket_request_id) {
+        const { error: updateError } = await supabase
+          .from("ticket_requests")
+          .update({ active_call_id: callLog.id })
+          .eq("id", ticket_request_id);
+
+        if (updateError) {
+          console.error("[Outbound Call] Failed to update ticket request:", updateError);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: `Calling ${formattedPhone} now with Maya!`,
-        note: "Maya is using her full brain with all tools for this call.",
-        call_sid: result.callSid,
+        call_log_id: callLog?.id,
+        call_sid: result.callSid || result.call_sid,
         conversation_id: result.conversation_id,
-        maya_brain: `${SUPABASE_URL}/functions/v1/elevenlabs-maya`,
         ...result 
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
