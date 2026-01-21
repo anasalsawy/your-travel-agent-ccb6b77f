@@ -97,17 +97,35 @@ serve(async (req) => {
     };
 
     // Add conversation initiation data with context
-    // This gets passed to the elevenlabs-maya endpoint as dynamic_variables
     requestBody.conversation_initiation_client_data = {
       dynamic_variables: {
-        first_message: first_message || "Hey! This is Maya from Your Travel Agent. How are you doing today?",
-        call_context: context || "Outbound call initiated by the team",
         company_name: "Your Travel Agent",
         agent_name: "Maya",
         maya_brain_url: `${SUPABASE_URL}/functions/v1/elevenlabs-maya`,
-        use_maya_brain: use_maya_brain !== false // Default to true
+        use_maya_brain: use_maya_brain !== false
       }
     };
+
+    // If a system_prompt is provided, override the agent's default prompt
+    // This allows each call to have completely custom behavior
+    if (context) {
+      requestBody.conversation_config_override = {
+        agent: {
+          prompt: {
+            prompt: context
+          },
+          first_message: first_message || "Hey! This is Maya. How can I help you today?"
+        }
+      };
+      console.log("[Outbound Call] Using custom system prompt override");
+    } else if (first_message) {
+      // Just override the first message if no full context
+      requestBody.conversation_config_override = {
+        agent: {
+          first_message: first_message
+        }
+      };
+    }
 
     // Make the outbound call via ElevenLabs
     const response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
