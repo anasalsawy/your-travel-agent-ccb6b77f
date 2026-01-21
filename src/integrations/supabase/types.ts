@@ -210,6 +210,92 @@ export type Database = {
           },
         ]
       }
+      call_logs: {
+        Row: {
+          admin_notes: string | null
+          airline: string
+          answered_at: string | null
+          booked_flight_info: string | null
+          booked_price: number | null
+          call_sid: string | null
+          call_summary: string | null
+          call_type: string | null
+          confirmation_number: string | null
+          conversation_id: string | null
+          created_at: string
+          customer_email: string | null
+          customer_phone: string | null
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          passenger_names: string | null
+          phone_number: string
+          started_at: string | null
+          status: string
+          ticket_request_id: string | null
+          transcript: string | null
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          airline: string
+          answered_at?: string | null
+          booked_flight_info?: string | null
+          booked_price?: number | null
+          call_sid?: string | null
+          call_summary?: string | null
+          call_type?: string | null
+          confirmation_number?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          customer_email?: string | null
+          customer_phone?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          passenger_names?: string | null
+          phone_number: string
+          started_at?: string | null
+          status?: string
+          ticket_request_id?: string | null
+          transcript?: string | null
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          airline?: string
+          answered_at?: string | null
+          booked_flight_info?: string | null
+          booked_price?: number | null
+          call_sid?: string | null
+          call_summary?: string | null
+          call_type?: string | null
+          confirmation_number?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          customer_email?: string | null
+          customer_phone?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          passenger_names?: string | null
+          phone_number?: string
+          started_at?: string | null
+          status?: string
+          ticket_request_id?: string | null
+          transcript?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_logs_ticket_request_id_fkey"
+            columns: ["ticket_request_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketplace_listings: {
         Row: {
           buyer_notified_at: string | null
@@ -660,6 +746,7 @@ export type Database = {
       }
       ticket_requests: {
         Row: {
+          active_call_id: string | null
           admin_notes: string | null
           balance_amount: number | null
           balance_due_date: string | null
@@ -698,6 +785,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          active_call_id?: string | null
           admin_notes?: string | null
           balance_amount?: number | null
           balance_due_date?: string | null
@@ -736,6 +824,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          active_call_id?: string | null
           admin_notes?: string | null
           balance_amount?: number | null
           balance_due_date?: string | null
@@ -773,7 +862,15 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ticket_requests_active_call_id_fkey"
+            columns: ["active_call_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {

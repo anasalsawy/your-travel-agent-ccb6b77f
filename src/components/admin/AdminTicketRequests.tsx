@@ -78,6 +78,9 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
       passengers: String(request.passengers || 1),
       cabinClass: request.cabin_class || "economy",
       specialRequests: request.special_notes || "",
+      // Include customer contact info for airline confirmation
+      customerEmail: request.contact_email || "",
+      customerPhone: request.contact_phone || "",
     };
   };
 
@@ -460,12 +463,23 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
               {filteredRequests.map((request) => {
                 const stage = getCurrentStage(request);
                 return (
-                  <tr key={request.id} className={`border-t border-border hover:bg-muted/20 ${stage === "payment_review" ? "bg-warning/5" : ""}`}>
+                  <tr key={request.id} className={`border-t border-border hover:bg-muted/20 ${stage === "payment_review" ? "bg-warning/5" : ""} ${(request as any).active_call_id ? "bg-primary/5" : ""}`}>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        <Plane className="w-4 h-4 text-primary" />
+                        {(request as any).active_call_id ? (
+                          <Phone className="w-4 h-4 text-primary animate-pulse" />
+                        ) : (
+                          <Plane className="w-4 h-4 text-primary" />
+                        )}
                         <div>
-                          <div className="font-medium">{request.origin} → {request.destination}</div>
+                          <div className="font-medium flex items-center gap-2">
+                            {request.origin} → {request.destination}
+                            {(request as any).active_call_id && (
+                              <Badge className="text-xs bg-primary/20 text-primary animate-pulse">
+                                📞 Call in Progress
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             {request.trip_type}
                             {request.payment_plan === "deposit" && <Badge className="ml-2 text-xs bg-accent/20 text-accent">Split Pay</Badge>}
@@ -754,12 +768,15 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
             <AirlineBookingCall
               initialBooking={getBookingDetailsFromRequest(bookingRequest)}
               initialAirline={getAirlineFromRequest(bookingRequest)}
+              ticketRequestId={bookingRequest.id}
               onCallStarted={(result) => {
                 if (result.success) {
                   toast({
                     title: "Call Started",
                     description: `Maya is booking ${bookingRequest.origin} → ${bookingRequest.destination}`,
                   });
+                  // Refresh to show active call indicator
+                  fetchRequests();
                 }
               }}
             />
