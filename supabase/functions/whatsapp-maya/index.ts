@@ -163,7 +163,7 @@ serve(async (req) => {
 
     console.log("[WhatsApp GPT-5] Calling GPT-5 via Lovable AI Gateway...");
 
-    // Call GPT-5 via Lovable AI Gateway
+    // Call Gemini via Lovable AI Gateway (more reliable than GPT-5 for WhatsApp)
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -171,12 +171,11 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           ...history,
         ],
-        max_completion_tokens: 500,
       }),
     });
 
@@ -225,26 +224,8 @@ serve(async (req) => {
 
     console.log("[WhatsApp GPT-5] Final response:", assistantResponse.substring(0, 200));
 
-    // Log conversation to database for analytics (optional)
-    try {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-      await supabase.from("ai_chat_messages").insert([
-        {
-          conversation_id: sessionId,
-          role: "user",
-          content: messageBody,
-          metadata: { channel: "whatsapp", phone: fromNumber }
-        },
-        {
-          conversation_id: sessionId,
-          role: "assistant", 
-          content: assistantResponse,
-          metadata: { channel: "whatsapp", model: "openai/gpt-5" }
-        }
-      ]);
-    } catch (dbError) {
-      console.error("[WhatsApp GPT-5] DB logging error (non-fatal):", dbError);
-    }
+    // Skip DB logging - conversation_id expects UUID, not session string
+    // Conversation history is kept in memory for the session
 
     // Return TwiML response for Twilio
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(assistantResponse)}</Message></Response>`;
