@@ -7,7 +7,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Loader2, 
-  Bitcoin, 
   DollarSign, 
   Upload, 
   Copy, 
@@ -44,7 +43,7 @@ type TicketRequest = Tables<"ticket_requests"> & {
   deposit_proof_url?: string | null;
   balance_proof_url?: string | null;
 };
-type PaymentMethod = "bitcoin" | "zelle" | "paypal";
+type PaymentMethod = "zelle" | "paypal";
 
 interface TicketRequestDetailProps {
   request: TicketRequest;
@@ -220,18 +219,16 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
         const { error: updateError } = await supabase
           .from("ticket_requests")
           .update({
-            payment_method: paymentMethod as "bitcoin" | "zelle" | "paypal",
+            payment_method: paymentMethod as "zelle" | "paypal",
             payment_status: "processing",
             payment_plan: "full",
             proof_upload_url: proofValue,
-            btc_address: paymentMethod === "bitcoin" ? btcAddress : null,
-            btc_amount: paymentMethod === "bitcoin" ? btcAmountForPayment(Number(request.quoted_price)) : null,
           })
           .eq("id", request.id);
 
         if (updateError) throw updateError;
 
-        const paymentMethodLabel = paymentMethod === "bitcoin" ? "Bitcoin" : paymentMethod === "paypal" ? "PayPal" : "Zelle";
+        const paymentMethodLabel = paymentMethod === "paypal" ? "PayPal" : "Zelle";
 
         await Promise.allSettled([
           notifyTicketPaymentProofUploaded({
@@ -260,21 +257,19 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
         const { error: updateError } = await supabase
           .from("ticket_requests")
           .update({
-            payment_method: paymentMethod as "bitcoin" | "zelle" | "paypal",
+            payment_method: paymentMethod as "zelle" | "paypal",
             payment_plan: "deposit",
             deposit_status: "under_review",
             deposit_amount: depositAmount,
             balance_amount: balanceAmount,
             balance_due_date: balanceDueDate,
             deposit_proof_url: proofValue,
-            btc_address: paymentMethod === "bitcoin" ? btcAddress : null,
-            btc_amount: paymentMethod === "bitcoin" ? btcAmountForPayment(depositAmount) : null,
           })
           .eq("id", request.id);
 
         if (updateError) throw updateError;
 
-        const paymentMethodLabel = paymentMethod === "bitcoin" ? "Bitcoin" : paymentMethod === "paypal" ? "PayPal" : "Zelle";
+        const paymentMethodLabel = paymentMethod === "paypal" ? "PayPal" : "Zelle";
 
         await Promise.allSettled([
           notifyDepositProofUploaded({
@@ -308,7 +303,7 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
 
         if (updateError) throw updateError;
 
-        const paymentMethodLabel = paymentMethod === "bitcoin" ? "Bitcoin" : paymentMethod === "paypal" ? "PayPal" : "Zelle";
+        const paymentMethodLabel = paymentMethod === "paypal" ? "PayPal" : "Zelle";
 
         await Promise.allSettled([
           notifyBalanceProofUploaded({
@@ -366,18 +361,6 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
         </Label>
       </div>
 
-      <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
-        paymentMethod === "bitcoin" ? "border-primary bg-primary/5" : "border-border"
-      }`}>
-        <RadioGroupItem value="bitcoin" id="bitcoin" />
-        <Label htmlFor="bitcoin" className="flex items-center gap-3 cursor-pointer flex-1">
-          <Bitcoin className="w-5 h-5 text-warning" />
-          <div>
-            <p className="font-medium">Bitcoin</p>
-            <p className="text-xs text-muted-foreground">Pay with cryptocurrency</p>
-          </div>
-        </Label>
-      </div>
 
       <div className={`relative flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
         paymentMethod === "paypal" ? "border-[#0070BA] bg-[#0070BA]/5" : "border-border"
@@ -438,50 +421,6 @@ export function TicketRequestDetail({ request, onBack, onUpdate }: TicketRequest
                 </Badge>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {paymentMethod === "bitcoin" && (
-        <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-warning/10 border border-warning/30 space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">USD Amount</span>
-              <span className="font-semibold">{formatCurrency(amount)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">BTC Amount</span>
-              <span className="font-bold text-warning">{btcAmountForPayment(amount)} BTC</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Send Bitcoin to:</Label>
-            <div className="flex gap-2">
-              <Input value={btcAddress} readOnly className="bg-card font-mono text-xs" />
-              <Button variant="outline" size="icon" onClick={() => copyToClipboard(btcAddress)}>
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Transaction Hash (optional)</Label>
-            <Input
-              value={txHash}
-              onChange={(e) => setTxHash(e.target.value)}
-              placeholder="Enter transaction hash"
-              className="font-mono text-sm"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Or Upload Payment Proof</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-            />
           </div>
         </div>
       )}
