@@ -6,13 +6,13 @@ const corsHeaders = {
 };
 
 /**
- * WHATSAPP MAYA - CONNECTED TO ELEVENLABS MAYA
+ * WHATSAPP MAYA - CONNECTED TO AI-CHAT (Full Maya Brain)
  * 
  * This webhook receives WhatsApp messages via Twilio.
- * Routes ALL intelligence to our elevenlabs-maya function (the ONE Maya brain).
+ * Routes ALL intelligence to our ai-chat function (the FULL Maya with all tools).
  * Sends Maya's response back via Twilio WhatsApp.
  * 
- * WhatsApp Maya = Phone Maya = Website Maya = ONE MAYA brain (ElevenLabs)!
+ * WhatsApp Maya = Website Chat Maya = ONE MAYA brain with all 40+ tools!
  */
 
 serve(async (req) => {
@@ -55,27 +55,25 @@ serve(async (req) => {
 
     // Use phone number as session ID for conversation continuity
     const sessionId = `whatsapp-${fromNumber.replace(/\D/g, '')}`;
-    console.log("[WhatsApp Maya] Session:", sessionId, "| Routing to ElevenLabs Maya");
+    console.log("[WhatsApp Maya] Session:", sessionId, "| Routing to ai-chat (Full Maya)");
 
-    // Route to elevenlabs-maya (the ONE Maya brain)
-    const elevenLabsMayaResponse = await fetch(`${SUPABASE_URL}/functions/v1/elevenlabs-maya`, {
+    // Route to ai-chat (the FULL Maya brain with all tools)
+    const aiChatResponse = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
       },
       body: JSON.stringify({
-        // ElevenLabs Maya expects these fields
-        userMessage: messageBody,
+        messages: [{ role: "user", content: messageBody }],
         sessionId: sessionId,
         channel: "whatsapp",
-        phoneNumber: fromNumber,
       }),
     });
 
-    if (!elevenLabsMayaResponse.ok) {
-      const errorText = await elevenLabsMayaResponse.text();
-      console.error("[WhatsApp Maya] elevenlabs-maya error:", elevenLabsMayaResponse.status, errorText);
+    if (!aiChatResponse.ok) {
+      const errorText = await aiChatResponse.text();
+      console.error("[WhatsApp Maya] ai-chat error:", aiChatResponse.status, errorText);
       
       // Return TwiML error response
       return new Response(
@@ -84,51 +82,31 @@ serve(async (req) => {
       );
     }
 
-    // Parse response from elevenlabs-maya
-    const responseData = await elevenLabsMayaResponse.json();
-    console.log("[WhatsApp Maya] ElevenLabs Maya response:", JSON.stringify(responseData).substring(0, 300));
+    // Parse the streaming response from ai-chat
+    const responseText = await aiChatResponse.text();
+    console.log("[WhatsApp Maya] ai-chat raw response length:", responseText.length);
 
-    // Extract Maya's response - elevenlabs-maya returns { intent, data, ... }
+    // ai-chat returns SSE format, parse it to get Maya's full response
     let mayaResponse = "";
-    
-    // The elevenlabs-maya function returns structured data
-    // We need to format it nicely for WhatsApp
-    if (responseData.data) {
-      if (typeof responseData.data === "string") {
-        mayaResponse = responseData.data;
-      } else if (responseData.data.message) {
-        mayaResponse = responseData.data.message;
-      } else if (responseData.data.response) {
-        mayaResponse = responseData.data.response;
-      } else if (responseData.intent === "vouchers" && responseData.data.vouchers) {
-        // Format voucher data for WhatsApp
-        const vouchers = responseData.data.vouchers.slice(0, 3);
-        mayaResponse = `🎫 Here are some flight vouchers:\n\n`;
-        vouchers.forEach((v: any) => {
-          mayaResponse += `✈️ *${v.airline}* - ${v.title}\n`;
-          mayaResponse += `💰 $${v.sale_price} (${v.discount_percent}% off)\n`;
-          if (v.expiry_date) mayaResponse += `📅 Expires: ${new Date(v.expiry_date).toLocaleDateString()}\n`;
-          mayaResponse += `\n`;
-        });
-        mayaResponse += `Want details on any of these? Just ask!`;
-      } else if (responseData.intent === "ticket_requests" && responseData.data.requests) {
-        const requests = responseData.data.requests.slice(0, 3);
-        mayaResponse = `📋 Your ticket requests:\n\n`;
-        requests.forEach((r: any) => {
-          mayaResponse += `🛫 ${r.origin} → ${r.destination}\n`;
-          mayaResponse += `📅 ${new Date(r.departure_date).toLocaleDateString()}\n`;
-          mayaResponse += `📊 Status: ${r.status}\n\n`;
-        });
-      } else if (responseData.intent === "error") {
-        mayaResponse = responseData.data.message || "Something went wrong. Try again!";
-      } else {
-        // Generic data formatting
-        mayaResponse = JSON.stringify(responseData.data, null, 2).substring(0, 1400);
+    const lines = responseText.split("\n");
+    for (const line of lines) {
+      if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+        try {
+          const data = JSON.parse(line.substring(6));
+          if (data.choices?.[0]?.delta?.content) {
+            mayaResponse += data.choices[0].delta.content;
+          }
+        } catch (e) {
+          // Skip non-JSON lines
+        }
       }
-    } else if (responseData.message) {
-      mayaResponse = responseData.message;
-    } else {
-      mayaResponse = "Hey! I'm Maya, your travel assistant. How can I help you today? 🌍✈️";
+    }
+
+    console.log("[WhatsApp Maya] Maya's response:", mayaResponse.substring(0, 300));
+
+    // If no response was parsed, provide a fallback
+    if (!mayaResponse.trim()) {
+      mayaResponse = "Hey! I'm Maya, your travel assistant. How can I help you today? ✈️";
     }
 
     // Clean response for WhatsApp (keep some formatting, limit length)
