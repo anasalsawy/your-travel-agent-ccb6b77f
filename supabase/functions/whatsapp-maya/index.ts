@@ -311,6 +311,74 @@ async function checkForAdminQuote(supabase: any, phoneNumber: string): Promise<s
   }
 }
 
+// Trigger fatwa callback - calls the fatwa-callback edge function
+async function triggerFatwaCallback(question: string, phoneNumber: string, callerName?: string) {
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+    
+    console.log("[WhatsApp Maya] 📿 Triggering fatwa callback for:", phoneNumber);
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/fatwa-callback`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question,
+        phone_number: phoneNumber,
+        caller_name: callerName,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[WhatsApp Maya] Fatwa callback failed:", errorText);
+      return false;
+    }
+    
+    const data = await response.json();
+    console.log("[WhatsApp Maya] ✅ Fatwa callback initiated:", data);
+    return true;
+  } catch (error) {
+    console.error("[WhatsApp Maya] Error triggering fatwa callback:", error);
+    return false;
+  }
+}
+
+// Check if this is a fatwa question (Arabic religious question)
+function isFatwaQuestion(message: string, fromNumber: string): boolean {
+  const lowerMsg = message.toLowerCase();
+  
+  // Check for explicit fatwa triggers
+  const fatwaKeywords = [
+    "فتوى", "فتوي", "حكم", "هل يجوز", "ما حكم", "يا شيخ", "سؤال ديني",
+    "حلال", "حرام", "جائز", "مباح", "مكروه", "واجب", "سنة", "فرض",
+    "صلاة", "زكاة", "صيام", "حج", "عمرة", "طهارة", "وضوء", "غسل",
+    "fatwa", "sheikh", "islamic", "ruling"
+  ];
+  
+  // Check if message contains fatwa-related keywords
+  for (const keyword of fatwaKeywords) {
+    if (message.includes(keyword) || lowerMsg.includes(keyword)) {
+      return true;
+    }
+  }
+  
+  // Check if it's primarily Arabic text (more than 50% Arabic characters)
+  const arabicChars = (message.match(/[\u0600-\u06FF]/g) || []).length;
+  const totalChars = message.replace(/\s/g, '').length;
+  const isArabic = totalChars > 0 && (arabicChars / totalChars) > 0.5;
+  
+  // If it's Arabic and contains question markers
+  if (isArabic && (message.includes("؟") || message.includes("?"))) {
+    return true;
+  }
+  
+  return false;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -320,6 +388,7 @@ serve(async (req) => {
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const FATWA_AGENT_ID = Deno.env.get("FATWA_AGENT_ID"); // Check if fatwa service is configured
 
   if (!LOVABLE_API_KEY) {
     console.error("[WhatsApp Maya] LOVABLE_API_KEY is not configured");
@@ -643,6 +712,32 @@ serve(async (req) => {
         `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! I've forwarded this verification code to the admin. 👍</Message></Response>`,
         { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
       );
+    }
+
+    // 📿 CHECK FOR FATWA QUESTIONS - Route to Sheikh Salah's agent
+    if (FATWA_AGENT_ID && messageBody && isFatwaQuestion(messageBody, fromNumber)) {
+      console.log("[WhatsApp Maya] 📿 FATWA QUESTION DETECTED - Triggering callback");
+      
+      const callbackSuccess = await triggerFatwaCallback(messageBody, fromNumber);
+      
+      if (callbackSuccess) {
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>السلام عليكم ورحمة الله وبركاته 📿
+
+تم استلام سؤالك بنجاح. سيتصل بك الشيخ صلاح الصبي قريباً للإجابة على سؤالك ومناقشته معك بالتفصيل إن شاء الله.
+
+جزاك الله خيراً على سؤالك.</Message></Response>`,
+          { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+        );
+      } else {
+        // Fallback message if callback fails
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>السلام عليكم 📿
+
+عذراً، حدث خطأ في ترتيب المكالمة. يرجى المحاولة مرة أخرى لاحقاً أو الاتصال مباشرة.</Message></Response>`,
+          { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+        );
+      }
     }
 
     if (!messageBody) {

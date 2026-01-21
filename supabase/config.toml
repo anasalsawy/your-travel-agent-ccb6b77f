@@ -60,3 +60,6 @@ verify_jwt = false
 [functions.elevenlabs-call-webhook]
 verify_jwt = false
 
+[functions.fatwa-callback]
+verify_jwt = false
+
