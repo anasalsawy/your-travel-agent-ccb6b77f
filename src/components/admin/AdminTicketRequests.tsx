@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { 
   Loader2, Search, Eye, DollarSign, Plane, Check, X, 
   FileCheck, AlertCircle, CheckCircle2, Circle, Image as ImageIcon,
-  ExternalLink, Clock
+  ExternalLink, Clock, Phone
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
@@ -21,6 +21,7 @@ import {
   notifyCustomerBalanceApproved,
   notifyCustomerBalanceRejected
 } from "@/lib/notifications";
+import { AirlineBookingCall, type BookingDetails, AIRLINES } from "./AirlineBookingCall";
 
 type TicketRequest = Tables<"ticket_requests"> & {
   payment_plan?: string;
@@ -62,6 +63,39 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
   const [depositProofUrl, setDepositProofUrl] = useState<string | null>(null);
   const [balanceProofUrl, setBalanceProofUrl] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Book by Phone dialog state
+  const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
+  const [bookingRequest, setBookingRequest] = useState<TicketRequest | null>(null);
+
+  // Convert ticket request to booking details for the phone call form
+  const getBookingDetailsFromRequest = (request: TicketRequest): Partial<BookingDetails> => {
+    return {
+      origin: request.origin || "",
+      destination: request.destination || "",
+      departureDate: request.departure_date || "",
+      returnDate: request.return_date || "",
+      passengers: String(request.passengers || 1),
+      cabinClass: request.cabin_class || "economy",
+      specialRequests: request.special_notes || "",
+    };
+  };
+
+  // Get airline from preferred_airline field
+  const getAirlineFromRequest = (request: TicketRequest): string => {
+    if (!request.preferred_airline) return "";
+    // Try to match airline name to our list
+    const airline = AIRLINES.find(
+      a => a.label.toLowerCase().includes(request.preferred_airline?.toLowerCase() || "") ||
+           a.code.toLowerCase() === request.preferred_airline?.toLowerCase()
+    );
+    return airline?.value || request.preferred_airline || "";
+  };
+
+  const handleBookByPhone = (request: TicketRequest) => {
+    setBookingRequest(request);
+    setBookingDialogOpen(true);
+  };
 
   const fetchRequests = async () => {
     const { data, error } = await supabase
@@ -454,20 +488,30 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
                     <td className="p-4"><Badge className={getStatusColor(stage)}>{stage === "payment_review" ? "⚡ Payment Review" : request.status}</Badge></td>
                     <td className="p-4"><span className="text-sm font-medium">{getNextActionLabel(request)}</span></td>
                     <td className="p-4">
-                      <Button variant="ghost" size="icon" onClick={async () => {
-                        // Fetch fresh data to ensure we have latest proof URLs
-                        const { data: freshData } = await supabase
-                          .from("ticket_requests")
-                          .select("*")
-                          .eq("id", request.id)
-                          .single();
-                        const req = (freshData || request) as TicketRequest;
-                        setSelectedRequest(req);
-                        setQuotedPrice(req.quoted_price ? String(req.quoted_price) : "");
-                        setAdminNotes(req.admin_notes || "");
-                        setTicketInfo(req.issued_ticket_info || "");
-                        setRejectionReason("");
-                      }}><Eye className="w-4 h-4" /></Button>
+                      <div className="flex items-center gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          title="Book by Phone"
+                          onClick={() => handleBookByPhone(request)}
+                          className="text-primary hover:bg-primary/10"
+                        >
+                          <Phone className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title="View Details" onClick={async () => {
+                          const { data: freshData } = await supabase
+                            .from("ticket_requests")
+                            .select("*")
+                            .eq("id", request.id)
+                            .single();
+                          const req = (freshData || request) as TicketRequest;
+                          setSelectedRequest(req);
+                          setQuotedPrice(req.quoted_price ? String(req.quoted_price) : "");
+                          setAdminNotes(req.admin_notes || "");
+                          setTicketInfo(req.issued_ticket_info || "");
+                          setRejectionReason("");
+                        }}><Eye className="w-4 h-4" /></Button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -687,6 +731,38 @@ export function AdminTicketRequests({ isAdmin = false }: AdminTicketRequestsProp
                 </div>
               )}
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Book by Phone Dialog */}
+      <Dialog open={bookingDialogOpen} onOpenChange={setBookingDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <Phone className="w-5 h-5 text-primary" />
+              Book by Phone
+              {bookingRequest && (
+                <Badge variant="outline">
+                  {bookingRequest.origin} → {bookingRequest.destination}
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {bookingRequest && (
+            <AirlineBookingCall
+              initialBooking={getBookingDetailsFromRequest(bookingRequest)}
+              initialAirline={getAirlineFromRequest(bookingRequest)}
+              onCallStarted={(result) => {
+                if (result.success) {
+                  toast({
+                    title: "Call Started",
+                    description: `Maya is booking ${bookingRequest.origin} → ${bookingRequest.destination}`,
+                  });
+                }
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>

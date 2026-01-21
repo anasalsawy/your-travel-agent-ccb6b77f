@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
  * Maya handles: IVR navigation, hold times, agent interaction, booking confirmation
  */
 
-interface BookingDetails {
+export interface BookingDetails {
   // Route
   origin: string;
   destination: string;
@@ -46,7 +46,16 @@ interface BookingDetails {
   specialRequests: string;
 }
 
-const AIRLINES = [
+export interface AirlineBookingCallProps {
+  /** Pre-fill booking details from a ticket request */
+  initialBooking?: Partial<BookingDetails>;
+  /** Pre-select airline by value (e.g., "alaska", "delta") or by name */
+  initialAirline?: string;
+  /** Callback when call is initiated */
+  onCallStarted?: (callResult: { success: boolean; message: string }) => void;
+}
+
+export const AIRLINES = [
   { value: "alaska", label: "Alaska Airlines", phone: "+1-800-252-7522", code: "AS" },
   { value: "american", label: "American Airlines", phone: "+1-800-433-7300", code: "AA" },
   { value: "delta", label: "Delta Airlines", phone: "+1-800-221-1212", code: "DL" },
@@ -72,7 +81,24 @@ const CABIN_CLASSES = [
   { value: "first", label: "First Class" },
 ];
 
-export function AirlineBookingCall() {
+const DEFAULT_BOOKING: BookingDetails = {
+  origin: "",
+  destination: "",
+  departureDate: "",
+  returnDate: "",
+  passengers: "1",
+  passengerNames: "",
+  cabinClass: "economy",
+  flexibleDates: false,
+  cardholderName: "",
+  cardLastFour: "",
+  cardType: "visa",
+  billingZip: "",
+  seatPreference: "",
+  specialRequests: "",
+};
+
+export function AirlineBookingCall({ initialBooking, initialAirline, onCallStarted }: AirlineBookingCallProps = {}) {
   const [selectedAirline, setSelectedAirline] = useState<string>("");
   const [customPhone, setCustomPhone] = useState<string>("");
   const [pin, setPin] = useState("");
@@ -80,22 +106,24 @@ export function AirlineBookingCall() {
   const [callResult, setCallResult] = useState<{ success: boolean; message: string } | null>(null);
   const { toast } = useToast();
 
-  const [booking, setBooking] = useState<BookingDetails>({
-    origin: "",
-    destination: "",
-    departureDate: "",
-    returnDate: "",
-    passengers: "1",
-    passengerNames: "",
-    cabinClass: "economy",
-    flexibleDates: false,
-    cardholderName: "",
-    cardLastFour: "",
-    cardType: "visa",
-    billingZip: "",
-    seatPreference: "",
-    specialRequests: "",
-  });
+  const [booking, setBooking] = useState<BookingDetails>({ ...DEFAULT_BOOKING, ...initialBooking });
+
+  // Update when initial values change (e.g., when opened with different ticket request)
+  useEffect(() => {
+    if (initialBooking) {
+      setBooking({ ...DEFAULT_BOOKING, ...initialBooking });
+    }
+    if (initialAirline) {
+      // Try to match by value first, then by label
+      const matchedAirline = AIRLINES.find(
+        a => a.value === initialAirline.toLowerCase() || 
+             a.label.toLowerCase().includes(initialAirline.toLowerCase())
+      );
+      if (matchedAirline) {
+        setSelectedAirline(matchedAirline.value);
+      }
+    }
+  }, [initialBooking, initialAirline]);
 
   const updateBooking = (field: keyof BookingDetails, value: string | boolean) => {
     setBooking((prev) => ({ ...prev, [field]: value }));
@@ -256,23 +284,29 @@ Provide a complete summary including:
       if (error) throw error;
 
       if (data?.success) {
-        setCallResult({
+        const result = {
           success: true,
           message: `Call initiated to ${getAirline()?.label}! Maya is now booking your flight.`,
-        });
+        };
+        setCallResult(result);
+        onCallStarted?.(result);
         toast({
           title: "Booking Call Started! ✈️",
           description: `Maya is calling ${getAirline()?.label} to book ${booking.origin} → ${booking.destination}`,
         });
       } else {
-        setCallResult({
+        const result = {
           success: false,
           message: data?.error || "Failed to initiate call",
-        });
+        };
+        setCallResult(result);
+        onCallStarted?.(result);
       }
     } catch (error: any) {
       console.error("Call error:", error);
-      setCallResult({ success: false, message: error.message || "Failed to initiate call" });
+      const result = { success: false, message: error.message || "Failed to initiate call" };
+      setCallResult(result);
+      onCallStarted?.(result);
       toast({ title: "Call Failed", description: error.message, variant: "destructive" });
     } finally {
       setCalling(false);
