@@ -1,4 +1,4 @@
-import { Shield, Lock, Zap, HeadphonesIcon } from "lucide-react";
+import { Shield, Lock, Zap, HeadphonesIcon, BadgeCheck } from "lucide-react";
 
 const trustItems = [
   {
@@ -8,10 +8,10 @@ const trustItems = [
     color: "text-success",
   },
   {
-    icon: Lock,
-    title: "Secure Checkout",
-    description: "SSL encrypted payments via Stripe. Bitcoin option for added privacy.",
-    color: "text-primary",
+    icon: BadgeCheck,
+    title: "Escrow Protection",
+    description: "Pay with Escrow.com for 100% buyer protection on every purchase.",
+    color: "text-[#00A651]",
   },
   {
     icon: Zap,
