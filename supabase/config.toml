@@ -1,5 +1,11 @@
 project_id = "wpwdxtyufpewdyffxlgo"
 
+[functions.send-whatsapp-quote]
+verify_jwt = false
+
+[functions.whatsapp-maya]
+verify_jwt = false
+
 [functions.send-notification]
 verify_jwt = false
 
