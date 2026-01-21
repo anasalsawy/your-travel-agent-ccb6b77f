@@ -45,3 +45,6 @@ verify_jwt = false
 [functions.amadeus-test]
 verify_jwt = false
 
+[functions.create-escrow-transaction]
+verify_jwt = false
+
