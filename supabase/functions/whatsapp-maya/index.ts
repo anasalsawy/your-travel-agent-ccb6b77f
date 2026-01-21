@@ -389,6 +389,7 @@ serve(async (req) => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const FATWA_AGENT_ID = Deno.env.get("FATWA_AGENT_ID"); // Check if fatwa service is configured
+  const FATWA_TWILIO_NUMBER = Deno.env.get("FATWA_TWILIO_NUMBER"); // Dedicated fatwa phone number
 
   if (!LOVABLE_API_KEY) {
     console.error("[WhatsApp Maya] LOVABLE_API_KEY is not configured");
@@ -714,9 +715,14 @@ serve(async (req) => {
       );
     }
 
-    // 📿 CHECK FOR FATWA QUESTIONS - Route to Sheikh Salah's agent
-    if (FATWA_AGENT_ID && messageBody && isFatwaQuestion(messageBody, fromNumber)) {
-      console.log("[WhatsApp Maya] 📿 FATWA QUESTION DETECTED - Triggering callback");
+    // 📿 CHECK FOR FATWA - Either dedicated fatwa number OR fatwa question detection
+    const normalizedTo = toNumber.replace(/\D/g, '');
+    const normalizedFatwaNumber = FATWA_TWILIO_NUMBER?.replace(/\D/g, '') || '';
+    const isFatwaNumber = normalizedFatwaNumber && (normalizedTo === normalizedFatwaNumber || normalizedTo.endsWith(normalizedFatwaNumber) || normalizedFatwaNumber.endsWith(normalizedTo));
+    
+    // Route to fatwa service if: message sent TO the dedicated fatwa number, OR it's a detected fatwa question
+    if (FATWA_AGENT_ID && messageBody && (isFatwaNumber || isFatwaQuestion(messageBody, fromNumber))) {
+      console.log("[WhatsApp Maya] 📿 FATWA REQUEST - To fatwa number:", isFatwaNumber, "| Is fatwa question:", isFatwaQuestion(messageBody, fromNumber));
       
       const callbackSuccess = await triggerFatwaCallback(messageBody, fromNumber);
       
