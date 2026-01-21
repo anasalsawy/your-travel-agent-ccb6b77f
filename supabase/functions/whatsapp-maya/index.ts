@@ -467,9 +467,30 @@ serve(async (req) => {
     // Twilio sends form-urlencoded data
     if (contentType.includes("application/x-www-form-urlencoded")) {
       const formData = await req.formData();
+      
+      // Log ALL fields Twilio sends for debugging
+      const allFields: Record<string, string> = {};
+      for (const [key, value] of formData.entries()) {
+        allFields[key] = String(value);
+      }
+      console.log("[WhatsApp Maya] ALL FORM FIELDS:", JSON.stringify(allFields));
+      
       fromNumber = formData.get("From") as string || "";
       toNumber = formData.get("To") as string || "";
-      messageBody = formData.get("Body") as string || "";
+      // Try multiple possible body fields
+      messageBody = formData.get("Body") as string || 
+                    formData.get("SmsBody") as string || 
+                    formData.get("body") as string ||
+                    formData.get("text") as string || "";
+      
+      // Check for MMS media
+      const numMedia = parseInt(formData.get("NumMedia") as string || "0", 10);
+      if (numMedia > 0) {
+        console.log("[WhatsApp Maya] MMS with", numMedia, "media attachments");
+        for (let i = 0; i < numMedia; i++) {
+          console.log(`[WhatsApp Maya] Media ${i}:`, formData.get(`MediaUrl${i}`));
+        }
+      }
       
       console.log("[WhatsApp Maya] From:", fromNumber, "| Message:", messageBody);
     } else {
