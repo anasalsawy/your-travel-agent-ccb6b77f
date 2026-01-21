@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Bitcoin, ArrowLeft, Copy, Check, Upload, DollarSign, HelpCircle, Shield } from "lucide-react";
+import { Loader2, ArrowLeft, Copy, Check, Upload, DollarSign, HelpCircle, Shield } from "lucide-react";
 import { PayPalBuyerProtection, PayPalIcon, PayPalTrustBadge } from "@/components/payment/PayPalBuyerProtection";
 import { useToast } from "@/hooks/use-toast";
 import { SupportButtons } from "@/components/SupportButtons";
@@ -14,7 +14,7 @@ import type { Tables } from "@/integrations/supabase/types";
 // Notifications are now handled by database triggers - no client-side calls needed
 
 type Voucher = Tables<"vouchers">;
-type PaymentMethod = "bitcoin" | "zelle" | "paypal";
+type PaymentMethod = "zelle" | "paypal";
 
 export default function CheckoutPage() {
   const { id } = useParams();
@@ -461,18 +461,6 @@ export default function CheckoutPage() {
                     </Label>
                   </div>
 
-                  <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
-                    paymentMethod === "bitcoin" ? "border-primary bg-primary/5" : "border-border"
-                  }`}>
-                    <RadioGroupItem value="bitcoin" id="bitcoin" />
-                    <Label htmlFor="bitcoin" className="flex items-center gap-3 cursor-pointer flex-1">
-                      <Bitcoin className="w-5 h-5 text-warning" />
-                      <div>
-                        <p className="font-medium">Bitcoin</p>
-                        <p className="text-xs text-muted-foreground">Pay with cryptocurrency</p>
-                      </div>
-                    </Label>
-                  </div>
 
                   <div className={`relative flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
                     paymentMethod === "paypal" ? "border-[#0070BA] bg-[#0070BA]/5" : "border-border"
@@ -560,65 +548,6 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                {paymentMethod === "bitcoin" && (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-xl bg-card/50 space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Amount in BTC</span>
-                        <span className="font-mono font-bold text-warning">{btcAmount} BTC</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">USD/BTC Rate</span>
-                        <span className="font-mono">${btcRate}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Send to this address</Label>
-                      <div className="flex gap-2">
-                        <Input value={btcAddress} readOnly className="font-mono text-xs bg-card" />
-                        <Button variant="outline" size="icon" onClick={() => copyToClipboard(btcAddress)}>
-                          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="txHash">Transaction Hash</Label>
-                      <Input
-                        id="txHash"
-                        placeholder="Enter your transaction hash..."
-                        value={txHash}
-                        onChange={(e) => setTxHash(e.target.value)}
-                        className="bg-card font-mono text-xs"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Or upload screenshot proof</Label>
-                      <div className="border border-dashed border-border rounded-xl p-4 text-center">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                          className="hidden"
-                          id="proofUpload"
-                        />
-                        <label htmlFor="proofUpload" className="cursor-pointer">
-                          <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                          <p className="text-sm text-muted-foreground">
-                            {proofFile ? proofFile.name : "Click to upload"}
-                          </p>
-                        </label>
-                      </div>
-                    </div>
-
-                    <Button variant="hero" size="lg" className="w-full" onClick={handleBitcoinSubmit} disabled={processing}>
-                      {processing && <Loader2 className="w-4 h-4 animate-spin" />}
-                      Submit Payment Proof
-                    </Button>
-                  </div>
-                )}
 
                 {paymentMethod === "paypal" && (
                   <div className="space-y-4">
