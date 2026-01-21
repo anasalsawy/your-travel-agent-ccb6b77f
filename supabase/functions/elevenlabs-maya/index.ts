@@ -7,18 +7,22 @@ const corsHeaders = {
 };
 
 /**
- * ELEVENLABS MAYA - DATA PROVIDER
+ * ELEVENLABS MAYA - DATA PROVIDER + ACTION EXECUTOR
  * 
- * This webhook returns STRUCTURED DATA for the ElevenLabs agent to use.
- * The ElevenLabs agent is the BRAIN - it decides what to say.
- * This function just provides the data it needs.
+ * This webhook provides structured data AND executes actions for the ElevenLabs agent.
+ * The ElevenLabs agent is the BRAIN - it decides what to say and what actions to take.
+ * This function provides data and executes the actions it requests.
  * 
- * Supported intents:
+ * DATA INTENTS (read-only):
  * - vouchers: Search/get available vouchers
- * - flights: Search award flights
  * - orders: Check order status
- * - ticket_request: Submit or check ticket requests
+ * - ticket_requests: Check existing ticket requests
  * - general: General info about the service
+ * 
+ * ACTION INTENTS (write operations):
+ * - create_ticket_request: Submit a new ticket/flight request
+ * - reserve_voucher: Hold a voucher for a customer
+ * - cancel_request: Cancel a ticket request
  */
 
 serve(async (req) => {
@@ -35,7 +39,7 @@ serve(async (req) => {
     const body = await req.json();
     console.log("[ElevenLabs Maya] Received:", JSON.stringify(body, null, 2));
 
-    // Extract user message
+    // Extract user message and action parameters
     const userMessage = (
       body.text ||
       body.message ||
@@ -46,14 +50,224 @@ serve(async (req) => {
       ""
     ).toLowerCase();
 
-    console.log("[ElevenLabs Maya] User message:", userMessage);
+    // Check if this is an action request (parameters contain action data)
+    const actionType = body.action || body.parameters?.action;
+    const actionData = body.data || body.parameters?.data || body.parameters;
 
-    // Detect intent and get relevant data
+    console.log("[ElevenLabs Maya] User message:", userMessage);
+    console.log("[ElevenLabs Maya] Action type:", actionType);
+    console.log("[ElevenLabs Maya] Action data:", actionData);
+
     let responseData: any = {};
     let intent = "general";
 
+    // ===== ACTION HANDLERS =====
+    
+    // CREATE TICKET REQUEST
+    if (actionType === "create_ticket_request" || 
+        (userMessage.includes("create") && userMessage.includes("request")) ||
+        (userMessage.includes("book") && actionData?.origin)) {
+      
+      intent = "create_ticket_request";
+      
+      // Validate required fields
+      const origin = actionData?.origin;
+      const destination = actionData?.destination;
+      const departureDate = actionData?.departure_date || actionData?.departureDate;
+      const passengers = actionData?.passengers || 1;
+      const cabinClass = actionData?.cabin_class || actionData?.cabinClass || "economy";
+      const contactEmail = actionData?.contact_email || actionData?.contactEmail || actionData?.email;
+      const contactPhone = actionData?.contact_phone || actionData?.contactPhone || actionData?.phone;
+      const returnDate = actionData?.return_date || actionData?.returnDate;
+      const budget = actionData?.budget;
+      const specialNotes = actionData?.special_notes || actionData?.specialNotes || actionData?.notes;
+
+      if (!origin || !destination || !departureDate || !contactEmail) {
+        responseData = {
+          success: false,
+          missing_fields: [],
+          message: "I need more information to create your ticket request."
+        };
+        if (!origin) responseData.missing_fields.push("origin (departure city/airport)");
+        if (!destination) responseData.missing_fields.push("destination (arrival city/airport)");
+        if (!departureDate) responseData.missing_fields.push("departure_date");
+        if (!contactEmail) responseData.missing_fields.push("contact_email");
+      } else {
+        // Create the ticket request
+        const { data: newRequest, error } = await supabase
+          .from("ticket_requests")
+          .insert({
+            origin,
+            destination,
+            departure_date: departureDate,
+            return_date: returnDate || null,
+            passengers,
+            cabin_class: cabinClass,
+            contact_email: contactEmail,
+            contact_phone: contactPhone || null,
+            budget: budget || null,
+            special_notes: specialNotes || null,
+            status: "pending",
+            payment_status: "pending"
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error("Create ticket request error:", error);
+          responseData = {
+            success: false,
+            error: error.message,
+            message: "Sorry, I couldn't create the ticket request. Please try again."
+          };
+        } else {
+          responseData = {
+            success: true,
+            request: {
+              id: newRequest.id,
+              origin: newRequest.origin,
+              destination: newRequest.destination,
+              departure_date: newRequest.departure_date,
+              return_date: newRequest.return_date,
+              passengers: newRequest.passengers,
+              cabin_class: newRequest.cabin_class
+            },
+            message: `I've created your ticket request from ${origin} to ${destination} on ${departureDate}. You'll receive a quote at ${contactEmail} soon.`
+          };
+        }
+      }
+    }
+    
+    // RESERVE VOUCHER
+    else if (actionType === "reserve_voucher" || 
+             (userMessage.includes("reserve") && userMessage.includes("voucher"))) {
+      
+      intent = "reserve_voucher";
+      
+      const voucherId = actionData?.voucher_id || actionData?.voucherId || actionData?.id;
+      const customerEmail = actionData?.customer_email || actionData?.customerEmail || actionData?.email;
+      
+      if (!voucherId) {
+        responseData = {
+          success: false,
+          message: "Which voucher would you like to reserve? Please provide the voucher ID or tell me more about what you're looking for."
+        };
+      } else {
+        // Check if voucher is available
+        const { data: voucher, error: fetchError } = await supabase
+          .from("vouchers")
+          .select("*")
+          .eq("id", voucherId)
+          .single();
+
+        if (fetchError || !voucher) {
+          responseData = {
+            success: false,
+            message: "I couldn't find that voucher. It may have been sold already."
+          };
+        } else if (voucher.status !== "available") {
+          responseData = {
+            success: false,
+            message: `Sorry, this ${voucher.airline} voucher is no longer available. Would you like me to find similar options?`
+          };
+        } else {
+          // Mark voucher as reserved (you could add a reserved_until timestamp)
+          const { error: updateError } = await supabase
+            .from("vouchers")
+            .update({ 
+              status: "reserved",
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", voucherId);
+
+          if (updateError) {
+            responseData = {
+              success: false,
+              message: "Sorry, I couldn't reserve this voucher right now. Please try again."
+            };
+          } else {
+            responseData = {
+              success: true,
+              voucher: {
+                id: voucher.id,
+                airline: voucher.airline,
+                title: voucher.title,
+                face_value: voucher.face_value,
+                sale_price: voucher.sale_price,
+                discount_percent: voucher.discount_percent
+              },
+              message: `I've reserved the ${voucher.airline} voucher worth $${voucher.face_value} for you at just $${voucher.sale_price}. Would you like to proceed with payment?`
+            };
+          }
+        }
+      }
+    }
+    
+    // CANCEL REQUEST
+    else if (actionType === "cancel_request" || 
+             (userMessage.includes("cancel") && (userMessage.includes("request") || userMessage.includes("booking")))) {
+      
+      intent = "cancel_request";
+      
+      const requestId = actionData?.request_id || actionData?.requestId || actionData?.id;
+      const reason = actionData?.reason || "Customer requested cancellation";
+      
+      if (!requestId) {
+        responseData = {
+          success: false,
+          message: "Which request would you like to cancel? Please provide the request ID or your email so I can look it up."
+        };
+      } else {
+        const { data: request, error: fetchError } = await supabase
+          .from("ticket_requests")
+          .select("*")
+          .eq("id", requestId)
+          .single();
+
+        if (fetchError || !request) {
+          responseData = {
+            success: false,
+            message: "I couldn't find that request. Please check the ID and try again."
+          };
+        } else if (request.status === "cancelled") {
+          responseData = {
+            success: false,
+            message: "This request has already been cancelled."
+          };
+        } else if (request.status === "ticketed" || request.status === "completed") {
+          responseData = {
+            success: false,
+            message: "This ticket has already been issued. Please contact support for assistance with changes or refunds."
+          };
+        } else {
+          const { error: updateError } = await supabase
+            .from("ticket_requests")
+            .update({ 
+              status: "cancelled",
+              admin_notes: reason,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", requestId);
+
+          if (updateError) {
+            responseData = {
+              success: false,
+              message: "Sorry, I couldn't cancel this request right now. Please try again."
+            };
+          } else {
+            responseData = {
+              success: true,
+              message: `I've cancelled your ticket request from ${request.origin} to ${request.destination}. Is there anything else I can help you with?`
+            };
+          }
+        }
+      }
+    }
+
+    // ===== DATA QUERIES (unchanged) =====
+    
     // VOUCHERS
-    if (userMessage.includes("voucher") || userMessage.includes("credit") || userMessage.includes("deal")) {
+    else if (userMessage.includes("voucher") || userMessage.includes("credit") || userMessage.includes("deal")) {
       intent = "vouchers";
       
       const { data: vouchers, error } = await supabase
@@ -81,12 +295,19 @@ serve(async (req) => {
     else if (userMessage.includes("order") || userMessage.includes("status") || userMessage.includes("purchase")) {
       intent = "orders";
       
-      // Get recent orders (in production, would filter by user)
-      const { data: orders, error } = await supabase
+      const customerEmail = actionData?.email || actionData?.customer_email;
+      
+      let query = supabase
         .from("orders")
-        .select("id, amount_paid, payment_status, order_status, delivery_status, created_at, voucher_id")
+        .select("id, amount_paid, payment_status, order_status, delivery_status, created_at, voucher_id, customer_email")
         .order("created_at", { ascending: false })
         .limit(5);
+      
+      if (customerEmail) {
+        query = query.eq("customer_email", customerEmail);
+      }
+
+      const { data: orders, error } = await query;
 
       if (error) {
         console.error("Orders error:", error);
@@ -96,7 +317,7 @@ serve(async (req) => {
           orders: orders || [],
           count: orders?.length || 0,
           message: orders?.length 
-            ? `Found ${orders.length} recent orders` 
+            ? `Found ${orders.length} orders` 
             : "No orders found"
         };
       }
@@ -112,21 +333,27 @@ serve(async (req) => {
     ) {
       intent = "ticket_requests";
       
-      // Check if they're asking about existing requests or want to create one
-      if (userMessage.includes("request") || userMessage.includes("submit") || userMessage.includes("new")) {
+      if (userMessage.includes("new") || userMessage.includes("want") || userMessage.includes("need")) {
         responseData = {
           action: "create_ticket_request",
-          required_fields: ["origin", "destination", "departure_date", "passengers", "cabin_class", "contact_email"],
-          optional_fields: ["return_date", "budget", "flexibility", "preferred_airline", "special_notes"],
-          message: "To submit a ticket request, I need: origin, destination, travel date, number of passengers, cabin class, and your email."
+          required_fields: ["origin", "destination", "departure_date", "contact_email"],
+          optional_fields: ["return_date", "passengers", "cabin_class", "budget", "special_notes", "contact_phone"],
+          message: "I can help you book a flight! Tell me: Where are you flying from and to? What date? And your email for the quote."
         };
       } else {
-        // Get recent ticket requests
-        const { data: requests, error } = await supabase
+        const customerEmail = actionData?.email || actionData?.contact_email;
+        
+        let query = supabase
           .from("ticket_requests")
           .select("id, origin, destination, departure_date, return_date, passengers, cabin_class, status, quoted_price, payment_status")
           .order("created_at", { ascending: false })
           .limit(5);
+        
+        if (customerEmail) {
+          query = query.eq("contact_email", customerEmail);
+        }
+
+        const { data: requests, error } = await query;
 
         if (error) {
           console.error("Ticket requests error:", error);
@@ -189,7 +416,6 @@ serve(async (req) => {
     else {
       intent = "general";
       
-      // Get some stats to make it informative
       const { count: voucherCount } = await supabase
         .from("vouchers")
         .select("*", { count: "exact", head: true })
@@ -203,6 +429,7 @@ serve(async (req) => {
           "Order tracking and support"
         ],
         available_vouchers: voucherCount || 0,
+        available_actions: ["create_ticket_request", "reserve_voucher", "cancel_request"],
         message: `Welcome! We have ${voucherCount || 0} vouchers available. I can help with vouchers, flight bookings, or order status.`
       };
     }
