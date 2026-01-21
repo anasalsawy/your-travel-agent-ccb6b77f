@@ -921,7 +921,7 @@ export type Database = {
         | "cancelled"
         | "refunded"
         | "payment_under_review"
-      payment_method: "stripe" | "bitcoin" | "zelle" | "paypal"
+      payment_method: "stripe" | "bitcoin" | "zelle" | "paypal" | "escrow"
       payment_status:
         | "pending"
         | "processing"
@@ -1077,7 +1077,7 @@ export const Constants = {
         "refunded",
         "payment_under_review",
       ],
-      payment_method: ["stripe", "bitcoin", "zelle", "paypal"],
+      payment_method: ["stripe", "bitcoin", "zelle", "paypal", "escrow"],
       payment_status: [
         "pending",
         "processing",
