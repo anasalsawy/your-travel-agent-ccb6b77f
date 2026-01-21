@@ -331,6 +331,131 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+  // Forward verification PINs to admin via WhatsApp
+  async function forwardVerificationToAdmin(pin: string, fromNumber: string, originalMessage: string) {
+    const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
+    const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
+    const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
+    const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL");
+    
+    // Get admin phone from site_settings or use a default
+    let adminPhone = "+17604419108"; // Fallback
+    try {
+      const { data } = await supabase
+        .from("site_settings")
+        .select("value")
+        .eq("key", "admin_phone")
+        .maybeSingle();
+      if (data?.value) adminPhone = data.value;
+    } catch (e) {
+      console.log("[WhatsApp Maya] Could not fetch admin phone from settings");
+    }
+
+    console.log("[WhatsApp Maya] 🔐 Forwarding verification PIN to admin:", adminPhone);
+
+    // Send via WhatsApp to admin
+    if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
+      try {
+        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+        const message = `🔐 VERIFICATION PIN RECEIVED\n\nPIN: ${pin}\n\nFrom: ${fromNumber}\n\nOriginal message:\n"${originalMessage}"\n\nThis is likely for Facebook/Meta verification.`;
+        
+        const formattedAdmin = adminPhone.includes("whatsapp:") ? adminPhone : `whatsapp:${adminPhone}`;
+        const formattedFrom = TWILIO_PHONE_NUMBER.includes("whatsapp:") ? TWILIO_PHONE_NUMBER : `whatsapp:${TWILIO_PHONE_NUMBER}`;
+        
+        const response = await fetch(twilioUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({
+            From: formattedFrom,
+            To: formattedAdmin,
+            Body: message,
+          }),
+        });
+        
+        if (response.ok) {
+          console.log("[WhatsApp Maya] ✅ PIN forwarded to admin via WhatsApp");
+        } else {
+          console.error("[WhatsApp Maya] Failed to forward PIN:", await response.text());
+        }
+      } catch (e) {
+        console.error("[WhatsApp Maya] Error forwarding PIN:", e);
+      }
+    }
+
+    // Also send via email if RESEND is configured
+    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+    if (RESEND_API_KEY && ADMIN_EMAIL) {
+      try {
+        const response = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "Maya <maya@yourtravelagent.net>",
+            to: [ADMIN_EMAIL],
+            subject: "🔐 WhatsApp Verification PIN Received",
+            html: `
+              <h2>Verification PIN Received</h2>
+              <p><strong>PIN: ${pin}</strong></p>
+              <p>From: ${fromNumber}</p>
+              <p>Original message: "${originalMessage}"</p>
+              <p>This is likely for Facebook/Meta WhatsApp verification.</p>
+            `,
+          }),
+        });
+        
+        if (response.ok) {
+          console.log("[WhatsApp Maya] ✅ PIN forwarded to admin via email");
+        }
+      } catch (e) {
+        console.error("[WhatsApp Maya] Error sending email:", e);
+      }
+    }
+  }
+
+  // Check if message contains a verification PIN
+  function isVerificationMessage(message: string): { isVerification: boolean; pin: string | null } {
+    const lowerMsg = message.toLowerCase();
+    
+    // Common patterns for verification PINs from Facebook/Meta
+    const patterns = [
+      /(?:verification|verify|code|pin|otp)[\s:]*(\d{4,8})/i,
+      /(\d{4,8})[\s]*(?:is your|is the|verification|code|pin)/i,
+      /facebook[\s\S]*?(\d{4,8})/i,
+      /meta[\s\S]*?(\d{4,8})/i,
+      /whatsapp[\s\S]*?(\d{4,8})/i,
+      /^\s*(\d{4,8})\s*$/,  // Just a PIN by itself
+    ];
+    
+    // Check if it looks like a verification message
+    const isFromMeta = lowerMsg.includes("facebook") || 
+                       lowerMsg.includes("meta") || 
+                       lowerMsg.includes("verification") ||
+                       lowerMsg.includes("verify") ||
+                       lowerMsg.includes("code") ||
+                       /^\d{4,8}$/.test(message.trim());
+    
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return { isVerification: true, pin: match[1] };
+      }
+    }
+    
+    // If it's just numbers (4-8 digits), treat as potential PIN
+    const justNumbers = message.trim().match(/^(\d{4,8})$/);
+    if (justNumbers) {
+      return { isVerification: true, pin: justNumbers[1] };
+    }
+    
+    return { isVerification: false, pin: null };
+  }
+
   try {
     const contentType = req.headers.get("content-type") || "";
     let fromNumber = "";
@@ -358,6 +483,21 @@ serve(async (req) => {
       } catch (parseError) {
         console.log("[WhatsApp Maya] Could not parse body as JSON:", parseError);
       }
+    }
+
+    // 🔐 CHECK FOR VERIFICATION PINS FIRST
+    const verificationCheck = isVerificationMessage(messageBody);
+    if (verificationCheck.isVerification && verificationCheck.pin) {
+      console.log("[WhatsApp Maya] 🔐 VERIFICATION PIN DETECTED:", verificationCheck.pin);
+      
+      // Forward to admin immediately
+      await forwardVerificationToAdmin(verificationCheck.pin, fromNumber, messageBody);
+      
+      // Return acknowledgment
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! I've forwarded this verification code to the admin. 👍</Message></Response>`,
+        { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+      );
     }
 
     if (!messageBody) {
