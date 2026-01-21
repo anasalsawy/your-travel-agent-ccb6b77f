@@ -194,14 +194,16 @@ async function saveQuoteRequest(
     // First, find or create a conversation record
     const sessionId = `whatsapp-${phoneNumber.replace(/\D/g, '')}`;
     
-    let { data: conversation } = await supabase
+    let { data: conversation, error: fetchError } = await supabase
       .from("ai_conversations")
       .select("id")
       .eq("session_id", sessionId)
-      .single();
+      .maybeSingle();
+    
+    console.log("[WhatsApp Maya] Looking for conversation:", sessionId, "Found:", !!conversation);
     
     if (!conversation) {
-      const { data: newConv } = await supabase
+      const { data: newConv, error: insertError } = await supabase
         .from("ai_conversations")
         .insert({
           session_id: sessionId,
@@ -211,13 +213,28 @@ async function saveQuoteRequest(
         })
         .select("id")
         .single();
+      
+      if (insertError) {
+        console.error("[WhatsApp Maya] Error creating conversation:", insertError);
+        return;
+      }
       conversation = newConv;
+      console.log("[WhatsApp Maya] Created new conversation:", conversation?.id);
     } else {
-      // Update existing conversation
-      await supabase
+      // Update existing conversation with phone and status
+      const { error: updateError } = await supabase
         .from("ai_conversations")
-        .update({ needs_admin_attention: true, status: "pending_quote" })
+        .update({ 
+          customer_phone: phoneNumber,
+          needs_admin_attention: true, 
+          status: "pending_quote" 
+        })
         .eq("id", conversation.id);
+      
+      if (updateError) {
+        console.error("[WhatsApp Maya] Error updating conversation:", updateError);
+      }
+      console.log("[WhatsApp Maya] Updated conversation:", conversation.id);
     }
 
     if (!conversation) {
@@ -233,15 +250,20 @@ async function saveQuoteRequest(
       (marketData ? `Market data found:\n${marketData}\n\n` : 'No market data available\n\n') +
       `Reply with the actual quote to send back to customer.`;
 
-    await supabase.from("admin_alerts").insert({
+    const { data: alertData, error: alertError } = await supabase.from("admin_alerts").insert({
       conversation_id: conversation.id,
       alert_type: "quote_request",
       message: alertMessage,
       customer_context: flightDetails,
       is_read: false
-    });
+    }).select("id").single();
 
-    console.log("[WhatsApp Maya] Saved quote request for admin review");
+    if (alertError) {
+      console.error("[WhatsApp Maya] Error creating admin alert:", alertError);
+      return;
+    }
+
+    console.log("[WhatsApp Maya] Saved quote request for admin review, alert id:", alertData?.id);
   } catch (error) {
     console.error("[WhatsApp Maya] Error saving quote request:", error);
   }
@@ -315,6 +337,8 @@ serve(async (req) => {
     let toNumber = "";
     let messageBody = "";
 
+    console.log("[WhatsApp Maya] Content-Type:", contentType);
+
     // Twilio sends form-urlencoded data
     if (contentType.includes("application/x-www-form-urlencoded")) {
       const formData = await req.formData();
@@ -323,15 +347,21 @@ serve(async (req) => {
       messageBody = formData.get("Body") as string || "";
       
       console.log("[WhatsApp Maya] From:", fromNumber, "| Message:", messageBody);
-    } else if (contentType.includes("application/json")) {
-      const body = await req.json();
-      fromNumber = body.From || body.from || "";
-      toNumber = body.To || body.to || "";
-      messageBody = body.Body || body.body || body.message || body.text || "";
+    } else {
+      // Try JSON parsing for testing and other integrations
+      try {
+        const body = await req.json();
+        console.log("[WhatsApp Maya] JSON body received:", JSON.stringify(body).substring(0, 200));
+        fromNumber = body.From || body.from || "";
+        toNumber = body.To || body.to || "";
+        messageBody = body.Body || body.body || body.message || body.text || "";
+      } catch (parseError) {
+        console.log("[WhatsApp Maya] Could not parse body as JSON:", parseError);
+      }
     }
 
     if (!messageBody) {
-      console.log("[WhatsApp Maya] Empty message received");
+      console.log("[WhatsApp Maya] Empty message received, fromNumber:", fromNumber);
       return new Response(
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         { headers: { ...corsHeaders, "Content-Type": "text/xml" } }

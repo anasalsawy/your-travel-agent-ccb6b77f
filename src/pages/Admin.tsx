@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
@@ -11,6 +11,7 @@ import { AdminSettings } from "@/components/admin/AdminSettings";
 import { AdminUsers } from "@/components/admin/AdminUsers";
 import { AdminSellers } from "@/components/admin/AdminSellers";
 import AdminEscrow from "@/components/admin/AdminEscrow";
+import { AdminQuoteRequests } from "@/components/admin/AdminQuoteRequests";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -101,6 +102,10 @@ export default function AdminPage() {
               </TabsTrigger>
               {isAdmin && (
                 <>
+                  <TabsTrigger value="quotes" className="gap-2">
+                    <MessageSquare className="w-4 h-4" />
+                    WhatsApp Quotes
+                  </TabsTrigger>
                   <TabsTrigger value="sellers" className="gap-2">
                     <Building2 className="w-4 h-4" />
                     Sellers
@@ -135,6 +140,10 @@ export default function AdminPage() {
 
             {isAdmin && (
               <>
+                <TabsContent value="quotes">
+                  <AdminQuoteRequests />
+                </TabsContent>
+
                 <TabsContent value="sellers">
                   <AdminSellers />
                 </TabsContent>
