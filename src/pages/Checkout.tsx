@@ -599,11 +599,45 @@ export default function CheckoutPage() {
                     <Button 
                       size="lg" 
                       className="w-full bg-[#00A651] hover:bg-[#008c44] text-white gap-2" 
-                      onClick={() => {
-                        toast({
-                          title: "Escrow.com Integration",
-                          description: "You'll be contacted to complete the Escrow.com transaction. Check your email for details.",
-                        });
+                      onClick={async () => {
+                        if (!voucher || !user) return;
+                        
+                        setProcessing(true);
+                        try {
+                          const { data, error } = await supabase.functions.invoke("create-escrow-transaction", {
+                            body: {
+                              voucherId: voucher.id,
+                              amount: Number(voucher.sale_price),
+                              currency: voucher.currency || "USD",
+                              voucherTitle: voucher.title,
+                              voucherDescription: `${voucher.airline} voucher - Face value: ${formatCurrency(Number(voucher.face_value))}`,
+                              buyerEmail: user.email,
+                            },
+                          });
+
+                          if (error) throw error;
+
+                          if (data?.escrowPaymentUrl) {
+                            toast({
+                              title: "Escrow Transaction Created!",
+                              description: "Redirecting you to Escrow.com to complete payment...",
+                            });
+                            window.open(data.escrowPaymentUrl, "_blank");
+                            navigate("/dashboard?escrow_started=true");
+                          } else {
+                            throw new Error("No payment URL received");
+                          }
+                        } catch (error: unknown) {
+                          console.error("Escrow error:", error);
+                          const errorMessage = error instanceof Error ? error.message : "Failed to create Escrow transaction";
+                          toast({
+                            title: "Error",
+                            description: errorMessage,
+                            variant: "destructive",
+                          });
+                        } finally {
+                          setProcessing(false);
+                        }
                       }}
                       disabled={processing}
                     >
