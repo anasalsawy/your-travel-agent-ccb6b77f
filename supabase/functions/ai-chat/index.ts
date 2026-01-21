@@ -4630,8 +4630,8 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       ...messages,
     ];
 
-    // Use faster model for phone calls to reduce latency
-    const modelToUse = isElevenLabsRequest ? "google/gemini-2.5-flash-lite" : "google/gemini-2.5-flash";
+    // Use GPT-5 for smarter responses (gpt-5-mini for voice calls to reduce latency)
+    const modelToUse = isElevenLabsRequest ? "openai/gpt-5-mini" : "openai/gpt-5";
     
     // First API call - may include tool calls
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
