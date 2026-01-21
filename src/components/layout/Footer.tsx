@@ -1,3 +1,4 @@
+<elevenlabs-convai agent-id="agent_2601kffzj5hhfyt9j1ec1t39jejg"></elevenlabs-convai>;
 import { Link } from "react-router-dom";
 import { Mail, Shield, Lock } from "lucide-react";
 import { SupportButtons, FacebookLink } from "@/components/SupportButtons";
@@ -12,9 +13,7 @@ export function Footer() {
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-4">
               <img src={logo} alt="Your Travel Agent" className="w-10 h-10 object-contain" />
-              <span className="font-display font-bold text-lg">
-                Your Travel Agent
-              </span>
+              <span className="font-display font-bold text-lg">Your Travel Agent</span>
             </Link>
             <p className="text-muted-foreground text-sm mb-4">
               Your trusted source for verified travel vouchers and discounted flight tickets.
@@ -32,7 +31,10 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to="/request-ticket" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                <Link
+                  to="/request-ticket"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                >
                   Request a Ticket
                 </Link>
               </li>
@@ -59,7 +61,10 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to="/refund-policy" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                <Link
+                  to="/refund-policy"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                >
                   Refund Policy
                 </Link>
               </li>
@@ -91,11 +96,11 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} Your Travel Agent. All rights reserved.
           </p>
-          <p className="text-xs text-muted-foreground">
-            Travel vouchers are subject to airline terms and conditions.
-          </p>
+          <p className="text-xs text-muted-foreground">Travel vouchers are subject to airline terms and conditions.</p>
         </div>
       </div>
+      <elevenlabs-convai agent-id="agent_2601kffzj5hhfyt9j1ec1t39jejg"></elevenlabs-convai>
+      <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
     </footer>
   );
 }
