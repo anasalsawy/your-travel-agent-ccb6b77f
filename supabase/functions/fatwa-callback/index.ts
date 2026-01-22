@@ -9,18 +9,22 @@ const corsHeaders = {
  * FATWA CALLBACK SERVICE
  * 
  * Flow:
- * 1. Receives SMS with a religious question
- * 2. Triggers ElevenLabs batch call to the sender's number
- * 3. Agent (Sheikh Salah) calls back with the answer
- * 4. Engages in full discussion until caller is satisfied
+ * 1. Receives SMS with any religious topic (question, advice request, discussion, etc.)
+ * 2. Triggers ElevenLabs outbound call to the sender's number
+ * 3. Agent (Sheikh Salah) calls back with a generic greeting
+ * 4. The SMS content is passed as a dynamic variable for context
+ * 5. Agent engages naturally based on the caller's actual intent
  * 
  * The agent ID is stored as FATWA_AGENT_ID secret
+ * The phone_number_id (not the phone number itself!) is stored as FATWA_PHONE_NUMBER_ID
  */
 
 interface FatwaRequest {
-  question: string;
+  message: string;        // The SMS content (could be question, topic, request for advice, etc.)
   phone_number: string;
   caller_name?: string;
+  // Legacy field name support
+  question?: string;
 }
 
 serve(async (req) => {
@@ -49,16 +53,25 @@ serve(async (req) => {
   }
 
   if (!FATWA_PHONE_NUMBER_ID) {
-    console.error("[Fatwa Callback] FATWA_PHONE_NUMBER_ID is not configured - calls will use wrong caller ID!");
+    console.error("[Fatwa Callback] FATWA_PHONE_NUMBER_ID is not configured!");
+    return new Response(
+      JSON.stringify({ 
+        error: "Fatwa Phone Number ID not configured",
+        hint: "FATWA_PHONE_NUMBER_ID should be the ElevenLabs phone_number_id (UUID format), NOT the phone number itself"
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   try {
     const body: FatwaRequest = await req.json();
-    const { question, phone_number, caller_name } = body;
+    // Support both 'message' (new) and 'question' (legacy) field names
+    const smsContent = body.message || body.question;
+    const { phone_number, caller_name } = body;
 
-    if (!question || !phone_number) {
+    if (!smsContent || !phone_number) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: question, phone_number" }),
+        JSON.stringify({ error: "Missing required fields: message (or question), phone_number" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -70,25 +83,22 @@ serve(async (req) => {
     }
 
     console.log("[Fatwa Callback] 📞 Initiating callback to:", cleanPhone);
-    console.log("[Fatwa Callback] ❓ Question:", question.substring(0, 100));
+    console.log("[Fatwa Callback] 📝 SMS Content:", smsContent.substring(0, 100));
 
-    // Build a comprehensive first message that:
-    // 1. Greets the caller
-    // 2. Identifies the Sheikh
-    // 3. States the question they asked
-    // 4. Begins answering it
+    // Generic first message - warm greeting without assuming it's a question
+    // The agent will use the 'sms_content' dynamic variable to understand context
     const firstName = caller_name?.split(' ')[0] || '';
     const greeting = firstName 
       ? `السلام عليكم ورحمة الله وبركاته يا ${firstName}، `
       : `السلام عليكم ورحمة الله وبركاته، `;
     
-    // The first message should immediately provide context and start answering
-    const firstMessage = `${greeting}معك الشيخ صلاح الصبي. وصلني سؤالك الآن وأريد أن أجيبك عليه. سألتني: "${question}". هذا سؤال مهم جداً، دعني أجيبك عليه بالتفصيل إن شاء الله.`;
+    // Generic opening that works for any type of request
+    const firstMessage = `${greeting}معك الشيخ صلاح الصبي. وصلتني رسالتك وأنا سعيد بالتواصل معك. بسم الله، تفضل.`;
 
     console.log("[Fatwa Callback] First message:", firstMessage);
 
-    // Use the dedicated fatwa phone number ID, fallback to generic if not set
-    const phoneNumberIdToUse = FATWA_PHONE_NUMBER_ID || Deno.env.get("ELEVENLABS_PHONE_NUMBER_ID");
+    // FATWA_PHONE_NUMBER_ID must be the ElevenLabs phone_number_id (UUID), not the phone number
+    const phoneNumberIdToUse = FATWA_PHONE_NUMBER_ID;
 
     // Try the Twilio outbound call endpoint first (more reliable for single calls)
     const singleCallPayload = {
@@ -96,10 +106,11 @@ serve(async (req) => {
       agent_phone_number_id: phoneNumberIdToUse,
       to_number: cleanPhone,
       first_message: firstMessage,
-      // Pass the question as dynamic variable so the agent's prompt can reference it
+      // Pass SMS content as dynamic variable - agent uses this for context
+      // Named 'sms_content' to be generic (could be question, topic, request, etc.)
       conversation_initiation_client_data: {
-        question: question,
-        caller_name: caller_name || "السائل",
+        sms_content: smsContent,
+        caller_name: caller_name || "المتصل",
       },
     };
 
@@ -131,8 +142,8 @@ serve(async (req) => {
             agent_phone_number_id: phoneNumberIdToUse,
             first_message: firstMessage,
             conversation_initiation_client_data: {
-              question: question,
-              caller_name: caller_name || "السائل",
+              sms_content: smsContent,
+              caller_name: caller_name || "المتصل",
             },
             language: "ar",
           }
