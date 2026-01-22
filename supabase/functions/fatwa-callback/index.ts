@@ -128,10 +128,11 @@ serve(async (req) => {
           {
             phone_number: cleanPhone,
             agent_id: FATWA_AGENT_ID,
+            agent_phone_number_id: phoneNumberIdToUse,
+            first_message: firstMessage,
             conversation_initiation_client_data: {
               question: question,
               caller_name: caller_name || "السائل",
-              first_message: firstMessage,
             },
             language: "ar",
           }
