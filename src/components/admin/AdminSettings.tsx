@@ -7,7 +7,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Save, Bitcoin, DollarSign, Mail, Send, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { sendTestEmail } from "@/lib/notifications";
-import { AdminQuickCall } from "./AdminQuickCall";
 
 export function AdminSettings() {
   const [loading, setLoading] = useState(true);
@@ -120,9 +119,6 @@ export function AdminSettings() {
 
   return (
     <div className="max-w-2xl space-y-8">
-      {/* Quick Call - Maya */}
-      <AdminQuickCall />
-
       {/* Split Payments Feature Flag */}
       <div className="glass-card p-6 md:p-8">
         <div className="flex items-center gap-3 mb-6">
