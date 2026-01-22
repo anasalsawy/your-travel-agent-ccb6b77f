@@ -32,7 +32,9 @@ serve(async (req) => {
       customer_phone,
       passenger_names,
       // Airline info
-      airline
+      airline,
+      // Dry run mode - returns payload without placing call
+      dry_run
     } = await req.json();
 
     if (!phone_number) {
@@ -131,6 +133,22 @@ serve(async (req) => {
           first_message: first_message
         }
       };
+    }
+
+    // DRY RUN MODE - Return the exact payload without placing the call
+    if (dry_run) {
+      console.log("[Outbound Call] DRY RUN - Returning payload without calling");
+      return new Response(
+        JSON.stringify({
+          dry_run: true,
+          message: "This is what would be sent to ElevenLabs (no call placed)",
+          endpoint: "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
+          payload: requestBody,
+          system_prompt_length: context?.length || 0,
+          first_message_length: first_message?.length || 0,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Make the outbound call via ElevenLabs
