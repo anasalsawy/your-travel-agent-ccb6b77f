@@ -157,17 +157,13 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
     }
   };
 
-  // Sanitize text for ElevenLabs CSV: remove special chars, collapse newlines
+  // Sanitize text for ElevenLabs CSV: remove ALL non-ASCII and special chars
   const sanitizeForCSV = (text: string): string => {
     return text
-      // Remove box-drawing and special Unicode characters
-      .replace(/[║═╔╗╚╝╠╣╦╩╬│─┌┐└┘├┤┬┴┼▀▄█▌▐░▒▓■□▪▫●○◘◙◌☐☑☒★☆✓✗✕✔✖✘]/g, '')
-      // Collapse multiple newlines into single space
-      .replace(/\n+/g, ' ')
+      // Remove ALL non-ASCII characters (anything outside printable ASCII 32-126)
+      .replace(/[^\x20-\x7E]/g, ' ')
       // Collapse multiple spaces into single space
       .replace(/\s+/g, ' ')
-      // Remove tabs
-      .replace(/\t/g, ' ')
       .trim();
   };
 
