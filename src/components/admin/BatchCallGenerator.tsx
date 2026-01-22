@@ -177,9 +177,10 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
     const csvContent = [
       headers.join(","),
       ...rows.map(row => {
+        const language = row.language === "default" ? "" : row.language;
         const values = [
           row.phone_number, // Map phone_number -> phone
-          row.language,
+          language,
           sanitizeForCSV(row.first_message),
           sanitizeForCSV(row.prompt),
           row.other_dyn_variable
@@ -191,11 +192,11 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
           return `"${escaped}"`;
         }).join(",");
       })
-    ].join("\n");
 
-    // Add BOM for proper UTF-8 encoding in Excel
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
+    // ElevenLabs' importer tends to be strict; use CRLF line endings and avoid BOM.
+    ].join("\r\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
