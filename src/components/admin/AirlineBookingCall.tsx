@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Phone, Loader2, CheckCircle, XCircle, Plane, CreditCard } from "lucide-react";
+import { Phone, Loader2, CheckCircle, XCircle, Plane, CreditCard, FileSpreadsheet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +50,14 @@ export interface BookingDetails {
   customerPhone: string;
 }
 
+export interface BatchCallRowData {
+  phone_number: string;
+  language: string;
+  first_message: string;
+  prompt: string;
+  other_dyn_variable: string;
+}
+
 export interface AirlineBookingCallProps {
   /** Pre-fill booking details from a ticket request */
   initialBooking?: Partial<BookingDetails>;
@@ -59,6 +67,8 @@ export interface AirlineBookingCallProps {
   ticketRequestId?: string;
   /** Callback when call is initiated */
   onCallStarted?: (callResult: { success: boolean; message: string; callLogId?: string }) => void;
+  /** Callback to add to batch file */
+  onAddToBatch?: (row: BatchCallRowData) => void;
 }
 
 export const AIRLINES = [
@@ -106,7 +116,7 @@ const DEFAULT_BOOKING: BookingDetails = {
   customerPhone: "",
 };
 
-export function AirlineBookingCall({ initialBooking, initialAirline, ticketRequestId, onCallStarted }: AirlineBookingCallProps = {}) {
+export function AirlineBookingCall({ initialBooking, initialAirline, ticketRequestId, onCallStarted, onAddToBatch }: AirlineBookingCallProps = {}) {
   const [selectedAirline, setSelectedAirline] = useState<string>("");
   const [customPhone, setCustomPhone] = useState<string>("");
   const [pin, setPin] = useState("");
@@ -430,6 +440,38 @@ Provide a complete summary including:
     } finally {
       setTestingPayload(false);
     }
+  };
+
+  const handleAddToBatch = () => {
+    if (!selectedAirline) {
+      toast({ title: "Select an airline first", variant: "destructive" });
+      return;
+    }
+    if (!booking.origin || !booking.destination || !booking.departureDate) {
+      toast({ title: "Fill in route and date first", variant: "destructive" });
+      return;
+    }
+
+    const phoneNumber = getPhoneNumber();
+    const systemPrompt = generateSystemPrompt();
+    const firstMessage = generateFirstMessage();
+
+    onAddToBatch?.({
+      phone_number: phoneNumber?.replace(/[^\d+]/g, "") || "",
+      language: "",
+      first_message: firstMessage,
+      prompt: systemPrompt,
+      other_dyn_variable: JSON.stringify({
+        airline: getAirline()?.label,
+        route: `${booking.origin} → ${booking.destination}`,
+        customer_email: booking.customerEmail,
+      }),
+    });
+
+    toast({
+      title: "Added to Batch! 📋",
+      description: `${getAirline()?.label} booking added to batch file`,
+    });
   };
 
   return (
@@ -762,6 +804,19 @@ Provide a complete summary including:
                 </>
               )}
             </Button>
+            
+            {onAddToBatch && (
+              <Button
+                variant="outline"
+                onClick={handleAddToBatch}
+                disabled={!selectedAirline || !booking.origin || !booking.destination}
+                size="lg"
+                className="h-12 px-8"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                Add to Batch
+              </Button>
+            )}
           </div>
 
           {callResult && (

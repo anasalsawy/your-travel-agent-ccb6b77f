@@ -14,13 +14,21 @@ import AdminEscrow from "@/components/admin/AdminEscrow";
 import { AdminQuoteRequests } from "@/components/admin/AdminQuoteRequests";
 import { AirlineBookingCall } from "@/components/admin/AirlineBookingCall";
 import { AdminUniversalCall } from "@/components/admin/AdminUniversalCall";
-import { BatchCallGenerator } from "@/components/admin/BatchCallGenerator";
+import { BatchCallGenerator, BatchCallRow } from "@/components/admin/BatchCallGenerator";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [activeTab, setActiveTab] = useState("vouchers");
+  const [batchRows, setBatchRows] = useState<BatchCallRow[]>([]);
   const navigate = useNavigate();
+
+  const handleAddToBatch = (row: Omit<BatchCallRow, "id">) => {
+    const newRow: BatchCallRow = { ...row, id: crypto.randomUUID() };
+    setBatchRows(prev => [...prev, newRow]);
+    setActiveTab("batch-calls");
+  };
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -89,7 +97,7 @@ export default function AdminPage() {
             </p>
           </div>
 
-          <Tabs defaultValue="vouchers" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="bg-card border border-border flex-wrap h-auto p-1">
               <TabsTrigger value="vouchers" className="gap-2">
                 <Package className="w-4 h-4" />
@@ -156,15 +164,15 @@ export default function AdminPage() {
             {isAdmin && (
               <>
                 <TabsContent value="book-call">
-                  <AirlineBookingCall />
+                  <AirlineBookingCall onAddToBatch={handleAddToBatch} />
                 </TabsContent>
 
                 <TabsContent value="universal-call">
-                  <AdminUniversalCall />
+                  <AdminUniversalCall onAddToBatch={handleAddToBatch} />
                 </TabsContent>
 
                 <TabsContent value="batch-calls">
-                  <BatchCallGenerator />
+                  <BatchCallGenerator initialRows={batchRows} onRowsChange={setBatchRows} />
                 </TabsContent>
 
                 <TabsContent value="quotes">

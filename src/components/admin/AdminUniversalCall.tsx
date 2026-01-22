@@ -3,11 +3,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Phone, Loader2, CheckCircle, XCircle, Zap } from "lucide-react";
+import { Phone, Loader2, CheckCircle, XCircle, Zap, FileSpreadsheet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-export function AdminUniversalCall() {
+interface BatchCallRowData {
+  phone_number: string;
+  language: string;
+  first_message: string;
+  prompt: string;
+  other_dyn_variable: string;
+}
+
+interface AdminUniversalCallProps {
+  onAddToBatch?: (row: BatchCallRowData) => void;
+}
+
+export function AdminUniversalCall({ onAddToBatch }: AdminUniversalCallProps) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [task, setTask] = useState("");
   const [yourName, setYourName] = useState("Maya");
@@ -143,6 +155,33 @@ Provide a complete summary of:
     }
   };
 
+  const handleAddToBatch = () => {
+    if (!phoneNumber || !task) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in phone number and task description",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const context = buildContext();
+    const firstMessage = buildFirstMessage();
+
+    onAddToBatch?.({
+      phone_number: phoneNumber.replace(/[^\d+]/g, ""),
+      language: "",
+      first_message: firstMessage,
+      prompt: context,
+      other_dyn_variable: JSON.stringify({ caller_name: yourName }),
+    });
+
+    toast({
+      title: "Added to Batch! 📋",
+      description: "Universal call added to batch file",
+    });
+  };
+
   return (
     <div className="glass-card p-6 md:p-8">
       <div className="flex items-center gap-3 mb-6">
@@ -247,6 +286,19 @@ Provide a complete summary of:
             </>
           )}
         </Button>
+
+        {/* Add to Batch Button */}
+        {onAddToBatch && (
+          <Button
+            variant="outline"
+            onClick={handleAddToBatch}
+            disabled={!phoneNumber || !task}
+            className="w-full gap-2"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Add to Batch File
+          </Button>
+        )}
 
         <p className="text-xs text-muted-foreground text-center">
           ⚡ This is a wildcard tool. The AI will adapt to any task you describe.
