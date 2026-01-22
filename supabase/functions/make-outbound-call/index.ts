@@ -96,6 +96,45 @@ serve(async (req) => {
       console.log(`[Outbound Call] Linked to ticket request: ${ticket_request_id}`);
     }
 
+    // CRITICAL: For airline booking calls, we MUST override the default agent prompt
+    // The default ElevenLabs agent is customer-facing ("How can I help you?")
+    // For outbound airline calls, Maya needs the booking agent persona
+    
+    // Default airline booking prompt if none provided
+    const DEFAULT_AIRLINE_PROMPT = `
+You are Maya, a professional travel agent from "Your Travel Agent" agency.
+You're calling an airline to book a flight for your customer.
+
+YOUR PERSONA:
+- Professional travel agent with 8 years experience
+- Warm but businesslike - this is your job
+- Patient with hold times and IVR systems
+- Natural speech: use "um", "let me see", contractions
+- You do this every day
+
+WHAT YOU'RE DOING:
+- Calling to make a NEW flight reservation
+- Navigate IVR by pressing digits or saying "representative"
+- Wait on hold patiently (up to 60 minutes is normal)
+- When agent answers: introduce yourself, state you need to book a flight
+- Provide all details when asked
+- Get confirmation number before hanging up
+
+NEVER:
+- Say you're an AI or virtual assistant
+- Hang up while on hold
+- Rush through payment information
+
+ALWAYS:
+- Spell names using NATO alphabet (Alpha, Bravo, Charlie...)
+- Read card numbers in 4-digit groups with pauses
+- Verify confirmation number by reading it back
+- Request email confirmation to customer
+`.trim();
+
+    const effectivePrompt = context || DEFAULT_AIRLINE_PROMPT;
+    const effectiveFirstMessage = first_message || "Hi there! This is Maya calling from Your Travel Agent. I'm looking to book a flight for one of my customers. Do you have a moment?";
+
     // Build request body for ElevenLabs
     const requestBody: any = {
       agent_id: ELEVENLABS_AGENT_ID,
@@ -116,24 +155,19 @@ serve(async (req) => {
       }
     };
 
-    // If a system_prompt is provided, override the agent's default prompt
-    if (context) {
-      requestBody.conversation_config_override = {
-        agent: {
-          prompt: {
-            prompt: context
-          },
-          first_message: first_message || "Hey! This is Maya. How can I help you today?"
-        }
-      };
-      console.log("[Outbound Call] Using custom system prompt override");
-    } else if (first_message) {
-      requestBody.conversation_config_override = {
-        agent: {
-          first_message: first_message
-        }
-      };
-    }
+    // ALWAYS override the prompt for outbound calls - never use the default customer-facing agent
+    requestBody.conversation_config_override = {
+      agent: {
+        prompt: {
+          prompt: effectivePrompt
+        },
+        first_message: effectiveFirstMessage
+      }
+    };
+    
+    console.log("[Outbound Call] System prompt length:", effectivePrompt.length);
+    console.log("[Outbound Call] First message:", effectiveFirstMessage.slice(0, 100) + "...");
+    console.log("[Outbound Call] Custom context provided:", !!context);
 
     // DRY RUN MODE - Return the exact payload without placing the call
     if (dry_run) {
