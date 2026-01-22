@@ -87,7 +87,8 @@ NATO spelling (use when spelling names/PNR): Alpha, Bravo, Charlie, Delta, Echo,
 
 export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGeneratorProps) {
   const { toast } = useToast();
-  const [exportMode, setExportMode] = useState<"phones" | "compat" | "full">("phones");
+  // "vars" mode: recommended - passes only dynamic_variables, no prompt override
+  const [exportMode, setExportMode] = useState<"phones" | "vars" | "compat" | "full">("vars");
   const [rows, setRows] = useState<BatchCallRow[]>(initialRows?.length ? initialRows : [
     {
       id: crypto.randomUUID(),
@@ -191,10 +192,27 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
     const language = row.language === "default" ? "" : row.language;
     const dynamic_variables = parseDynamicVariables(row.other_dyn_variable);
 
-    // IMPORTANT:
-    // - "full" mode tries to override prompt/first_message per-row (very large payloads).
-    // - "compat" mode keeps payload small to avoid uploader limits; rely on the
-    //   agent's default prompt configured in ElevenLabs and only pass dynamic variables.
+    // "vars" mode (RECOMMENDED): Only pass dynamic variables.
+    // System prompt is configured in ElevenLabs agent dashboard.
+    // This keeps payloads tiny and reliable.
+    if (exportMode === "vars") {
+      const varsPayload: Record<string, unknown> = { ...dynamic_variables };
+      
+      // Add first_message as a variable so agent can use {{first_message}}
+      const fm = sanitizeForCSV(row.first_message);
+      if (fm) varsPayload.first_message = fm;
+
+      return {
+        conversation_config_override: {
+          agent: {
+            language: language || undefined,
+          },
+        },
+        dynamic_variables: varsPayload,
+      };
+    }
+
+    // "full" mode: Override everything per-row (very large payloads, may fail upload)
     if (exportMode === "full") {
       return {
         conversation_config_override: {
@@ -210,18 +228,10 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
       };
     }
 
-    // Compatibility mode: keep overrides tiny; attach content as variables if you want
-    // to reference them in the agent prompt template.
-    const compatVars: Record<string, unknown> = {
-      ...dynamic_variables,
-    };
-
-    // Keep these optional and short to avoid exploding payload size.
+    // "compat" mode: Legacy compatibility - small overrides with truncated first_message
+    const compatVars: Record<string, unknown> = { ...dynamic_variables };
     const fm = sanitizeForCSV(row.first_message);
     if (fm) compatVars.first_message = fm.slice(0, 500);
-
-    // Do NOT include the full system prompt by default (it is usually what breaks uploads).
-    // If you really need it, switch to Full mode and accept the size risk.
 
     return {
       conversation_config_override: {
@@ -334,13 +344,14 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
           </div>
           <div className="flex gap-2">
             <Select value={exportMode} onValueChange={(v) => setExportMode(v as any)}>
-              <SelectTrigger className="w-[180px]" aria-label="Export mode">
+              <SelectTrigger className="w-[200px]" aria-label="Export mode">
                 <SelectValue placeholder="Export Mode" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="phones">Phone numbers only</SelectItem>
-                <SelectItem value="compat">With variables</SelectItem>
-                <SelectItem value="full">Full override</SelectItem>
+                <SelectItem value="vars">Variables only (recommended)</SelectItem>
+                <SelectItem value="compat">Legacy compatibility</SelectItem>
+                <SelectItem value="full">Full override (may fail)</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" onClick={copyAsJSON}>
