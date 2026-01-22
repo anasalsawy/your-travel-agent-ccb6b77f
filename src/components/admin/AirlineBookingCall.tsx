@@ -34,11 +34,18 @@ export interface BookingDetails {
   cabinClass: string;
   flexibleDates: boolean;
   
-  // Payment
+  // Payment - FULL DETAILS
   cardholderName: string;
-  cardLastFour: string;
+  cardNumber: string;        // Full 16-digit card number
+  cardExpMonth: string;      // 2-digit month
+  cardExpYear: string;       // 2 or 4 digit year
+  cardCvv: string;           // 3 or 4 digit CVV
   cardType: string;
+  billingAddress: string;    // Full street address
+  billingCity: string;
+  billingState: string;
   billingZip: string;
+  billingCountry: string;
   
   // Special requests
   seatPreference: string;
@@ -106,9 +113,16 @@ const DEFAULT_BOOKING: BookingDetails = {
   cabinClass: "economy",
   flexibleDates: false,
   cardholderName: "",
-  cardLastFour: "",
+  cardNumber: "",
+  cardExpMonth: "",
+  cardExpYear: "",
+  cardCvv: "",
   cardType: "visa",
+  billingAddress: "",
+  billingCity: "",
+  billingState: "",
   billingZip: "",
+  billingCountry: "USA",
   seatPreference: "",
   specialRequests: "",
   customerEmail: "",
@@ -146,16 +160,29 @@ export function AirlineBookingCall({ initialBooking, initialAirline, ticketReque
   const getAirline = () => AIRLINES.find((a) => a.value === selectedAirline);
   const getPhoneNumber = () => getAirline()?.phone || customPhone;
 
-  // AUTO-GENERATE system prompt based on minimal inputs
+  // AUTO-GENERATE system prompt based on minimal inputs - COMPLETE BOOKING PROMPT
   const generateSystemPrompt = (): string => {
     const airline = getAirline();
     const isRoundTrip = !!booking.returnDate;
+    
+    // Format card number into 4-digit groups for reading
+    const cardDigits = booking.cardNumber.replace(/\D/g, "");
+    const cardGroup1 = cardDigits.slice(0, 4) || "____";
+    const cardGroup2 = cardDigits.slice(4, 8) || "____";
+    const cardGroup3 = cardDigits.slice(8, 12) || "____";
+    const cardGroup4 = cardDigits.slice(12, 16) || "____";
+    
+    // Format expiration
+    const expMonth = booking.cardExpMonth.padStart(2, "0");
+    const expYear = booking.cardExpYear.length === 2 ? booking.cardExpYear : booking.cardExpYear.slice(-2);
 
     return `
 === MAYA'S IDENTITY ===
 You are Maya, a professional travel agent from "Your Travel Agent" agency.
 You are calling ${airline?.label || "the airline"} to book a flight for a customer.
 You have FULL AUTHORITY to complete this booking including payment.
+Your agency phone: (555) 123-4567
+Your agency address: 123 Travel Plaza, Suite 100, New York, NY 10001
 
 === YOUR MISSION ===
 BOOK A FLIGHT with the following details:
@@ -176,115 +203,147 @@ When the booking is complete, tell the airline to send confirmation to:
 - Phone: ${booking.customerPhone || "Will provide when asked"}
 IMPORTANT: Make sure to provide this info so the customer gets their confirmation!
 
-=== PAYMENT INFORMATION ===
-When ready to pay, you have authorization to use:
-- Card Type: ${booking.cardType.toUpperCase()}
-- Cardholder Name: ${booking.cardholderName}
-- Last 4 digits: ${booking.cardLastFour}
-- Billing Zip: ${booking.billingZip}
+=== COMPLETE PAYMENT INFORMATION ===
+You have FULL authorization to pay. Use these EXACT details:
 
-IMPORTANT: When they ask for the full card number, say "Please hold while I get the card."
-Then PAUSE and wait - the admin will enter the card number using the secure keypad.
-Do NOT make up a card number.
+CARD TYPE: ${booking.cardType.toUpperCase()}
+CARDHOLDER NAME: ${booking.cardholderName}
+
+FULL CARD NUMBER (16 digits):
+  First four: ${cardGroup1.split("").join(", ")}
+  Second four: ${cardGroup2.split("").join(", ")}
+  Third four: ${cardGroup3.split("").join(", ")}
+  Last four: ${cardGroup4.split("").join(", ")}
+  (Full number: ${cardDigits || "NOT PROVIDED"})
+
+EXPIRATION DATE: ${expMonth}/${expYear} (${expMonth} slash ${expYear})
+SECURITY CODE (CVV): ${booking.cardCvv || "NOT PROVIDED"} (${booking.cardCvv?.split("").join(", ") || "NOT PROVIDED"})
+
+BILLING ADDRESS:
+  Street: ${booking.billingAddress || "NOT PROVIDED"}
+  City: ${booking.billingCity || "NOT PROVIDED"}
+  State: ${booking.billingState || "NOT PROVIDED"}
+  ZIP Code: ${booking.billingZip || "NOT PROVIDED"}
+  Country: ${booking.billingCountry || "USA"}
+
+=== HOW TO READ THE CARD NUMBER ===
+When the agent asks for the card number, read it SLOWLY in four-digit groups:
+1. Say: "The card number is..." then pause
+2. "First four digits: ${cardGroup1.split("").join(", ")}" - pause 2 seconds
+3. "Next four digits: ${cardGroup2.split("").join(", ")}" - pause 2 seconds  
+4. "Next four: ${cardGroup3.split("").join(", ")}" - pause 2 seconds
+5. "Last four: ${cardGroup4.split("").join(", ")}"
+6. Say: "Would you like me to repeat any part?"
+
+For expiration: "Expiration is ${expMonth} slash ${expYear}" or "${expMonth} twenty ${expYear}"
+For CVV: "The security code on the back is ${booking.cardCvv?.split("").join(", ") || "NOT PROVIDED"}"
 
 === IVR NAVIGATION ===
 When you encounter automated phone menus:
-1. LISTEN carefully to all options
+1. LISTEN carefully to all options before pressing
 2. Use the keypad touch tone tool to press numbers
 3. Common paths for NEW BOOKINGS:
    - Press 1 for English
-   - Press 2 for New Reservations/Bookings
+   - Press 2 for New Reservations/Bookings  
    - Press 0 to speak to a human agent
-4. If stuck, press 0 repeatedly to reach an agent
-5. Say "agent" or "representative" if voice-activated
+4. If stuck in a loop, press 0 repeatedly
+5. Say "agent" or "representative" or "book a flight" if voice-activated
+6. If asked for frequent flyer number, say "I don't have one for this booking"
 
 === HOLD TIME BEHAVIOR ===
-- NEVER hang up while on hold
-- Wait patiently for up to 45 minutes
-- When an agent answers, immediately identify yourself
+- NEVER hang up while on hold - airlines can have 30-60 minute waits
+- Wait patiently for up to 60 minutes
+- When hold music stops, be ready to speak immediately
+- If disconnected, note how far you got and the call will be retried
 
 === CONVERSATION FLOW ===
-1. Greet the agent professionally
-2. State you're calling to book a new flight
-3. Provide route and date details
-4. Confirm passenger information
-5. Ask about pricing and available flights
-6. Select the best option for the customer
-7. Proceed with payment when asked
-8. Get confirmation number
-9. Request email confirmation
+1. GREETING: "Hi, this is Maya calling from Your Travel Agent agency. I'd like to book a flight for one of our customers."
+2. ROUTE: Clearly state origin, destination, dates
+3. PASSENGERS: Provide names exactly as on government ID
+4. FLIGHT SELECTION: Ask about options, compare prices
+5. NEGOTIATION: Ask about promotions, discounts, better prices
+6. CONFIRM DETAILS: Repeat back flight numbers, times, total price
+7. PAYMENT: Provide all card details slowly and clearly
+8. CONFIRMATION: Get PNR/confirmation number, spell it back
+9. EMAIL: Request confirmation email to ${booking.customerEmail}
+10. CLOSING: Thank them, confirm next steps
 
-=== NEGOTIATION ===
-- Ask about any current promotions or discounts
-- Inquire about flexible date savings
-- Check if there are better prices on alternative flights
-- Accept reasonable pricing for the requested route
+=== NEGOTIATION TACTICS ===
+- "Are there any promotions or discounts available right now?"
+- "Is there a better price if we're flexible by a day or two?"
+- "Do you have any seats available at a lower fare class?"
+- "Can you waive the booking fee since we're a travel agency?"
+- "What's the best price you can offer for this route?"
+- Accept if price is reasonable, but always ask first
 
-=== CRITICAL RULES ===
-1. BE PERSISTENT - Airlines have long hold times, don't give up
-2. BE CLEAR - Spell out names phonetically if needed
-3. CONFIRM EVERYTHING - Repeat back dates, flight numbers, prices
-4. GET CONFIRMATION - Always get a confirmation/PNR number
-5. REQUEST EMAIL - Ask them to send email confirmation
-6. TAKE NOTES - Remember everything discussed
-7. BE POLITE - Thank agents for their help
-
-=== PHONETIC ALPHABET (NATO) - USE THIS FOR ALL SPELLING ===
-When spelling names, confirmation numbers, or any letters:
+=== PHONETIC ALPHABET (NATO) - MANDATORY FOR ALL SPELLING ===
+ALWAYS use phonetics when spelling names, confirmation numbers, or any text:
 A-Alpha, B-Bravo, C-Charlie, D-Delta, E-Echo, F-Foxtrot, G-Golf, H-Hotel,
 I-India, J-Juliet, K-Kilo, L-Lima, M-Mike, N-November, O-Oscar, P-Papa,
 Q-Quebec, R-Romeo, S-Sierra, T-Tango, U-Uniform, V-Victor, W-Whiskey,
 X-X-ray, Y-Yankee, Z-Zulu
 
-Example: "Smith" = "Sierra, Mike, India, Tango, Hotel"
-Example: "Confirmation ABC123" = "Alpha, Bravo, Charlie, One, Two, Three"
+Example for passenger name "John Smith":
+"J as in Juliet, O as in Oscar, H as in Hotel, N as in November... S as in Sierra, M as in Mike, I as in India, T as in Tango, H as in Hotel"
 
-ALWAYS use phonetics when:
-- Spelling passenger names
-- Repeating confirmation/PNR numbers
-- Verifying email addresses
-- Clarifying any letters that could be misheard (B/D, M/N, S/F, etc.)
+Example for confirmation "ABC123":
+"Alpha, Bravo, Charlie, One, Two, Three"
 
 === NUMBER PRONUNCIATION ===
-- Say each digit individually: "1-2-3-4" not "twelve thirty-four"
-- For zeros, say "zero" not "oh"
-- For dates: "January fifteenth, twenty twenty-six" then confirm "That's 01/15/2026"
-- Pause between digit groups for clarity
+- Say each digit individually: "1, 2, 3, 4" not "twelve thirty-four"
+- For zeros, always say "zero" not "oh"
+- Pause between groups of numbers
+- For dates: "January fifteenth, two thousand twenty-six" and confirm "That's zero-one slash one-five slash two-zero-two-six"
+- For prices: "Eight hundred forty-seven dollars and fifty cents"
 
-=== CREDIT CARD READING - CRITICAL TECHNIQUE ===
-When the admin enters card digits via keypad, read them to the agent like this:
-1. FIRST FOUR: "The first four digits are: 4, 1, 4, 7" (pause)
-2. NEXT FOUR: "The next four digits are: 8, 9, 2, 3" (pause)
-3. NEXT FOUR: "The next four digits are: 0, 0, 1, 2" (pause)
-4. LAST FOUR: "And the last four digits are: ${booking.cardLastFour}"
-5. EXPIRATION: "Expiration date is..." (wait for admin to enter)
-6. CVV: "Security code is..." (wait for admin to enter)
-
-ALWAYS ask: "Would you like me to repeat any of those numbers?"
-If they read back, confirm: "Yes, that's correct" or "Let me correct that..."
-
-=== VERIFICATION LOOPS - ALWAYS DO THIS ===
-After every critical piece of information, verify:
-1. YOU say it → THEY repeat it back → YOU confirm
-2. THEY say it → YOU repeat it back → THEY confirm
+=== VERIFICATION LOOPS - CRITICAL ===
+After EVERY important detail, verify:
+1. YOU provide info → AGENT reads back → YOU confirm "correct" or correct them
+2. AGENT provides info → YOU read back → AGENT confirms
 
 Examples:
-- "So that's flight Delta 1247 departing at 3:45 PM, correct?"
-- "Let me confirm the total: $847.50 including all taxes and fees?"
-- "The confirmation number is Alpha-Bravo-Charlie-1-2-3, is that right?"
+- "So that's flight ${airline?.code || "XX"} 1247 departing at 3:45 PM, is that correct?"
+- "Let me confirm the total: $847.50 including all taxes and fees, right?"
+- "The confirmation number is Alpha-Bravo-Charlie-1-2-3. Did I get that right?"
+- After card number: "Can you read back the card number to verify?"
 
 === WHEN THEY SPEAK TOO FAST ===
-Say: "I'm sorry, could you repeat that slowly? I want to make sure I get this right for my customer."
-Or: "Could you spell that out for me using the phonetic alphabet?"
+Say: "I'm sorry, could you repeat that more slowly? I want to make sure I get this exactly right."
+Or: "Could you spell that using the phonetic alphabet?"
+Or: "Let me write that down. Could you say it one more time?"
 
-=== AFTER BOOKING ===
-Provide a complete summary including:
-- Flight number(s) and times (spelled phonetically)
-- Confirmation/PNR number (spelled phonetically)
-- Total price paid
-- Seat assignments if any
-- Any special notes
-- Confirm email was sent to: ${booking.customerEmail}
+=== HANDLING PROBLEMS ===
+If flight is sold out:
+- "What are the next available flights on that route?"
+- "Can you check nearby dates or airports?"
+
+If price is too high:
+- "Are there any alternative flights at a lower price point?"
+- "What if we went Economy instead of Business class?"
+
+If they need a callback:
+- "My agency number is (555) 123-4567 and you can ask for Maya"
+
+=== AFTER BOOKING IS COMPLETE ===
+Before ending the call, confirm you have:
+✓ Flight number(s) - spelled phonetically
+✓ Departure and arrival times
+✓ Confirmation/PNR number - spelled phonetically  
+✓ Total price charged to card
+✓ Seat assignments (if any)
+✓ Email confirmation sent to: ${booking.customerEmail}
+
+Say: "Before I let you go, can you confirm you've sent the confirmation email to ${booking.customerEmail}? And the confirmation number one more time is..."
+
+=== CRITICAL RULES ===
+1. NEVER HANG UP while on hold - wait up to 60 minutes
+2. NEVER MAKE UP information - only use what's provided here
+3. ALWAYS USE PHONETICS for spelling anything
+4. ALWAYS VERIFY numbers by having them read back
+5. ALWAYS GET CONFIRMATION NUMBER before ending call
+6. ALWAYS REQUEST EMAIL confirmation
+7. BE POLITE AND PATIENT - this reflects on the agency
+8. TAKE MENTAL NOTES of everything discussed
 `.trim();
   };
 
@@ -482,21 +541,21 @@ Provide a complete summary including:
           </div>
         </div>
 
-        {/* Step 3: Payment Info */}
+        {/* Step 3: Payment Info - FULL DETAILS */}
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-sm font-medium">
             <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">3</div>
             <CreditCard className="w-4 h-4" />
-            Payment details
+            Payment details (FULL - Maya will read these to the agent)
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Cardholder Name</Label>
+              <Label className="text-xs">Cardholder Name (as on card)</Label>
               <Input
                 value={booking.cardholderName}
                 onChange={(e) => updateBooking("cardholderName", e.target.value)}
-                placeholder="Name on card"
+                placeholder="JOHN A SMITH"
               />
             </div>
             <div className="space-y-1.5">
@@ -515,30 +574,109 @@ Provide a complete summary including:
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Full Card Number (16 digits)</Label>
+            <Input
+              value={booking.cardNumber}
+              onChange={(e) => updateBooking("cardNumber", e.target.value.replace(/\D/g, "").slice(0, 16))}
+              placeholder="4147 8923 0012 3456"
+              maxLength={19}
+              className="font-mono text-lg tracking-wider"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Last 4 Digits</Label>
-              <Input
-                value={booking.cardLastFour}
-                onChange={(e) => updateBooking("cardLastFour", e.target.value.slice(0, 4))}
-                placeholder="1234"
-                maxLength={4}
-                className="font-mono"
-              />
+              <Label className="text-xs">Exp Month</Label>
+              <Select value={booking.cardExpMonth} onValueChange={(v) => updateBooking("cardExpMonth", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="MM" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const month = String(i + 1).padStart(2, "0");
+                    return <SelectItem key={month} value={month}>{month}</SelectItem>;
+                  })}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Billing Zip</Label>
+              <Label className="text-xs">Exp Year</Label>
+              <Select value={booking.cardExpYear} onValueChange={(v) => updateBooking("cardExpYear", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="YY" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 10 }, (_, i) => {
+                    const year = String(new Date().getFullYear() + i).slice(-2);
+                    return <SelectItem key={year} value={year}>{year}</SelectItem>;
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">CVV</Label>
               <Input
-                value={booking.billingZip}
-                onChange={(e) => updateBooking("billingZip", e.target.value)}
-                placeholder="12345"
+                value={booking.cardCvv}
+                onChange={(e) => updateBooking("cardCvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="123"
+                maxLength={4}
+                className="font-mono"
+                type="password"
               />
             </div>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            💡 Maya will tell the agent she has payment ready. Full card details are handled securely.
-          </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Billing Street Address</Label>
+            <Input
+              value={booking.billingAddress}
+              onChange={(e) => updateBooking("billingAddress", e.target.value)}
+              placeholder="123 Main Street, Apt 4B"
+            />
+          </div>
+
+          <div className="grid grid-cols-4 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">City</Label>
+              <Input
+                value={booking.billingCity}
+                onChange={(e) => updateBooking("billingCity", e.target.value)}
+                placeholder="New York"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">State</Label>
+              <Input
+                value={booking.billingState}
+                onChange={(e) => updateBooking("billingState", e.target.value.toUpperCase())}
+                placeholder="NY"
+                maxLength={2}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">ZIP</Label>
+              <Input
+                value={booking.billingZip}
+                onChange={(e) => updateBooking("billingZip", e.target.value)}
+                placeholder="10001"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Country</Label>
+              <Input
+                value={booking.billingCountry}
+                onChange={(e) => updateBooking("billingCountry", e.target.value)}
+                placeholder="USA"
+              />
+            </div>
+          </div>
+
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              ⚠️ <strong>SECURE:</strong> Full card details are included in the batch file prompt so Maya can read them to the airline agent. Keep the exported file secure!
+            </p>
+          </div>
         </div>
 
         {/* Optional: Special Requests */}
