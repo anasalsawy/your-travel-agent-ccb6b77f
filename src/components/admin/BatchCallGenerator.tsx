@@ -156,21 +156,46 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
     }
   };
 
+  // Sanitize text for ElevenLabs CSV: remove special chars, collapse newlines
+  const sanitizeForCSV = (text: string): string => {
+    return text
+      // Remove box-drawing and special Unicode characters
+      .replace(/[║═╔╗╚╝╠╣╦╩╬│─┌┐└┘├┤┬┴┼▀▄█▌▐░▒▓■□▪▫●○◘◙◌☐☑☒★☆✓✗✕✔✖✘]/g, '')
+      // Collapse multiple newlines into single space
+      .replace(/\n+/g, ' ')
+      // Collapse multiple spaces into single space
+      .replace(/\s+/g, ' ')
+      // Remove tabs
+      .replace(/\t/g, ' ')
+      .trim();
+  };
+
   const exportToCSV = () => {
-    const headers = ["phone_number", "language", "first_message", "prompt", "other_dyn_variable"];
+    // ElevenLabs expects these exact headers
+    const headers = ["phone", "language", "first_message", "prompt", "other_dyn_variable"];
+    
     const csvContent = [
       headers.join(","),
-      ...rows.map(row => 
-        headers.map(h => {
-          const value = row[h as keyof BatchCallRow];
-          // Escape quotes and wrap in quotes if contains comma or newline
-          const escaped = String(value).replace(/"/g, '""');
+      ...rows.map(row => {
+        const values = [
+          row.phone_number, // Map phone_number -> phone
+          row.language,
+          sanitizeForCSV(row.first_message),
+          sanitizeForCSV(row.prompt),
+          row.other_dyn_variable
+        ];
+        
+        return values.map(value => {
+          // Escape double quotes by doubling them, then wrap in quotes
+          const escaped = String(value || '').replace(/"/g, '""');
           return `"${escaped}"`;
-        }).join(",")
-      )
+        }).join(",");
+      })
     ].join("\n");
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    // Add BOM for proper UTF-8 encoding in Excel
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -178,7 +203,7 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
     link.click();
     URL.revokeObjectURL(url);
 
-    toast({ title: "Exported!", description: "CSV file downloaded successfully" });
+    toast({ title: "Exported!", description: "CSV file downloaded in ElevenLabs format" });
   };
 
   const copyAsJSON = () => {
