@@ -87,6 +87,7 @@ NATO spelling (use when spelling names/PNR): Alpha, Bravo, Charlie, Delta, Echo,
 
 export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGeneratorProps) {
   const { toast } = useToast();
+  const [exportMode, setExportMode] = useState<"compat" | "full">("compat");
   const [rows, setRows] = useState<BatchCallRow[]>(initialRows?.length ? initialRows : [
     {
       id: crypto.randomUUID(),
@@ -170,55 +171,120 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
       .trim();
   };
 
+  // ElevenLabs CSV uploader appears to enforce strict per-cell character limits.
+  // Keep this conservative to avoid "Too much characters" errors.
+  const MAX_CID_CELL_CHARS = 15000;
+
+  const parseDynamicVariables = (otherDyn: string): Record<string, unknown> => {
+    let dynamic_variables: Record<string, unknown> = {};
+    const other = (otherDyn || "").trim();
+    if (!other) return dynamic_variables;
+    try {
+      const parsed = JSON.parse(other);
+      dynamic_variables =
+        typeof parsed === "object" && parsed !== null
+          ? (parsed as Record<string, unknown>)
+          : { other_dyn_variable: other };
+    } catch {
+      dynamic_variables = { other_dyn_variable: other };
+    }
+    return dynamic_variables;
+  };
+
+  const buildConversationInitiationClientData = (row: BatchCallRow) => {
+    const language = row.language === "default" ? "" : row.language;
+    const dynamic_variables = parseDynamicVariables(row.other_dyn_variable);
+
+    // IMPORTANT:
+    // - "full" mode tries to override prompt/first_message per-row (very large payloads).
+    // - "compat" mode keeps payload small to avoid uploader limits; rely on the
+    //   agent's default prompt configured in ElevenLabs and only pass dynamic variables.
+    if (exportMode === "full") {
+      return {
+        conversation_config_override: {
+          agent: {
+            first_message: sanitizeForCSV(row.first_message),
+            language: language || undefined,
+            prompt: {
+              prompt: sanitizeForCSV(row.prompt),
+            },
+          },
+        },
+        dynamic_variables,
+      };
+    }
+
+    // Compatibility mode: keep overrides tiny; attach content as variables if you want
+    // to reference them in the agent prompt template.
+    const compatVars: Record<string, unknown> = {
+      ...dynamic_variables,
+    };
+
+    // Keep these optional and short to avoid exploding payload size.
+    const fm = sanitizeForCSV(row.first_message);
+    if (fm) compatVars.first_message = fm.slice(0, 500);
+
+    // Do NOT include the full system prompt by default (it is usually what breaks uploads).
+    // If you really need it, switch to Full mode and accept the size risk.
+
+    return {
+      conversation_config_override: {
+        agent: {
+          language: language || undefined,
+        },
+      },
+      dynamic_variables: compatVars,
+    };
+  };
+
   const exportToCSV = () => {
     // ElevenLabs Batch Calling expects recipients with `phone_number` and optional
     // `conversation_initiation_client_data` JSON.
     const headers = ["phone_number", "conversation_initiation_client_data"];
 
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((row) => {
-        const language = row.language === "default" ? "" : row.language;
+    const rowOutputs = rows.map((row, index) => {
+      const cidObj = buildConversationInitiationClientData(row);
+      const cid = JSON.stringify(cidObj);
 
-        // If user provided JSON in other_dyn_variable, treat it as dynamic_variables.
-        // Otherwise, store as { other_dyn_variable: "..." } to keep it usable.
-        let dynamic_variables: Record<string, unknown> = {};
-        const other = (row.other_dyn_variable || "").trim();
-        if (other) {
-          try {
-            const parsed = JSON.parse(other);
-            dynamic_variables = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : { other_dyn_variable: other };
-          } catch {
-            dynamic_variables = { other_dyn_variable: other };
-          }
-        }
-
-        const conversation_initiation_client_data = {
-          conversation_config_override: {
-            agent: {
-              first_message: sanitizeForCSV(row.first_message),
-              language: language || undefined,
-              prompt: {
-                prompt: sanitizeForCSV(row.prompt),
-              },
-            },
-          },
-          dynamic_variables,
+      if (cid.length > MAX_CID_CELL_CHARS) {
+        return {
+          ok: false as const,
+          index,
+          phone: row.phone_number,
+          cidLength: cid.length,
+          line: "",
         };
+      }
 
-        // Compact JSON, single line
-        const cid = JSON.stringify(conversation_initiation_client_data);
+      const values = [row.phone_number, cid];
+      const line = values
+        .map((value) => {
+          const escaped = String(value || "").replace(/"/g, '""');
+          return `"${escaped}"`;
+        })
+        .join(",");
 
-        const values = [row.phone_number, cid];
+      return { ok: true as const, line };
+    });
 
-        return values
-          .map((value) => {
-            const escaped = String(value || "").replace(/"/g, '""');
-            return `"${escaped}"`;
-          })
-          .join(",");
-      }),
-    ].join("\r\n");
+    const tooLong = rowOutputs.filter((r) => !r.ok);
+    if (tooLong.length) {
+      const preview = tooLong
+        .slice(0, 3)
+        .map((r) => `#${r.index + 1} (${r.phone || "no phone"}): ${r.cidLength} chars`)
+        .join("; ");
+      toast({
+        title: "Export blocked: payload too large",
+        description:
+          `Some rows exceed ElevenLabs' CSV character limits. ` +
+          `Switch Export Mode to Compatibility (recommended) or shorten prompts. ` +
+          preview,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const csvContent = [headers.join(","), ...rowOutputs.map((r) => (r as any).line)].join("\r\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -228,7 +294,13 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
     link.click();
     URL.revokeObjectURL(url);
 
-    toast({ title: "Exported!", description: "CSV file downloaded in ElevenLabs batch-calling format" });
+    toast({
+      title: "Exported!",
+      description:
+        exportMode === "compat"
+          ? "CSV downloaded (Compatibility mode to avoid upload limits)"
+          : "CSV downloaded (Full override mode)",
+    });
   };
 
   const copyAsJSON = () => {
@@ -251,6 +323,15 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
             </CardDescription>
           </div>
           <div className="flex gap-2">
+            <Select value={exportMode} onValueChange={(v) => setExportMode(v as any)}>
+              <SelectTrigger className="w-[220px]" aria-label="Export mode">
+                <SelectValue placeholder="Export Mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="compat">Compatibility (recommended)</SelectItem>
+                <SelectItem value="full">Full override (may fail upload)</SelectItem>
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="sm" onClick={copyAsJSON}>
               <Copy className="h-4 w-4 mr-1" />
               Copy JSON
