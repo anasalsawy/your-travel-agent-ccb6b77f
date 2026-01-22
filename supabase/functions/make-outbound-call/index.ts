@@ -152,6 +152,14 @@ ALWAYS:
         ticket_request_id: ticket_request_id || null,
         customer_email: customer_email || null,
         customer_phone: customer_phone || null,
+        // IMPORTANT: Some telephony runs may ignore `conversation_config_override`.
+        // These dynamic variables can be referenced inside the ElevenLabs agent prompt
+        // template (e.g. {{system_prompt}}) to guarantee the correct context is used.
+        system_prompt: effectivePrompt,
+        first_message: effectiveFirstMessage,
+        call_type: call_type || "airline_booking",
+        airline: airline || null,
+        booking_mode: "airline_booking",
       }
     };
 
