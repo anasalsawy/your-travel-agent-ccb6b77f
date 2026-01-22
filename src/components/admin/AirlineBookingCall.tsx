@@ -111,7 +111,9 @@ export function AirlineBookingCall({ initialBooking, initialAirline, ticketReque
   const [customPhone, setCustomPhone] = useState<string>("");
   const [pin, setPin] = useState("");
   const [calling, setCalling] = useState(false);
+  const [testingPayload, setTestingPayload] = useState(false);
   const [callResult, setCallResult] = useState<{ success: boolean; message: string; callLogId?: string } | null>(null);
+  const [dryRunResult, setDryRunResult] = useState<any>(null);
   const { toast } = useToast();
 
   const [booking, setBooking] = useState<BookingDetails>({ ...DEFAULT_BOOKING, ...initialBooking });
@@ -384,6 +386,52 @@ Provide a complete summary including:
     }
   };
 
+  // DRY RUN - Test what payload would be sent without placing a call
+  const handleTestPayload = async () => {
+    if (!selectedAirline) {
+      toast({ title: "Select an airline first", variant: "destructive" });
+      return;
+    }
+
+    setTestingPayload(true);
+    setDryRunResult(null);
+
+    try {
+      const systemPrompt = generateSystemPrompt();
+      const firstMessage = generateFirstMessage();
+      const phoneNumber = getPhoneNumber();
+
+      const { data, error } = await supabase.functions.invoke("make-outbound-call", {
+        body: {
+          phone_number: phoneNumber?.replace(/[^\d+]/g, "") || "+1-800-TEST",
+          first_message: firstMessage,
+          context: systemPrompt,
+          use_maya_brain: true,
+          call_type: "airline_booking",
+          ticket_request_id: ticketRequestId || null,
+          airline: getAirline()?.label || "Unknown",
+          customer_email: booking.customerEmail || null,
+          customer_phone: booking.customerPhone || null,
+          passenger_names: booking.passengerNames || null,
+          dry_run: true, // THIS IS THE KEY - no actual call placed
+        },
+      });
+
+      if (error) throw error;
+
+      setDryRunResult(data);
+      toast({
+        title: "Payload Generated ✅",
+        description: "Check the result below - this is exactly what would be sent",
+      });
+    } catch (error: any) {
+      console.error("Test payload error:", error);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setTestingPayload(false);
+    }
+  };
+
   return (
     <Card className="border-2">
       <CardHeader>
@@ -607,6 +655,80 @@ Provide a complete summary including:
             rows={2}
           />
         </div>
+
+        {/* Test Payload Button */}
+        <div className="border-t pt-4">
+          <Button
+            onClick={handleTestPayload}
+            disabled={testingPayload || !selectedAirline}
+            variant="outline"
+            className="w-full"
+          >
+            {testingPayload ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Testing...
+              </>
+            ) : (
+              "🔍 Test Payload (No Call)"
+            )}
+          </Button>
+          <p className="text-xs text-muted-foreground mt-2 text-center">
+            Shows exactly what would be sent to ElevenLabs without placing a call
+          </p>
+        </div>
+
+        {/* Dry Run Result */}
+        {dryRunResult && (
+          <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium text-sm">📦 Payload That Would Be Sent</h4>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setDryRunResult(null)}
+              >
+                Clear
+              </Button>
+            </div>
+            
+            <div className="text-xs space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Endpoint:</span>
+                <code className="bg-background px-2 py-0.5 rounded">{dryRunResult.endpoint}</code>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">System Prompt Length:</span>
+                <span className="font-mono">{dryRunResult.system_prompt_length} chars</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">First Message Length:</span>
+                <span className="font-mono">{dryRunResult.first_message_length} chars</span>
+              </div>
+            </div>
+
+            <details className="text-xs">
+              <summary className="cursor-pointer font-medium text-primary">View Full Payload (JSON)</summary>
+              <pre className="mt-2 p-3 bg-background rounded border overflow-auto max-h-96 text-[10px]">
+                {JSON.stringify(dryRunResult.payload, null, 2)}
+              </pre>
+            </details>
+
+            <details className="text-xs">
+              <summary className="cursor-pointer font-medium text-primary">View System Prompt</summary>
+              <pre className="mt-2 p-3 bg-background rounded border overflow-auto max-h-96 whitespace-pre-wrap text-[10px]">
+                {dryRunResult.payload?.conversation_config_override?.agent?.prompt?.prompt || "No prompt in payload"}
+              </pre>
+            </details>
+
+            <details className="text-xs">
+              <summary className="cursor-pointer font-medium text-primary">View First Message</summary>
+              <pre className="mt-2 p-3 bg-background rounded border overflow-auto max-h-40 whitespace-pre-wrap text-[10px]">
+                {dryRunResult.payload?.conversation_config_override?.agent?.first_message || "No first message in payload"}
+              </pre>
+            </details>
+          </div>
+        )}
 
         {/* PIN & Call Button */}
         <div className="border-t pt-4 space-y-4">
