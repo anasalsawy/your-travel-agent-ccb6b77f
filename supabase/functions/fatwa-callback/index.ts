@@ -120,43 +120,75 @@ serve(async (req) => {
     console.log("[Fatwa Callback] Calling ElevenLabs BATCH-CALL API...");
     console.log("[Fatwa Callback] Payload:", JSON.stringify(batchCallPayload, null, 2));
 
-    const response = await fetch("https://api.elevenlabs.io/v1/convai/batch-calling", {
-      method: "POST",
-      headers: {
-        "xi-api-key": ELEVENLABS_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(batchCallPayload),
-    });
+    // ElevenLabs docs/UI have used different endpoints across releases.
+    // We'll try the currently documented path first, then fall back to older variants.
+    const candidateUrls = [
+      "https://api.elevenlabs.io/v1/convai/batch-calling/create",
+      "https://api.elevenlabs.io/v1/convai/batch-calling",
+      // Legacy endpoint some workspaces still use
+      "https://api.elevenlabs.io/v1/convai/batch-call",
+    ];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[Fatwa Callback] Batch call failed:", response.status, errorText);
-      
-      return new Response(
-        JSON.stringify({ 
-          error: "Failed to initiate callback", 
-          details: errorText,
-          attempted_number: cleanPhone,
-          payload_sent: batchCallPayload
-        }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const headers = {
+      "xi-api-key": ELEVENLABS_API_KEY,
+      "Content-Type": "application/json",
+    } as const;
+
+    let lastErrorText = "";
+    let lastStatus = 0;
+    let usedUrl = "";
+
+    for (const url of candidateUrls) {
+      usedUrl = url;
+      console.log("[Fatwa Callback] Trying ElevenLabs batch endpoint:", url);
+
+      const r = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(batchCallPayload),
+      });
+
+      if (r.ok) {
+        const data = await r.json();
+        console.log("[Fatwa Callback] ✅ Batch call initiated:", data);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            method: "batch-call",
+            elevenlabs_endpoint: url,
+            message: "تم استلام سؤالك وسيتم الاتصال بك قريباً إن شاء الله",
+            message_en: "Your question has been received. You will receive a call shortly, God willing.",
+            call_data: data,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      lastStatus = r.status;
+      lastErrorText = await r.text();
+      console.error("[Fatwa Callback] Batch endpoint failed:", url, r.status, lastErrorText);
+
+      // If endpoint doesn't exist or doesn't allow POST, try next candidate.
+      if (r.status === 404 || r.status === 405) continue;
+
+      // Other errors (e.g., 401/403/422) are meaningful; stop and return.
+      break;
     }
 
-    const data = await response.json();
-    console.log("[Fatwa Callback] ✅ Batch call initiated:", data);
-
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        method: "batch-call",
-        message: "تم استلام سؤالك وسيتم الاتصال بك قريباً إن شاء الله",
-        message_en: "Your question has been received. You will receive a call shortly, God willing.",
-        call_data: data 
+      JSON.stringify({
+        error: "Failed to initiate callback",
+        details: lastErrorText,
+        status: lastStatus,
+        attempted_number: cleanPhone,
+        attempted_endpoint: usedUrl,
+        payload_sent: batchCallPayload,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
+    // (success response is returned above as soon as a candidate endpoint works)
 
   } catch (error: unknown) {
     console.error("[Fatwa Callback] Error:", error);
