@@ -63,3 +63,5 @@ verify_jwt = false
 [functions.fatwa-callback]
 verify_jwt = false
 
+[functions.elevenlabs-get-conversation]
+verify_jwt = false
