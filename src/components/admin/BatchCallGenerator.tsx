@@ -171,29 +171,53 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
   };
 
   const exportToCSV = () => {
-    // ElevenLabs expects these exact headers
-    const headers = ["phone", "language", "first_message", "prompt", "other_dyn_variable"];
-    
+    // ElevenLabs Batch Calling expects recipients with `phone_number` and optional
+    // `conversation_initiation_client_data` JSON.
+    const headers = ["phone_number", "conversation_initiation_client_data"];
+
     const csvContent = [
       headers.join(","),
-      ...rows.map(row => {
+      ...rows.map((row) => {
         const language = row.language === "default" ? "" : row.language;
-        const values = [
-          row.phone_number, // Map phone_number -> phone
-          language,
-          sanitizeForCSV(row.first_message),
-          sanitizeForCSV(row.prompt),
-          row.other_dyn_variable
-        ];
-        
-        return values.map(value => {
-          // Escape double quotes by doubling them, then wrap in quotes
-          const escaped = String(value || '').replace(/"/g, '""');
-          return `"${escaped}"`;
-        }).join(",");
-      })
 
-    // ElevenLabs' importer tends to be strict; use CRLF line endings and avoid BOM.
+        // If user provided JSON in other_dyn_variable, treat it as dynamic_variables.
+        // Otherwise, store as { other_dyn_variable: "..." } to keep it usable.
+        let dynamic_variables: Record<string, unknown> = {};
+        const other = (row.other_dyn_variable || "").trim();
+        if (other) {
+          try {
+            const parsed = JSON.parse(other);
+            dynamic_variables = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : { other_dyn_variable: other };
+          } catch {
+            dynamic_variables = { other_dyn_variable: other };
+          }
+        }
+
+        const conversation_initiation_client_data = {
+          conversation_config_override: {
+            agent: {
+              first_message: sanitizeForCSV(row.first_message),
+              language: language || undefined,
+              prompt: {
+                prompt: sanitizeForCSV(row.prompt),
+              },
+            },
+          },
+          dynamic_variables,
+        };
+
+        // Compact JSON, single line
+        const cid = JSON.stringify(conversation_initiation_client_data);
+
+        const values = [row.phone_number, cid];
+
+        return values
+          .map((value) => {
+            const escaped = String(value || "").replace(/"/g, '""');
+            return `"${escaped}"`;
+          })
+          .join(",");
+      }),
     ].join("\r\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -204,7 +228,7 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
     link.click();
     URL.revokeObjectURL(url);
 
-    toast({ title: "Exported!", description: "CSV file downloaded in ElevenLabs format" });
+    toast({ title: "Exported!", description: "CSV file downloaded in ElevenLabs batch-calling format" });
   };
 
   const copyAsJSON = () => {
