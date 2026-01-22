@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,13 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, Download, Copy, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface CallRow {
+export interface BatchCallRow {
   id: string;
   phone_number: string;
   language: string;
   first_message: string;
   prompt: string;
   other_dyn_variable: string;
+}
+
+interface BatchCallGeneratorProps {
+  initialRows?: BatchCallRow[];
+  onRowsChange?: (rows: BatchCallRow[]) => void;
 }
 
 const LANGUAGES = [
@@ -65,9 +70,9 @@ Be professional, warm, and helpful.`
   }
 ];
 
-export function BatchCallGenerator() {
+export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGeneratorProps) {
   const { toast } = useToast();
-  const [rows, setRows] = useState<CallRow[]>([
+  const [rows, setRows] = useState<BatchCallRow[]>(initialRows?.length ? initialRows : [
     {
       id: crypto.randomUUID(),
       phone_number: "",
@@ -77,6 +82,19 @@ export function BatchCallGenerator() {
       other_dyn_variable: ""
     }
   ]);
+
+  // Sync with parent when initialRows changes (new items added from other tabs)
+  useEffect(() => {
+    if (initialRows && initialRows.length > 0) {
+      setRows(initialRows);
+    }
+  }, [initialRows]);
+
+  // Notify parent of changes
+  const updateRows = (newRows: BatchCallRow[]) => {
+    setRows(newRows);
+    onRowsChange?.(newRows);
+  };
 
   const addRow = () => {
     setRows([...rows, {
@@ -97,7 +115,7 @@ export function BatchCallGenerator() {
     setRows(rows.filter(r => r.id !== id));
   };
 
-  const updateRow = (id: string, field: keyof CallRow, value: string) => {
+  const updateRow = (id: string, field: keyof BatchCallRow, value: string) => {
     setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
@@ -129,7 +147,7 @@ export function BatchCallGenerator() {
       headers.join(","),
       ...rows.map(row => 
         headers.map(h => {
-          const value = row[h as keyof CallRow];
+          const value = row[h as keyof BatchCallRow];
           // Escape quotes and wrap in quotes if contains comma or newline
           const escaped = String(value).replace(/"/g, '""');
           return `"${escaped}"`;
