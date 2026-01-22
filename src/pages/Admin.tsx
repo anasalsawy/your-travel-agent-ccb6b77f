@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
@@ -15,6 +15,7 @@ import { AdminQuoteRequests } from "@/components/admin/AdminQuoteRequests";
 import { AirlineBookingCall } from "@/components/admin/AirlineBookingCall";
 import { AdminUniversalCall } from "@/components/admin/AdminUniversalCall";
 import { BatchCallGenerator, BatchCallRow } from "@/components/admin/BatchCallGenerator";
+import { AdminCallLogs } from "@/components/admin/AdminCallLogs";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -125,6 +126,10 @@ export default function AdminPage() {
                     <FileSpreadsheet className="w-4 h-4" />
                     Batch Calls
                   </TabsTrigger>
+                  <TabsTrigger value="call-logs" className="gap-2">
+                    <PhoneCall className="w-4 h-4" />
+                    Call Logs
+                  </TabsTrigger>
                   <TabsTrigger value="quotes" className="gap-2">
                     <MessageSquare className="w-4 h-4" />
                     WhatsApp Quotes
@@ -173,6 +178,10 @@ export default function AdminPage() {
 
                 <TabsContent value="batch-calls">
                   <BatchCallGenerator initialRows={batchRows} onRowsChange={setBatchRows} />
+                </TabsContent>
+
+                <TabsContent value="call-logs">
+                  <AdminCallLogs />
                 </TabsContent>
 
                 <TabsContent value="quotes">
