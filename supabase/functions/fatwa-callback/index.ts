@@ -82,7 +82,7 @@ serve(async (req) => {
       cleanPhone = '+' + cleanPhone;
     }
 
-    console.log("[Fatwa Callback] 📞 Initiating BATCH callback to:", cleanPhone);
+    console.log("[Fatwa Callback] 📞 Initiating callback to:", cleanPhone);
     console.log("[Fatwa Callback] 📝 SMS Content:", smsContent.substring(0, 100));
 
     // First message - warm greeting 
@@ -92,103 +92,71 @@ serve(async (req) => {
     console.log("[Fatwa Callback] First message:", firstMessage);
     console.log("[Fatwa Callback] Using phone_number_id:", FATWA_PHONE_NUMBER_ID);
 
-    /**
-     * BATCH CALL API - Proper way to pass dynamic variables
-     * 
-     * The batch-call API uses a 'recipients' array where each recipient
-     * can have custom dynamic variables that the agent can access via {{variable_name}}
-     * 
-     * This is different from the outbound-call API which uses conversation_initiation_client_data
-     */
-    const batchCallPayload = {
-      call_name: `Fatwa Call - ${new Date().toISOString()}`,
+    // Use the proven working single outbound-call endpoint.
+    // We still pass the user's SMS as a dynamic variable so the agent can reference it.
+    const outboundPayload: Record<string, unknown> = {
       agent_id: FATWA_AGENT_ID,
       agent_phone_number_id: FATWA_PHONE_NUMBER_ID,
-      scheduled_time_unix: null, // Immediate call
-      recipients: [
-        {
-          phone_number: cleanPhone,
-          // Dynamic variables - these become available as {{variable_name}} in the agent
+      to_number: cleanPhone,
+      conversation_initiation_client_data: {
+        dynamic_variables: {
           sms_content: smsContent,
           caller_name: caller_name || "المتصل",
-          // Override first message for this recipient
+        },
+      },
+      // Override the first message so the agent starts with the intended greeting.
+      conversation_config_override: {
+        agent: {
           first_message: firstMessage,
-        }
-      ]
+        },
+      },
     };
 
-    console.log("[Fatwa Callback] Calling ElevenLabs BATCH-CALL API...");
-    console.log("[Fatwa Callback] Payload:", JSON.stringify(batchCallPayload, null, 2));
+    console.log("[Fatwa Callback] Calling ElevenLabs outbound-call...");
+    console.log("[Fatwa Callback] Payload:", JSON.stringify(outboundPayload, null, 2));
 
-    // ElevenLabs docs/UI have used different endpoints across releases.
-    // We'll try the currently documented path first, then fall back to older variants.
-    const candidateUrls = [
-      "https://api.elevenlabs.io/v1/convai/batch-calling/create",
-      "https://api.elevenlabs.io/v1/convai/batch-calling",
-      // Legacy endpoint some workspaces still use
-      "https://api.elevenlabs.io/v1/convai/batch-call",
-    ];
+    const r = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
+      method: "POST",
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(outboundPayload),
+    });
 
-    const headers = {
-      "xi-api-key": ELEVENLABS_API_KEY,
-      "Content-Type": "application/json",
-    } as const;
+    const responseText = await r.text();
+    console.log("[Fatwa Callback] ElevenLabs response:", r.status, responseText);
 
-    let lastErrorText = "";
-    let lastStatus = 0;
-    let usedUrl = "";
+    if (!r.ok) {
+      return new Response(
+        JSON.stringify({
+          error: "Failed to initiate callback",
+          status: r.status,
+          details: responseText,
+          attempted_number: cleanPhone,
+          payload_sent: outboundPayload,
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    for (const url of candidateUrls) {
-      usedUrl = url;
-      console.log("[Fatwa Callback] Trying ElevenLabs batch endpoint:", url);
-
-      const r = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(batchCallPayload),
-      });
-
-      if (r.ok) {
-        const data = await r.json();
-        console.log("[Fatwa Callback] ✅ Batch call initiated:", data);
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            method: "batch-call",
-            elevenlabs_endpoint: url,
-            message: "تم استلام سؤالك وسيتم الاتصال بك قريباً إن شاء الله",
-            message_en: "Your question has been received. You will receive a call shortly, God willing.",
-            call_data: data,
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      lastStatus = r.status;
-      lastErrorText = await r.text();
-      console.error("[Fatwa Callback] Batch endpoint failed:", url, r.status, lastErrorText);
-
-      // If endpoint doesn't exist or doesn't allow POST, try next candidate.
-      if (r.status === 404 || r.status === 405) continue;
-
-      // Other errors (e.g., 401/403/422) are meaningful; stop and return.
-      break;
+    let data: unknown = null;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { raw: responseText };
     }
 
     return new Response(
       JSON.stringify({
-        error: "Failed to initiate callback",
-        details: lastErrorText,
-        status: lastStatus,
-        attempted_number: cleanPhone,
-        attempted_endpoint: usedUrl,
-        payload_sent: batchCallPayload,
+        success: true,
+        method: "outbound-call",
+        message: "تم استلام رسالتك وسيتم الاتصال بك قريباً إن شاء الله",
+        message_en: "Your message has been received. You will receive a call shortly, God willing.",
+        call_data: data,
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
-    // (success response is returned above as soon as a candidate endpoint works)
 
   } catch (error: unknown) {
     console.error("[Fatwa Callback] Error:", error);
