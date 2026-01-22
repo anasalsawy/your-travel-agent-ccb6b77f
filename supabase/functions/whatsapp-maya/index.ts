@@ -596,7 +596,42 @@ serve(async (req) => {
     
     console.log("[WhatsApp Maya] Is from admin?", isFromAdmin, "From:", normalizedFrom, "Admin:", normalizedAdmin);
 
+    // 📿 CHECK FOR FATWA FIRST - Before any other routing!
+    // Messages to the dedicated fatwa number ALWAYS go to fatwa service, regardless of sender
+    const normalizedTo = toNumber.replace(/\D/g, '');
+    const normalizedFatwaNumber = FATWA_TWILIO_NUMBER?.replace(/\D/g, '') || '';
+    const isFatwaNumber = normalizedFatwaNumber && (normalizedTo === normalizedFatwaNumber || normalizedTo.endsWith(normalizedFatwaNumber) || normalizedFatwaNumber.endsWith(normalizedTo));
+    
+    console.log("[WhatsApp Maya] Fatwa number check - To:", normalizedTo, "Fatwa:", normalizedFatwaNumber, "Match:", isFatwaNumber);
+    
+    // Route to fatwa service ONLY if message was sent to the dedicated fatwa number
+    if (FATWA_AGENT_ID && messageBody && isFatwaNumber) {
+      console.log("[WhatsApp Maya] 📿 FATWA REQUEST - Message sent to dedicated fatwa number:", toNumber);
+      
+      const callbackSuccess = await triggerFatwaCallback(messageBody, fromNumber);
+      
+      if (callbackSuccess) {
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>السلام عليكم ورحمة الله وبركاته 📿
+
+تم استلام سؤالك بنجاح. سيتصل بك الشيخ صلاح الصبي قريباً للإجابة على سؤالك ومناقشته معك بالتفصيل إن شاء الله.
+
+جزاك الله خيراً على سؤالك.</Message></Response>`,
+          { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+        );
+      } else {
+        // Fallback message if callback fails
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>السلام عليكم 📿
+
+عذراً، حدث خطأ في ترتيب المكالمة. يرجى المحاولة مرة أخرى لاحقاً أو الاتصال مباشرة.</Message></Response>`,
+          { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+        );
+      }
+    }
+
     // 💬 ADMIN QUOTE REPLY - If admin is replying with a quote, forward it to the waiting customer
+    // This only triggers for the MAYA number (not the fatwa number, which was handled above)
     if (isFromAdmin && messageBody && !messageBody.toLowerCase().startsWith("pin:")) {
       console.log("[WhatsApp Maya] 📤 ADMIN QUOTE DETECTED - finding pending customer...");
       
@@ -713,41 +748,6 @@ serve(async (req) => {
         `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! I've forwarded this verification code to the admin. 👍</Message></Response>`,
         { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
       );
-    }
-
-    // 📿 CHECK FOR FATWA - ONLY if message is sent to the DEDICATED fatwa number
-    // This keeps the services completely separate:
-    // - Maya travel number → Travel requests only (even if Arabic)
-    // - Fatwa number (+17135613314) → Fatwa/religious questions only
-    const normalizedTo = toNumber.replace(/\D/g, '');
-    const normalizedFatwaNumber = FATWA_TWILIO_NUMBER?.replace(/\D/g, '') || '';
-    const isFatwaNumber = normalizedFatwaNumber && (normalizedTo === normalizedFatwaNumber || normalizedTo.endsWith(normalizedFatwaNumber) || normalizedFatwaNumber.endsWith(normalizedTo));
-    
-    // Route to fatwa service ONLY if message was sent to the dedicated fatwa number
-    // Do NOT use keyword detection - this prevents travel customers from being routed to fatwa by accident
-    if (FATWA_AGENT_ID && messageBody && isFatwaNumber) {
-      console.log("[WhatsApp Maya] 📿 FATWA REQUEST - Message sent to dedicated fatwa number:", toNumber);
-      
-      const callbackSuccess = await triggerFatwaCallback(messageBody, fromNumber);
-      
-      if (callbackSuccess) {
-        return new Response(
-          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>السلام عليكم ورحمة الله وبركاته 📿
-
-تم استلام سؤالك بنجاح. سيتصل بك الشيخ صلاح الصبي قريباً للإجابة على سؤالك ومناقشته معك بالتفصيل إن شاء الله.
-
-جزاك الله خيراً على سؤالك.</Message></Response>`,
-          { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
-        );
-      } else {
-        // Fallback message if callback fails
-        return new Response(
-          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>السلام عليكم 📿
-
-عذراً، حدث خطأ في ترتيب المكالمة. يرجى المحاولة مرة أخرى لاحقاً أو الاتصال مباشرة.</Message></Response>`,
-          { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
-        );
-      }
     }
 
     if (!messageBody) {
