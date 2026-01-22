@@ -86,14 +86,8 @@ serve(async (req) => {
     console.log("[Fatwa Callback] 📝 SMS Content:", smsContent.substring(0, 100));
 
     // Generic first message - warm greeting without assuming it's a question
-    // The agent will use the 'sms_content' dynamic variable to understand context
-    const firstName = caller_name?.split(' ')[0] || '';
-    const greeting = firstName 
-      ? `السلام عليكم ورحمة الله وبركاته يا ${firstName}، `
-      : `السلام عليكم ورحمة الله وبركاته، `;
-    
-    // Generic opening that works for any type of request
-    const firstMessage = `${greeting}معك الشيخ صلاح الصبي. وصلتني رسالتك وأنا سعيد بالتواصل معك. بسم الله، تفضل.`;
+    // Asks caller to say Bismillah to start the conversation
+    const firstMessage = `السلام عليكم ورحمة الله وبركاته، معك المساعد الذكي لفضيلة الدكتور العلامة صلاح الصاوي. وصلتنا رسالتك وسعداء بالتواصل معك إن شاء الله. نبدأ بسم الله الرحمن الرحيم، قل بسم الله الرحمن الرحيم حتى نبدأ.`;
 
     console.log("[Fatwa Callback] First message:", firstMessage);
 
