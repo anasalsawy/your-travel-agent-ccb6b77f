@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Phone, PhoneOff, PhoneIncoming, Clock, CheckCircle2, XCircle, Search, RefreshCw, FileText } from "lucide-react";
+import { Loader2, Phone, PhoneOff, PhoneIncoming, Clock, CheckCircle2, XCircle, Search, RefreshCw, FileText, Download, AlertTriangle, Lightbulb } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
@@ -48,8 +48,14 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
 export function AdminCallLogs() {
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchingTranscript, setFetchingTranscript] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLog, setSelectedLog] = useState<CallLog | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<{
+    issues: string[];
+    improvements: string[];
+    summary: string;
+  } | null>(null);
 
   const fetchCallLogs = async () => {
     setLoading(true);
@@ -100,6 +106,51 @@ export function AdminCallLogs() {
       supabase.removeChannel(channel);
     };
   }, [selectedLog?.id]);
+
+  const fetchConversationFromElevenLabs = async (log: CallLog) => {
+    if (!log.conversation_id) {
+      toast.error("No conversation ID available for this call");
+      return;
+    }
+
+    setFetchingTranscript(log.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("elevenlabs-get-conversation", {
+        body: { conversation_id: log.conversation_id },
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success("Transcript fetched successfully");
+        
+        // Store analysis results for display
+        if (data.analysis) {
+          setAnalysisResults({
+            issues: data.analysis.issues || [],
+            improvements: data.analysis.improvements || [],
+            summary: data.analysis.summary || "",
+          });
+        }
+
+        // Refresh the call logs to show updated data
+        await fetchCallLogs();
+        
+        // Update selected log with new data
+        const updatedLog = callLogs.find(l => l.id === log.id);
+        if (updatedLog) {
+          setSelectedLog({ ...updatedLog, transcript: data.transcript });
+        }
+      } else {
+        toast.error(data.error || "Failed to fetch transcript");
+      }
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      toast.error("Failed to fetch conversation from ElevenLabs");
+    } finally {
+      setFetchingTranscript(null);
+    }
+  };
 
   const filteredLogs = callLogs.filter((log) => {
     const query = searchQuery.toLowerCase();
@@ -341,12 +392,88 @@ export function AdminCallLogs() {
                   </div>
                 )}
 
+                {/* Analysis Results */}
+                {analysisResults && (analysisResults.issues.length > 0 || analysisResults.improvements.length > 0) && (
+                  <div className="space-y-4">
+                    {analysisResults.issues.length > 0 && (
+                      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                        <h4 className="font-medium text-red-500 mb-2 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4" />
+                          Issues Detected ({analysisResults.issues.length})
+                        </h4>
+                        <ul className="space-y-1">
+                          {analysisResults.issues.map((issue, i) => (
+                            <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <span className="text-red-400">•</span>
+                              {issue}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {analysisResults.improvements.length > 0 && (
+                      <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                        <h4 className="font-medium text-blue-500 mb-2 flex items-center gap-2">
+                          <Lightbulb className="w-4 h-4" />
+                          Suggested Improvements ({analysisResults.improvements.length})
+                        </h4>
+                        <ul className="space-y-1">
+                          {analysisResults.improvements.map((improvement, i) => (
+                            <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <span className="text-blue-400">•</span>
+                              {improvement}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Admin Notes (contains analysis from webhook) */}
+                {selectedLog.admin_notes && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Lightbulb className="w-4 h-4" />
+                      Analysis Notes
+                    </h4>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm whitespace-pre-wrap">{selectedLog.admin_notes}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Fetch Transcript Button */}
+                {selectedLog.conversation_id && (
+                  <div className="pt-4 border-t">
+                    <Button
+                      onClick={() => fetchConversationFromElevenLabs(selectedLog)}
+                      disabled={fetchingTranscript === selectedLog.id}
+                      className="w-full"
+                      variant={selectedLog.transcript ? "outline" : "default"}
+                    >
+                      {fetchingTranscript === selectedLog.id ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Fetching from ElevenLabs...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 mr-2" />
+                          {selectedLog.transcript ? "Refresh Transcript & Analysis" : "Fetch Transcript from ElevenLabs"}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
                 {/* No data warning for stuck calls */}
-                {selectedLog.status === "initiated" && !selectedLog.transcript && (
+                {selectedLog.status === "initiated" && !selectedLog.transcript && !selectedLog.conversation_id && (
                   <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                     <h4 className="font-medium text-yellow-500 mb-1">Call Not Updated</h4>
                     <p className="text-sm text-muted-foreground">
-                      This call hasn't received any webhook updates. Check that your ElevenLabs agent has the webhook URL configured.
+                      This call hasn't received any webhook updates and has no conversation ID. Check that your ElevenLabs agent has the webhook URL configured.
                     </p>
                   </div>
                 )}
