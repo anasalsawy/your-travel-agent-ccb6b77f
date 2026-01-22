@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
@@ -14,6 +14,7 @@ import AdminEscrow from "@/components/admin/AdminEscrow";
 import { AdminQuoteRequests } from "@/components/admin/AdminQuoteRequests";
 import { AirlineBookingCall } from "@/components/admin/AirlineBookingCall";
 import { AdminUniversalCall } from "@/components/admin/AdminUniversalCall";
+import { BatchCallGenerator } from "@/components/admin/BatchCallGenerator";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -112,6 +113,10 @@ export default function AdminPage() {
                     <Zap className="w-4 h-4" />
                     Universal Call
                   </TabsTrigger>
+                  <TabsTrigger value="batch-calls" className="gap-2">
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Batch Calls
+                  </TabsTrigger>
                   <TabsTrigger value="quotes" className="gap-2">
                     <MessageSquare className="w-4 h-4" />
                     WhatsApp Quotes
@@ -156,6 +161,10 @@ export default function AdminPage() {
 
                 <TabsContent value="universal-call">
                   <AdminUniversalCall />
+                </TabsContent>
+
+                <TabsContent value="batch-calls">
+                  <BatchCallGenerator />
                 </TabsContent>
 
                 <TabsContent value="quotes">

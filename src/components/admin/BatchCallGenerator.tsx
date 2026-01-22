@@ -1,0 +1,280 @@
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Trash2, Download, Copy, FileSpreadsheet } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+interface CallRow {
+  id: string;
+  phone_number: string;
+  language: string;
+  first_message: string;
+  prompt: string;
+  other_dyn_variable: string;
+}
+
+const LANGUAGES = [
+  { value: "", label: "Default" },
+  { value: "en", label: "English" },
+  { value: "ar", label: "Arabic (العربية)" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+  { value: "zh", label: "Chinese" },
+  { value: "hi", label: "Hindi" },
+  { value: "ur", label: "Urdu" },
+];
+
+const PROMPT_TEMPLATES = [
+  {
+    name: "Airline Booking",
+    first_message: "Hi, this is Maya calling on behalf of Your Travel Agent. I'm reaching out regarding your flight booking request.",
+    prompt: `You are Maya, an AI assistant for Your Travel Agent. You are calling to discuss a flight booking.
+
+CUSTOMER INFO:
+- Name: [PASSENGER_NAME]
+- Route: [ORIGIN] → [DESTINATION]
+- Date: [DATE]
+- Class: [CABIN_CLASS]
+
+YOUR MISSION:
+1. Confirm the booking details with the customer
+2. Answer any questions they have
+3. Provide next steps for payment
+
+Be professional, warm, and helpful.`
+  },
+  {
+    name: "Sheikh Salah Fatwa",
+    first_message: "السلام عليكم ورحمه الله وبركاته سيدي العالم الجليل",
+    prompt: `انت مساعد ذكي للشيخ صلاح الصاوي. قم بالترحيب بالمتصل ثم استمع الى سؤاله وقدم له الاجابه المناسبه بناء على علم الشيخ.`
+  },
+  {
+    name: "Customer Service",
+    first_message: "Hello! This is an automated call from our customer service team.",
+    prompt: `You are a customer service AI assistant. Be helpful, professional, and resolve the customer's issue efficiently.`
+  },
+  {
+    name: "Custom",
+    first_message: "",
+    prompt: ""
+  }
+];
+
+export function BatchCallGenerator() {
+  const { toast } = useToast();
+  const [rows, setRows] = useState<CallRow[]>([
+    {
+      id: crypto.randomUUID(),
+      phone_number: "",
+      language: "",
+      first_message: "",
+      prompt: "",
+      other_dyn_variable: ""
+    }
+  ]);
+
+  const addRow = () => {
+    setRows([...rows, {
+      id: crypto.randomUUID(),
+      phone_number: "",
+      language: "",
+      first_message: "",
+      prompt: "",
+      other_dyn_variable: ""
+    }]);
+  };
+
+  const removeRow = (id: string) => {
+    if (rows.length === 1) {
+      toast({ title: "Cannot remove", description: "You need at least one row", variant: "destructive" });
+      return;
+    }
+    setRows(rows.filter(r => r.id !== id));
+  };
+
+  const updateRow = (id: string, field: keyof CallRow, value: string) => {
+    setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
+  };
+
+  const applyTemplate = (id: string, templateName: string) => {
+    const template = PROMPT_TEMPLATES.find(t => t.name === templateName);
+    if (template) {
+      setRows(rows.map(r => r.id === id ? {
+        ...r,
+        first_message: template.first_message,
+        prompt: template.prompt
+      } : r));
+    }
+  };
+
+  const duplicateRow = (id: string) => {
+    const rowToDuplicate = rows.find(r => r.id === id);
+    if (rowToDuplicate) {
+      const newRow = { ...rowToDuplicate, id: crypto.randomUUID(), phone_number: "" };
+      const index = rows.findIndex(r => r.id === id);
+      const newRows = [...rows];
+      newRows.splice(index + 1, 0, newRow);
+      setRows(newRows);
+    }
+  };
+
+  const exportToCSV = () => {
+    const headers = ["phone_number", "language", "first_message", "prompt", "other_dyn_variable"];
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => 
+        headers.map(h => {
+          const value = row[h as keyof CallRow];
+          // Escape quotes and wrap in quotes if contains comma or newline
+          const escaped = String(value).replace(/"/g, '""');
+          return `"${escaped}"`;
+        }).join(",")
+      )
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `batch_calls_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    toast({ title: "Exported!", description: "CSV file downloaded successfully" });
+  };
+
+  const copyAsJSON = () => {
+    const data = rows.map(({ id, ...rest }) => rest);
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    toast({ title: "Copied!", description: "JSON copied to clipboard" });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Batch Call File Generator
+            </CardTitle>
+            <CardDescription>
+              Prepare your ElevenLabs batch call configuration file
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={copyAsJSON}>
+              <Copy className="h-4 w-4 mr-1" />
+              Copy JSON
+            </Button>
+            <Button size="sm" onClick={exportToCSV}>
+              <Download className="h-4 w-4 mr-1" />
+              Export CSV
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {rows.map((row, index) => (
+          <div key={row.id} className="border rounded-lg p-4 space-y-4 bg-muted/30">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium">Call #{index + 1}</h4>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => duplicateRow(row.id)}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => removeRow(row.id)}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Phone Number</Label>
+                <Input
+                  placeholder="+1234567890"
+                  value={row.phone_number}
+                  onChange={(e) => updateRow(row.id, "phone_number", e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Language</Label>
+                <Select
+                  value={row.language}
+                  onValueChange={(v) => updateRow(row.id, "language", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANGUAGES.map(lang => (
+                      <SelectItem key={lang.value} value={lang.value || "default"}>
+                        {lang.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Template</Label>
+                <Select onValueChange={(v) => applyTemplate(row.id, v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Apply template..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROMPT_TEMPLATES.map(t => (
+                      <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>First Message</Label>
+              <Textarea
+                placeholder="The opening message Maya will say when the call connects..."
+                value={row.first_message}
+                onChange={(e) => updateRow(row.id, "first_message", e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>System Prompt</Label>
+              <Textarea
+                placeholder="Full context and instructions for the AI agent..."
+                value={row.prompt}
+                onChange={(e) => updateRow(row.id, "prompt", e.target.value)}
+                rows={6}
+                className="font-mono text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Other Dynamic Variables (optional)</Label>
+              <Input
+                placeholder="Any additional variables..."
+                value={row.other_dyn_variable}
+                onChange={(e) => updateRow(row.id, "other_dyn_variable", e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
+
+        <Button variant="outline" onClick={addRow} className="w-full">
+          <Plus className="h-4 w-4 mr-2" />
+          Add Another Call
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
