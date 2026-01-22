@@ -87,7 +87,7 @@ NATO spelling (use when spelling names/PNR): Alpha, Bravo, Charlie, Delta, Echo,
 
 export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGeneratorProps) {
   const { toast } = useToast();
-  const [exportMode, setExportMode] = useState<"compat" | "full">("compat");
+  const [exportMode, setExportMode] = useState<"phones" | "compat" | "full">("phones");
   const [rows, setRows] = useState<BatchCallRow[]>(initialRows?.length ? initialRows : [
     {
       id: crypto.randomUUID(),
@@ -234,6 +234,20 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
   };
 
   const exportToCSV = () => {
+    // "phones" mode: simplest format - just phone numbers, one per line
+    if (exportMode === "phones") {
+      const csvContent = ["phone_number", ...rows.map((r) => r.phone_number).filter(Boolean)].join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `batch_phones_${new Date().toISOString().split("T")[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Exported!", description: "Simple phone-only CSV downloaded" });
+      return;
+    }
+
     // ElevenLabs Batch Calling expects recipients with `phone_number` and optional
     // `conversation_initiation_client_data` JSON.
     const headers = ["phone_number", "conversation_initiation_client_data"];
@@ -320,12 +334,13 @@ export function BatchCallGenerator({ initialRows, onRowsChange }: BatchCallGener
           </div>
           <div className="flex gap-2">
             <Select value={exportMode} onValueChange={(v) => setExportMode(v as any)}>
-              <SelectTrigger className="w-[220px]" aria-label="Export mode">
+              <SelectTrigger className="w-[180px]" aria-label="Export mode">
                 <SelectValue placeholder="Export Mode" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="compat">Compatibility (recommended)</SelectItem>
-                <SelectItem value="full">Full override (may fail upload)</SelectItem>
+                <SelectItem value="phones">Phone numbers only</SelectItem>
+                <SelectItem value="compat">With variables</SelectItem>
+                <SelectItem value="full">Full override</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" onClick={copyAsJSON}>
