@@ -30,6 +30,7 @@ serve(async (req) => {
 
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
   const FATWA_AGENT_ID = Deno.env.get("FATWA_AGENT_ID");
+  const FATWA_PHONE_NUMBER_ID = Deno.env.get("FATWA_PHONE_NUMBER_ID"); // Dedicated fatwa line
 
   if (!ELEVENLABS_API_KEY) {
     console.error("[Fatwa Callback] ELEVENLABS_API_KEY is not configured");
@@ -45,6 +46,10 @@ serve(async (req) => {
       JSON.stringify({ error: "Fatwa Agent ID not configured" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+  }
+
+  if (!FATWA_PHONE_NUMBER_ID) {
+    console.error("[Fatwa Callback] FATWA_PHONE_NUMBER_ID is not configured - calls will use wrong caller ID!");
   }
 
   try {
@@ -67,106 +72,116 @@ serve(async (req) => {
     console.log("[Fatwa Callback] 📞 Initiating callback to:", cleanPhone);
     console.log("[Fatwa Callback] ❓ Question:", question.substring(0, 100));
 
-    // Build the first message that greets and immediately addresses the question
+    // Build a comprehensive first message that:
+    // 1. Greets the caller
+    // 2. Identifies the Sheikh
+    // 3. States the question they asked
+    // 4. Begins answering it
     const firstName = caller_name?.split(' ')[0] || '';
     const greeting = firstName 
-      ? `السلام عليكم ورحمة الله وبركاته ${firstName}، `
+      ? `السلام عليكم ورحمة الله وبركاته يا ${firstName}، `
       : `السلام عليكم ورحمة الله وبركاته، `;
     
-    const firstMessage = `${greeting}وصلني سؤالك وأريد أن أجيبك عليه بإذن الله. سألت: ${question}`;
+    // The first message should immediately provide context and start answering
+    const firstMessage = `${greeting}معك الشيخ صلاح الصبي. وصلني سؤالك الآن وأريد أن أجيبك عليه. سألتني: "${question}". هذا سؤال مهم جداً، دعني أجيبك عليه بالتفصيل إن شاء الله.`;
 
-    // Use ElevenLabs Batch Calling API
-    // POST /v1/convai/batch-call
-    const batchCallPayload = {
-      calls: [
-        {
-          phone_number: cleanPhone,
-          agent_id: FATWA_AGENT_ID,
-          // Conversation initiation data - these become dynamic variables in the agent
-          conversation_initiation_client_data: {
-            // The question to be answered
-            question: question,
-            // Caller name if available
-            caller_name: caller_name || "السائل",
-            // Override first message to immediately address the question
-            first_message: firstMessage,
-          },
-          // Additional settings
-          language: "ar", // Arabic
-        }
-      ]
+    console.log("[Fatwa Callback] First message:", firstMessage);
+
+    // Use the dedicated fatwa phone number ID, fallback to generic if not set
+    const phoneNumberIdToUse = FATWA_PHONE_NUMBER_ID || Deno.env.get("ELEVENLABS_PHONE_NUMBER_ID");
+
+    // Try the Twilio outbound call endpoint first (more reliable for single calls)
+    const singleCallPayload = {
+      agent_id: FATWA_AGENT_ID,
+      agent_phone_number_id: phoneNumberIdToUse,
+      to_number: cleanPhone,
+      first_message: firstMessage,
+      // Pass the question as dynamic variable so the agent's prompt can reference it
+      conversation_initiation_client_data: {
+        question: question,
+        caller_name: caller_name || "السائل",
+      },
     };
 
-    console.log("[Fatwa Callback] Calling ElevenLabs batch API with payload:", JSON.stringify(batchCallPayload, null, 2));
+    console.log("[Fatwa Callback] Calling ElevenLabs outbound-call API...");
+    console.log("[Fatwa Callback] Using phone_number_id:", phoneNumberIdToUse);
+    console.log("[Fatwa Callback] Payload:", JSON.stringify(singleCallPayload, null, 2));
 
-    const response = await fetch("https://api.elevenlabs.io/v1/convai/batch-call", {
+    const response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
       method: "POST",
       headers: {
         "xi-api-key": ELEVENLABS_API_KEY,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(batchCallPayload),
+      body: JSON.stringify(singleCallPayload),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[Fatwa Callback] ElevenLabs batch call failed:", response.status, errorText);
+      console.error("[Fatwa Callback] Outbound call failed:", response.status, errorText);
       
-      // Try alternative: single outbound call endpoint
-      console.log("[Fatwa Callback] Trying alternative outbound-call endpoint...");
+      // Try batch API as fallback
+      console.log("[Fatwa Callback] Trying batch-call API as fallback...");
       
-      const singleCallPayload = {
-        agent_id: FATWA_AGENT_ID,
-        agent_phone_number_id: Deno.env.get("ELEVENLABS_PHONE_NUMBER_ID"),
-        to_number: cleanPhone,
-        conversation_initiation_client_data: {
-          question: question,
-          caller_name: caller_name || "السائل",
-        },
-        first_message: firstMessage,
+      const batchCallPayload = {
+        calls: [
+          {
+            phone_number: cleanPhone,
+            agent_id: FATWA_AGENT_ID,
+            conversation_initiation_client_data: {
+              question: question,
+              caller_name: caller_name || "السائل",
+              first_message: firstMessage,
+            },
+            language: "ar",
+          }
+        ]
       };
-      
-      const altResponse = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
+
+      const batchResponse = await fetch("https://api.elevenlabs.io/v1/convai/batch-call", {
         method: "POST",
         headers: {
           "xi-api-key": ELEVENLABS_API_KEY,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(singleCallPayload),
+        body: JSON.stringify(batchCallPayload),
       });
-      
-      if (!altResponse.ok) {
-        const altError = await altResponse.text();
-        console.error("[Fatwa Callback] Alternative call also failed:", altResponse.status, altError);
+
+      if (!batchResponse.ok) {
+        const batchError = await batchResponse.text();
+        console.error("[Fatwa Callback] Batch call also failed:", batchResponse.status, batchError);
         return new Response(
           JSON.stringify({ 
             error: "Failed to initiate callback", 
-            details: altError,
+            details: batchError,
             attempted_number: cleanPhone 
           }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
-      const altData = await altResponse.json();
-      console.log("[Fatwa Callback] ✅ Alternative call initiated:", altData);
-      
+
+      const batchData = await batchResponse.json();
+      console.log("[Fatwa Callback] ✅ Batch call initiated:", batchData);
+
       return new Response(
         JSON.stringify({ 
           success: true, 
+          method: "batch-call",
           message: "تم استلام سؤالك وسيتم الاتصال بك قريباً إن شاء الله",
-          call_data: altData 
+          message_en: "Your question has been received. You will receive a call shortly, God willing.",
+          call_data: batchData 
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const data = await response.json();
-    console.log("[Fatwa Callback] ✅ Batch call initiated:", data);
+    console.log("[Fatwa Callback] ✅ Outbound call initiated:", data);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
+        method: "outbound-call",
         message: "تم استلام سؤالك وسيتم الاتصال بك قريباً إن شاء الله",
         message_en: "Your question has been received. You will receive a call shortly, God willing.",
         call_data: data 
