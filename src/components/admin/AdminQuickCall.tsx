@@ -41,6 +41,17 @@ interface CallBrief {
   
   // Additional context
   additionalNotes: string;
+  
+  // Payment details
+  cardNumber: string;
+  cardExpiry: string;
+  cardCvv: string;
+  cardholderName: string;
+  billingStreet: string;
+  billingCity: string;
+  billingState: string;
+  billingZip: string;
+  billingCountry: string;
 }
 
 const CALL_TYPES = [
@@ -95,6 +106,15 @@ export function AdminQuickCall() {
     authorizedActions: "Rebook on any available flight, accept travel voucher, request refund",
     budgetLimit: "",
     additionalNotes: "",
+    cardNumber: "",
+    cardExpiry: "",
+    cardCvv: "",
+    cardholderName: "",
+    billingStreet: "",
+    billingCity: "",
+    billingState: "",
+    billingZip: "",
+    billingCountry: "USA",
   });
 
   const updateBrief = (field: keyof CallBrief, value: string) => {
@@ -167,6 +187,24 @@ ${brief.fallbackOptions ? `Fallback Options: ${brief.fallbackOptions}` : "Fallba
 === AUTHORIZED ACTIONS ===
 ${brief.authorizedActions || "Full authority to negotiate and accept reasonable solutions"}
 ${brief.budgetLimit ? `Budget Limit: ${brief.budgetLimit}` : "No specific budget limit - use judgment"}`);
+
+    // Payment Details
+    if (brief.cardNumber) {
+      sections.push(`
+=== PAYMENT DETAILS (FOR BOOKING) ===
+You have authorization to use the following payment method to complete the booking:
+Cardholder Name: ${brief.cardholderName || brief.passengerName}
+Card Number: ${brief.cardNumber} (read in 4-digit groups, use NATO phonetics for confirmation)
+Expiry: ${brief.cardExpiry}
+CVV: ${brief.cardCvv}
+Billing Address: ${brief.billingStreet}, ${brief.billingCity}, ${brief.billingState} ${brief.billingZip}, ${brief.billingCountry}
+
+IMPORTANT: When providing card details:
+- Read card number in groups of 4 digits, pausing between each group
+- Spell out the cardholder name using NATO phonetic alphabet
+- Confirm each detail after the agent reads it back
+- Ask for a confirmation number once payment is processed`);
+    }
 
     // Behavior Instructions
     sections.push(`
@@ -515,6 +553,104 @@ After the call ends, be prepared to provide a complete summary of:
                 placeholder="Any special instructions, context, or things Maya should know..."
                 rows={2}
               />
+            </div>
+
+            {/* Payment Details Section */}
+            <div className="border-t pt-4 mt-4">
+              <h3 className="font-semibold mb-3 text-sm">Payment Details (for booking)</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Cardholder Name</Label>
+                  <Input
+                    value={brief.cardholderName}
+                    onChange={(e) => updateBrief("cardholderName", e.target.value)}
+                    placeholder="Name on card"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Card Number</Label>
+                  <Input
+                    value={brief.cardNumber}
+                    onChange={(e) => updateBrief("cardNumber", e.target.value.replace(/\D/g, "").slice(0, 16))}
+                    placeholder="1234 5678 9012 3456"
+                    maxLength={16}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label>Expiry (MM/YY)</Label>
+                  <Input
+                    value={brief.cardExpiry}
+                    onChange={(e) => updateBrief("cardExpiry", e.target.value)}
+                    placeholder="12/26"
+                    maxLength={5}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>CVV</Label>
+                  <Input
+                    type="password"
+                    value={brief.cardCvv}
+                    onChange={(e) => updateBrief("cardCvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="123"
+                    maxLength={4}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label>Billing Street</Label>
+                  <Input
+                    value={brief.billingStreet}
+                    onChange={(e) => updateBrief("billingStreet", e.target.value)}
+                    placeholder="123 Main St"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>City</Label>
+                  <Input
+                    value={brief.billingCity}
+                    onChange={(e) => updateBrief("billingCity", e.target.value)}
+                    placeholder="New York"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label>State</Label>
+                  <Input
+                    value={brief.billingState}
+                    onChange={(e) => updateBrief("billingState", e.target.value)}
+                    placeholder="NY"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>ZIP</Label>
+                  <Input
+                    value={brief.billingZip}
+                    onChange={(e) => updateBrief("billingZip", e.target.value)}
+                    placeholder="10001"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Country</Label>
+                  <Input
+                    value={brief.billingCountry}
+                    onChange={(e) => updateBrief("billingCountry", e.target.value)}
+                    placeholder="USA"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}
