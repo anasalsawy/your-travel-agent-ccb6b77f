@@ -715,14 +715,18 @@ serve(async (req) => {
       );
     }
 
-    // 📿 CHECK FOR FATWA - Either dedicated fatwa number OR fatwa question detection
+    // 📿 CHECK FOR FATWA - ONLY if message is sent to the DEDICATED fatwa number
+    // This keeps the services completely separate:
+    // - Maya travel number → Travel requests only (even if Arabic)
+    // - Fatwa number (+17135613314) → Fatwa/religious questions only
     const normalizedTo = toNumber.replace(/\D/g, '');
     const normalizedFatwaNumber = FATWA_TWILIO_NUMBER?.replace(/\D/g, '') || '';
     const isFatwaNumber = normalizedFatwaNumber && (normalizedTo === normalizedFatwaNumber || normalizedTo.endsWith(normalizedFatwaNumber) || normalizedFatwaNumber.endsWith(normalizedTo));
     
-    // Route to fatwa service if: message sent TO the dedicated fatwa number, OR it's a detected fatwa question
-    if (FATWA_AGENT_ID && messageBody && (isFatwaNumber || isFatwaQuestion(messageBody, fromNumber))) {
-      console.log("[WhatsApp Maya] 📿 FATWA REQUEST - To fatwa number:", isFatwaNumber, "| Is fatwa question:", isFatwaQuestion(messageBody, fromNumber));
+    // Route to fatwa service ONLY if message was sent to the dedicated fatwa number
+    // Do NOT use keyword detection - this prevents travel customers from being routed to fatwa by accident
+    if (FATWA_AGENT_ID && messageBody && isFatwaNumber) {
+      console.log("[WhatsApp Maya] 📿 FATWA REQUEST - Message sent to dedicated fatwa number:", toNumber);
       
       const callbackSuccess = await triggerFatwaCallback(messageBody, fromNumber);
       
