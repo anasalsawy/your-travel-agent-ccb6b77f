@@ -82,112 +82,75 @@ serve(async (req) => {
       cleanPhone = '+' + cleanPhone;
     }
 
-    console.log("[Fatwa Callback] 📞 Initiating callback to:", cleanPhone);
+    console.log("[Fatwa Callback] 📞 Initiating BATCH callback to:", cleanPhone);
     console.log("[Fatwa Callback] 📝 SMS Content:", smsContent.substring(0, 100));
 
-    // Generic first message - warm greeting without assuming it's a question
-    // Asks caller to say Bismillah to start the conversation
-    const firstMessage = `السلام عليكم ورحمة الله وبركاته، معك المساعد الذكي لفضيلة الدكتور العلامة صلاح الصاوي. وصلتنا رسالتك وسعداء بالتواصل معك إن شاء الله. نبدأ بسم الله الرحمن الرحيم، قل بسم الله الرحمن الرحيم حتى نبدأ.`;
+    // First message - warm greeting 
+    // The agent's system prompt should use {{sms_content}} to read the user's question
+    const firstMessage = `السلام عليكم ورحمة الله وبركاته، معك المساعد الذكي لفضيلة الدكتور العلامة صلاح الصاوي. وصلتنا رسالتك وسعداء بالتواصل معك إن شاء الله.`;
 
     console.log("[Fatwa Callback] First message:", firstMessage);
+    console.log("[Fatwa Callback] Using phone_number_id:", FATWA_PHONE_NUMBER_ID);
 
-    // FATWA_PHONE_NUMBER_ID must be the ElevenLabs phone_number_id (UUID), not the phone number
-    const phoneNumberIdToUse = FATWA_PHONE_NUMBER_ID;
-
-    // Try the Twilio outbound call endpoint first (more reliable for single calls)
-    const singleCallPayload = {
+    /**
+     * BATCH CALL API - Proper way to pass dynamic variables
+     * 
+     * The batch-call API uses a 'recipients' array where each recipient
+     * can have custom dynamic variables that the agent can access via {{variable_name}}
+     * 
+     * This is different from the outbound-call API which uses conversation_initiation_client_data
+     */
+    const batchCallPayload = {
+      call_name: `Fatwa Call - ${new Date().toISOString()}`,
       agent_id: FATWA_AGENT_ID,
-      agent_phone_number_id: phoneNumberIdToUse,
-      to_number: cleanPhone,
-      first_message: firstMessage,
-      // Pass SMS content as dynamic variable - agent uses this for context
-      // Named 'sms_content' to be generic (could be question, topic, request, etc.)
-      conversation_initiation_client_data: {
-        sms_content: smsContent,
-        caller_name: caller_name || "المتصل",
-      },
+      agent_phone_number_id: FATWA_PHONE_NUMBER_ID,
+      scheduled_time_unix: null, // Immediate call
+      recipients: [
+        {
+          phone_number: cleanPhone,
+          // Dynamic variables - these become available as {{variable_name}} in the agent
+          sms_content: smsContent,
+          caller_name: caller_name || "المتصل",
+          // Override first message for this recipient
+          first_message: firstMessage,
+        }
+      ]
     };
 
-    console.log("[Fatwa Callback] Calling ElevenLabs outbound-call API...");
-    console.log("[Fatwa Callback] Using phone_number_id:", phoneNumberIdToUse);
-    console.log("[Fatwa Callback] Payload:", JSON.stringify(singleCallPayload, null, 2));
+    console.log("[Fatwa Callback] Calling ElevenLabs BATCH-CALL API...");
+    console.log("[Fatwa Callback] Payload:", JSON.stringify(batchCallPayload, null, 2));
 
-    const response = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
+    const response = await fetch("https://api.elevenlabs.io/v1/convai/batch-calling", {
       method: "POST",
       headers: {
         "xi-api-key": ELEVENLABS_API_KEY,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(singleCallPayload),
+      body: JSON.stringify(batchCallPayload),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[Fatwa Callback] Outbound call failed:", response.status, errorText);
+      console.error("[Fatwa Callback] Batch call failed:", response.status, errorText);
       
-      // Try batch API as fallback
-      console.log("[Fatwa Callback] Trying batch-call API as fallback...");
-      
-      const batchCallPayload = {
-        calls: [
-          {
-            phone_number: cleanPhone,
-            agent_id: FATWA_AGENT_ID,
-            agent_phone_number_id: phoneNumberIdToUse,
-            first_message: firstMessage,
-            conversation_initiation_client_data: {
-              sms_content: smsContent,
-              caller_name: caller_name || "المتصل",
-            },
-            language: "ar",
-          }
-        ]
-      };
-
-      const batchResponse = await fetch("https://api.elevenlabs.io/v1/convai/batch-call", {
-        method: "POST",
-        headers: {
-          "xi-api-key": ELEVENLABS_API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(batchCallPayload),
-      });
-
-      if (!batchResponse.ok) {
-        const batchError = await batchResponse.text();
-        console.error("[Fatwa Callback] Batch call also failed:", batchResponse.status, batchError);
-        return new Response(
-          JSON.stringify({ 
-            error: "Failed to initiate callback", 
-            details: batchError,
-            attempted_number: cleanPhone 
-          }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const batchData = await batchResponse.json();
-      console.log("[Fatwa Callback] ✅ Batch call initiated:", batchData);
-
       return new Response(
         JSON.stringify({ 
-          success: true, 
-          method: "batch-call",
-          message: "تم استلام سؤالك وسيتم الاتصال بك قريباً إن شاء الله",
-          message_en: "Your question has been received. You will receive a call shortly, God willing.",
-          call_data: batchData 
+          error: "Failed to initiate callback", 
+          details: errorText,
+          attempted_number: cleanPhone,
+          payload_sent: batchCallPayload
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const data = await response.json();
-    console.log("[Fatwa Callback] ✅ Outbound call initiated:", data);
+    console.log("[Fatwa Callback] ✅ Batch call initiated:", data);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        method: "outbound-call",
+        method: "batch-call",
         message: "تم استلام سؤالك وسيتم الاتصال بك قريباً إن شاء الله",
         message_en: "Your question has been received. You will receive a call shortly, God willing.",
         call_data: data 
