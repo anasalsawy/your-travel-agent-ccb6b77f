@@ -3,8 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Phone, Loader2, CheckCircle, XCircle, Zap, FileSpreadsheet } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { Zap, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface BatchCallRowData {
@@ -23,9 +22,6 @@ export function AdminUniversalCall({ onAddToBatch }: AdminUniversalCallProps) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [task, setTask] = useState("");
   const [yourName, setYourName] = useState("Maya");
-  const [pin, setPin] = useState("");
-  const [calling, setCalling] = useState(false);
-  const [callResult, setCallResult] = useState<{ success: boolean; message: string } | null>(null);
   const { toast } = useToast();
 
   const buildContext = (): string => {
@@ -76,82 +72,6 @@ Provide a complete summary of:
       return `Hello, my name is ${yourName}. I'm calling with a question. ${task.split('.')[0]}.`;
     } else {
       return `Hello, my name is ${yourName}. I'm calling because ${task.split('.')[0].toLowerCase()}.`;
-    }
-  };
-
-  const handleCall = async () => {
-    if (!phoneNumber || !task || !pin) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in phone number, task description, and PIN",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setCalling(true);
-    setCallResult(null);
-
-    try {
-      const correctPin = "1234";
-      if (pin !== correctPin) {
-        setCallResult({
-          success: false,
-          message: "Invalid PIN. Access denied.",
-        });
-        setCalling(false);
-        return;
-      }
-
-      const context = buildContext();
-      const firstMessage = buildFirstMessage();
-
-      console.log("=== UNIVERSAL CALL CONTEXT ===");
-      console.log(context);
-      console.log("=== FIRST MESSAGE ===");
-      console.log(firstMessage);
-
-      const { data, error } = await supabase.functions.invoke("make-outbound-call", {
-        body: {
-          phone_number: phoneNumber.replace(/[^\d+]/g, ""),
-          first_message: firstMessage,
-          context: context,
-          use_maya_brain: false, // Generic persona, not travel-specific
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (data?.success) {
-        setCallResult({
-          success: true,
-          message: `Call initiated! Call SID: ${data.call_sid}`,
-        });
-        toast({
-          title: "Call Started!",
-          description: `${yourName} is now calling to complete your task.`,
-        });
-      } else {
-        setCallResult({
-          success: false,
-          message: data?.error || "Failed to initiate call",
-        });
-      }
-    } catch (error: any) {
-      console.error("Call error:", error);
-      setCallResult({
-        success: false,
-        message: error.message || "Failed to initiate call",
-      });
-      toast({
-        title: "Call Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setCalling(false);
     }
   };
 
@@ -237,68 +157,17 @@ Provide a complete summary of:
         </div>
 
         {/* PIN */}
-        <div className="space-y-2">
-          <Label>Admin PIN *</Label>
-          <Input
-            type="password"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            placeholder="Enter PIN to authorize call"
-          />
-        </div>
-
-        {/* Call Result */}
-        {callResult && (
-          <div
-            className={`p-4 rounded-lg flex items-center gap-3 ${
-              callResult.success
-                ? "bg-green-500/10 border border-green-500/20"
-                : "bg-red-500/10 border border-red-500/20"
-            }`}
-          >
-            {callResult.success ? (
-              <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-            ) : (
-              <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-            )}
-            <p className={callResult.success ? "text-green-400" : "text-red-400"}>
-              {callResult.message}
-            </p>
-          </div>
-        )}
-
-        {/* Call Button */}
+        {/* Add to Batch Button */}
         <Button
-          onClick={handleCall}
-          disabled={calling || !phoneNumber || !task}
+          onClick={handleAddToBatch}
+          disabled={!phoneNumber || !task}
           className="w-full gap-2"
           size="lg"
+          variant="default"
         >
-          {calling ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Initiating Call...
-            </>
-          ) : (
-            <>
-              <Phone className="w-4 h-4" />
-              Make Call
-            </>
-          )}
+          <FileSpreadsheet className="w-4 h-4" />
+          Add to Batch File
         </Button>
-
-        {/* Add to Batch Button */}
-        {onAddToBatch && (
-          <Button
-            variant="outline"
-            onClick={handleAddToBatch}
-            disabled={!phoneNumber || !task}
-            className="w-full gap-2"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            Add to Batch File
-          </Button>
-        )}
 
         <p className="text-xs text-muted-foreground text-center">
           ⚡ This is a wildcard tool. The AI will adapt to any task you describe.
