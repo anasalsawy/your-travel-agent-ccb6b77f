@@ -194,6 +194,12 @@ async function saveQuoteRequest(
     // First, find or create a conversation record
     const sessionId = `whatsapp-${phoneNumber.replace(/\D/g, '')}`;
     
+    // Get or create customer by phone
+    const { data: customerId } = await supabase.rpc("get_or_create_customer_by_phone", {
+      p_phone: phoneNumber
+    });
+    console.log("[WhatsApp Maya] Customer ID:", customerId);
+    
     let { data: conversation, error: fetchError } = await supabase
       .from("ai_conversations")
       .select("id")
@@ -208,6 +214,7 @@ async function saveQuoteRequest(
         .insert({
           session_id: sessionId,
           customer_phone: phoneNumber,
+          customer_id: customerId, // Link to unified customer profile
           needs_admin_attention: true,
           status: "pending_quote"
         })
@@ -221,11 +228,12 @@ async function saveQuoteRequest(
       conversation = newConv;
       console.log("[WhatsApp Maya] Created new conversation:", conversation?.id);
     } else {
-      // Update existing conversation with phone and status
+      // Update existing conversation with phone, customer_id, and status
       const { error: updateError } = await supabase
         .from("ai_conversations")
         .update({ 
           customer_phone: phoneNumber,
+          customer_id: customerId, // Link to unified customer profile
           needs_admin_attention: true, 
           status: "pending_quote" 
         })
@@ -761,11 +769,108 @@ serve(async (req) => {
     const sessionId = `whatsapp-${fromNumber.replace(/\D/g, '')}`;
     console.log("[WhatsApp Maya] Session:", sessionId);
 
-    // Get conversation history
-    let history = conversationHistory.get(sessionId) || [];
+    // ========== UNIFIED CUSTOMER LINKING ==========
+    // Get or create customer by phone for unified history
+    const { data: customerId } = await supabase.rpc("get_or_create_customer_by_phone", {
+      p_phone: fromNumber
+    });
+    console.log("[WhatsApp Maya] Customer ID:", customerId);
+    
+    // Find or create conversation
+    let { data: conversation } = await supabase
+      .from("ai_conversations")
+      .select("id, customer_id")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    
+    if (!conversation) {
+      const { data: newConv } = await supabase
+        .from("ai_conversations")
+        .insert({
+          session_id: sessionId,
+          customer_phone: fromNumber,
+          customer_id: customerId
+        })
+        .select("id, customer_id")
+        .single();
+      conversation = newConv;
+    } else if (!conversation.customer_id && customerId) {
+      // Link existing conversation to customer
+      await supabase.rpc("link_conversation_to_customer", {
+        p_conversation_id: conversation.id,
+        p_customer_id: customerId
+      });
+    }
+    
+    const conversationId = conversation?.id;
+    
+    // Load customer context for Maya
+    let customerContextPrompt = "";
+    if (customerId) {
+      const { data: customerContext } = await supabase.rpc("get_customer_context", {
+        p_customer_id: customerId
+      });
+      
+      if (customerContext) {
+        const profile = customerContext.profile || {};
+        const ticketRequests = customerContext.ticket_requests || [];
+        const orders = customerContext.orders || [];
+        const conversationCount = customerContext.conversation_count || 0;
+        
+        if (conversationCount > 1 || ticketRequests.length > 0 || orders.length > 0) {
+          customerContextPrompt = `
+
+═══════════════════════════════════════════════════════════════════
+CUSTOMER CONTEXT (you remember this person!)
+═══════════════════════════════════════════════════════════════════
+${profile.name ? `Name: ${profile.name}` : "Name: Not known yet"}
+Phone: ${fromNumber}
+${profile.email ? `Email: ${profile.email}` : ""}
+Previous conversations: ${conversationCount}
+${ticketRequests.length > 0 ? `\nRecent ticket requests:\n${ticketRequests.slice(0, 3).map((t: any) => `  - ${t.route} (${t.dates}) - Status: ${t.status}${t.quoted_price ? `, Quoted: $${t.quoted_price}` : ''}`).join('\n')}` : ''}
+${orders.length > 0 ? `\nRecent orders:\n${orders.slice(0, 3).map((o: any) => `  - $${o.amount} - Status: ${o.status}`).join('\n')}` : ''}
+
+IMPORTANT: Use this context naturally. If they're a returning customer, acknowledge it warmly.
+If they have pending requests, mention them proactively when relevant.
+═══════════════════════════════════════════════════════════════════`;
+        }
+      }
+    }
+
+    // Get conversation history from database (unified across channels)
+    let history: Array<{ role: string; content: string }> = [];
+    if (conversationId) {
+      const { data: dbHistory } = await supabase
+        .from("ai_chat_messages")
+        .select("role, content")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true })
+        .limit(10);
+      
+      if (dbHistory && dbHistory.length > 0) {
+        history = dbHistory.map((m: any) => ({ role: m.role, content: m.content }));
+      }
+    }
+    
+    // Also check in-memory for very recent messages (edge function instance)
+    const memHistory = conversationHistory.get(sessionId) || [];
+    if (memHistory.length > history.length) {
+      history = memHistory;
+    }
+    
     history.push({ role: "user", content: messageBody });
     if (history.length > 10) {
       history = history.slice(-10);
+    }
+    
+    // Save user message to database
+    if (conversationId) {
+      await supabase.from("ai_chat_messages").insert({
+        conversation_id: conversationId,
+        role: "user",
+        content: messageBody,
+        metadata: { channel: "whatsapp", phone: fromNumber }
+      });
     }
 
     // Check if admin has provided a quote for this customer
@@ -834,7 +939,9 @@ Could not find market prices for this route.
       }
     }
 
-    // Call AI
+    // Call AI with customer context + price research context
+    const fullSystemPrompt = SYSTEM_PROMPT + customerContextPrompt + priceResearchContext;
+    
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -844,7 +951,7 @@ Could not find market prices for this route.
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT + priceResearchContext },
+          { role: "system", content: fullSystemPrompt },
           ...history,
         ],
       }),
@@ -879,9 +986,19 @@ Could not find market prices for this route.
       );
     }
 
-    // Update history
+    // Update history and save assistant response to database
     history.push({ role: "assistant", content: assistantResponse });
     conversationHistory.set(sessionId, history);
+    
+    // Persist assistant response to database for unified history
+    if (conversationId) {
+      await supabase.from("ai_chat_messages").insert({
+        conversation_id: conversationId,
+        role: "assistant",
+        content: assistantResponse,
+        metadata: { channel: "whatsapp" }
+      });
+    }
 
     // Clean response for WhatsApp
     assistantResponse = assistantResponse
