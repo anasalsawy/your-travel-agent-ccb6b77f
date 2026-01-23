@@ -213,6 +213,7 @@ serve(async (req) => {
   const ELEVENLABS_AGENT_ID = Deno.env.get("ELEVENLABS_AGENT_ID");
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const WEBHOOK_SECRET = Deno.env.get("ELEVENLABS_WEBHOOK_SECRET");
 
   if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID) {
     console.error("Missing ELEVENLABS_API_KEY or ELEVENLABS_AGENT_ID");
@@ -228,8 +229,10 @@ serve(async (req) => {
     let userId: string | undefined;
     let isWebhook = false;
 
+    const rawBody = await req.text();
+    
     try {
-      const body = await req.json();
+      const body = JSON.parse(rawBody);
       phoneNumber = body.phone_number;
       userId = body.user_id;
       
@@ -237,6 +240,21 @@ serve(async (req) => {
       if (body.conversation_id || body.agent_id) {
         isWebhook = true;
         console.log("ElevenLabs webhook call detected:", body.conversation_id);
+        
+        // Verify Authorization header for webhook calls
+        if (WEBHOOK_SECRET) {
+          const authHeader = req.headers.get("Authorization");
+          const expectedAuth = `Bearer ${WEBHOOK_SECRET}`;
+          
+          if (authHeader !== expectedAuth) {
+            console.error("[Initiation Webhook] Authorization failed");
+            return new Response(
+              JSON.stringify({ error: "Unauthorized" }),
+              { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          console.log("[Initiation Webhook] Authorization verified");
+        }
       }
     } catch {
       // No body provided, that's fine
