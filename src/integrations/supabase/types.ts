@@ -210,6 +210,88 @@ export type Database = {
           },
         ]
       }
+      booking_queue: {
+        Row: {
+          booking_method: string
+          booking_result: Json | null
+          call_log_id: string | null
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          inventory_id: string | null
+          inventory_type: string
+          priority: number | null
+          quote_id: string | null
+          retry_count: number | null
+          scheduled_at: string | null
+          started_at: string | null
+          status: string
+          ticket_request_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          booking_method: string
+          booking_result?: Json | null
+          call_log_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          inventory_id?: string | null
+          inventory_type: string
+          priority?: number | null
+          quote_id?: string | null
+          retry_count?: number | null
+          scheduled_at?: string | null
+          started_at?: string | null
+          status?: string
+          ticket_request_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          booking_method?: string
+          booking_result?: Json | null
+          call_log_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          inventory_id?: string | null
+          inventory_type?: string
+          priority?: number | null
+          quote_id?: string | null
+          retry_count?: number | null
+          scheduled_at?: string | null
+          started_at?: string | null
+          status?: string
+          ticket_request_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_queue_call_log_id_fkey"
+            columns: ["call_log_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_queue_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quote_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_queue_ticket_request_id_fkey"
+            columns: ["ticket_request_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_logs: {
         Row: {
           admin_notes: string | null
@@ -300,8 +382,18 @@ export type Database = {
         Row: {
           airline: string
           balance: number
+          billing_address: string | null
+          billing_city: string | null
+          billing_country: string | null
+          billing_state: string | null
+          billing_zip: string | null
+          card_cvv_encrypted: string | null
+          card_exp_month: string | null
+          card_exp_year: string | null
           card_identifier: string
+          card_number_encrypted: string | null
           card_reference: string
+          cardholder_name: string | null
           created_at: string
           expiry_date: string | null
           id: string
@@ -314,8 +406,18 @@ export type Database = {
         Insert: {
           airline: string
           balance: number
+          billing_address?: string | null
+          billing_city?: string | null
+          billing_country?: string | null
+          billing_state?: string | null
+          billing_zip?: string | null
+          card_cvv_encrypted?: string | null
+          card_exp_month?: string | null
+          card_exp_year?: string | null
           card_identifier: string
+          card_number_encrypted?: string | null
           card_reference: string
+          cardholder_name?: string | null
           created_at?: string
           expiry_date?: string | null
           id?: string
@@ -328,8 +430,18 @@ export type Database = {
         Update: {
           airline?: string
           balance?: number
+          billing_address?: string | null
+          billing_city?: string | null
+          billing_country?: string | null
+          billing_state?: string | null
+          billing_zip?: string | null
+          card_cvv_encrypted?: string | null
+          card_exp_month?: string | null
+          card_exp_year?: string | null
           card_identifier?: string
+          card_number_encrypted?: string | null
           card_reference?: string
+          cardholder_name?: string | null
           created_at?: string
           expiry_date?: string | null
           id?: string
@@ -720,7 +832,9 @@ export type Database = {
       quote_logs: {
         Row: {
           admin_notes: string | null
+          alaska_available: boolean | null
           auto_approved: boolean
+          booking_method: string | null
           conversation_id: string | null
           created_at: string
           customer_email: string | null
@@ -729,6 +843,8 @@ export type Database = {
           discount_applied: number | null
           gift_card_id: string | null
           id: string
+          inventory_id: string | null
+          inventory_type: string | null
           market_price: number | null
           passengers: number
           payment_method: string | null
@@ -736,12 +852,15 @@ export type Database = {
           quoted_price: number
           route: string
           status: string
+          ticket_request_id: string | null
           travel_dates: string
           updated_at: string
         }
         Insert: {
           admin_notes?: string | null
+          alaska_available?: boolean | null
           auto_approved?: boolean
+          booking_method?: string | null
           conversation_id?: string | null
           created_at?: string
           customer_email?: string | null
@@ -750,6 +869,8 @@ export type Database = {
           discount_applied?: number | null
           gift_card_id?: string | null
           id?: string
+          inventory_id?: string | null
+          inventory_type?: string | null
           market_price?: number | null
           passengers?: number
           payment_method?: string | null
@@ -757,12 +878,15 @@ export type Database = {
           quoted_price: number
           route: string
           status?: string
+          ticket_request_id?: string | null
           travel_dates: string
           updated_at?: string
         }
         Update: {
           admin_notes?: string | null
+          alaska_available?: boolean | null
           auto_approved?: boolean
+          booking_method?: string | null
           conversation_id?: string | null
           created_at?: string
           customer_email?: string | null
@@ -771,6 +895,8 @@ export type Database = {
           discount_applied?: number | null
           gift_card_id?: string | null
           id?: string
+          inventory_id?: string | null
+          inventory_type?: string | null
           market_price?: number | null
           passengers?: number
           payment_method?: string | null
@@ -778,6 +904,7 @@ export type Database = {
           quoted_price?: number
           route?: string
           status?: string
+          ticket_request_id?: string | null
           travel_dates?: string
           updated_at?: string
         }
@@ -794,6 +921,13 @@ export type Database = {
             columns: ["points_account_id"]
             isOneToOne: false
             referencedRelation: "points_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_logs_ticket_request_id_fkey"
+            columns: ["ticket_request_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_requests"
             referencedColumns: ["id"]
           },
         ]

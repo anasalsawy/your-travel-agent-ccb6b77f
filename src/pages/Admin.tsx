@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall, CreditCard, TrendingUp } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall, CreditCard, TrendingUp, Play } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
@@ -18,6 +18,7 @@ import { BatchCallGenerator, BatchCallRow } from "@/components/admin/BatchCallGe
 import { AdminCallLogs } from "@/components/admin/AdminCallLogs";
 import { AdminInventory } from "@/components/admin/AdminInventory";
 import { AdminQuoteLogs } from "@/components/admin/AdminQuoteLogs";
+import { AdminBookingQueue } from "@/components/admin/AdminBookingQueue";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -124,6 +125,10 @@ export default function AdminPage() {
                     <TrendingUp className="w-4 h-4" />
                     Quote Logs
                   </TabsTrigger>
+                  <TabsTrigger value="booking-queue" className="gap-2">
+                    <Play className="w-4 h-4" />
+                    Booking Queue
+                  </TabsTrigger>
                   <TabsTrigger value="book-call" className="gap-2">
                     <Phone className="w-4 h-4" />
                     Book by Phone
@@ -184,6 +189,10 @@ export default function AdminPage() {
 
                 <TabsContent value="quote-logs">
                   <AdminQuoteLogs />
+                </TabsContent>
+
+                <TabsContent value="booking-queue">
+                  <AdminBookingQueue />
                 </TabsContent>
 
                 <TabsContent value="book-call">

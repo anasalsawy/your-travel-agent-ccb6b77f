@@ -26,6 +26,17 @@ interface GiftCard {
   notes: string | null;
   card_reference: string;
   created_at: string;
+  // Billing details for automated booking
+  billing_address: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_zip: string | null;
+  billing_country: string | null;
+  cardholder_name: string | null;
+  card_number_encrypted: string | null;
+  card_exp_month: string | null;
+  card_exp_year: string | null;
+  card_cvv_encrypted: string | null;
 }
 
 interface PointsAccount {
@@ -63,7 +74,18 @@ export function AdminInventory() {
     purchase_price: '',
     expiry_date: '',
     card_reference: '',
-    notes: ''
+    notes: '',
+    // Billing details
+    billing_address: '',
+    billing_city: '',
+    billing_state: '',
+    billing_zip: '',
+    billing_country: 'US',
+    cardholder_name: '',
+    card_number_encrypted: '',
+    card_exp_month: '',
+    card_exp_year: '',
+    card_cvv_encrypted: ''
   });
 
   // Points Account Form
@@ -115,7 +137,18 @@ export function AdminInventory() {
         purchase_price: cardForm.purchase_price ? parseFloat(cardForm.purchase_price) : null,
         expiry_date: cardForm.expiry_date || null,
         card_reference: cardForm.card_reference,
-        notes: cardForm.notes || null
+        notes: cardForm.notes || null,
+        // Billing details
+        billing_address: cardForm.billing_address || null,
+        billing_city: cardForm.billing_city || null,
+        billing_state: cardForm.billing_state || null,
+        billing_zip: cardForm.billing_zip || null,
+        billing_country: cardForm.billing_country || 'US',
+        cardholder_name: cardForm.cardholder_name || null,
+        card_number_encrypted: cardForm.card_number_encrypted || null,
+        card_exp_month: cardForm.card_exp_month || null,
+        card_exp_year: cardForm.card_exp_year || null,
+        card_cvv_encrypted: cardForm.card_cvv_encrypted || null
       };
 
       if (editingCard) {
@@ -209,7 +242,17 @@ export function AdminInventory() {
       purchase_price: '',
       expiry_date: '',
       card_reference: '',
-      notes: ''
+      notes: '',
+      billing_address: '',
+      billing_city: '',
+      billing_state: '',
+      billing_zip: '',
+      billing_country: 'US',
+      cardholder_name: '',
+      card_number_encrypted: '',
+      card_exp_month: '',
+      card_exp_year: '',
+      card_cvv_encrypted: ''
     });
   };
 
@@ -236,7 +279,17 @@ export function AdminInventory() {
       purchase_price: card.purchase_price?.toString() || '',
       expiry_date: card.expiry_date || '',
       card_reference: card.card_reference,
-      notes: card.notes || ''
+      notes: card.notes || '',
+      billing_address: card.billing_address || '',
+      billing_city: card.billing_city || '',
+      billing_state: card.billing_state || '',
+      billing_zip: card.billing_zip || '',
+      billing_country: card.billing_country || 'US',
+      cardholder_name: card.cardholder_name || '',
+      card_number_encrypted: card.card_number_encrypted || '',
+      card_exp_month: card.card_exp_month || '',
+      card_exp_year: card.card_exp_year || '',
+      card_cvv_encrypted: card.card_cvv_encrypted || ''
     });
     setShowCardDialog(true);
   };
@@ -341,12 +394,13 @@ export function AdminInventory() {
                 <DialogTrigger asChild>
                   <Button><Plus className="h-4 w-4 mr-2" /> Add Card</Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>{editingCard ? 'Edit Gift Card' : 'Add Gift Card'}</DialogTitle>
-                    <DialogDescription>Enter the gift card details securely</DialogDescription>
+                    <DialogDescription>Enter the gift card and billing details for automated booking</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
+                    {/* Basic Info */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label>Airline *</Label>
@@ -383,10 +437,68 @@ export function AdminInventory() {
                       </div>
                     </div>
                     <div>
-                      <Label>Full Card Number *</Label>
+                      <Label>Full Card Number (internal ref) *</Label>
                       <Input type="password" placeholder="16-digit card number" value={cardForm.card_reference} onChange={(e) => setCardForm({...cardForm, card_reference: e.target.value})} />
-                      <p className="text-xs text-muted-foreground mt-1">Stored securely, used for phone bookings</p>
                     </div>
+
+                    {/* Payment Card Details for Phone Booking */}
+                    <div className="border-t pt-4 mt-4">
+                      <h4 className="font-medium text-sm mb-3 flex items-center gap-2">
+                        <CreditCard className="h-4 w-4" /> Payment Card Details (for automated IVR booking)
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Cardholder Name</Label>
+                          <Input placeholder="Name on card" value={cardForm.cardholder_name} onChange={(e) => setCardForm({...cardForm, cardholder_name: e.target.value})} />
+                        </div>
+                        <div>
+                          <Label>Card Number</Label>
+                          <Input type="password" placeholder="16 digits" value={cardForm.card_number_encrypted} onChange={(e) => setCardForm({...cardForm, card_number_encrypted: e.target.value})} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 mt-3">
+                        <div>
+                          <Label>Exp Month</Label>
+                          <Input placeholder="MM" maxLength={2} value={cardForm.card_exp_month} onChange={(e) => setCardForm({...cardForm, card_exp_month: e.target.value})} />
+                        </div>
+                        <div>
+                          <Label>Exp Year</Label>
+                          <Input placeholder="YY" maxLength={2} value={cardForm.card_exp_year} onChange={(e) => setCardForm({...cardForm, card_exp_year: e.target.value})} />
+                        </div>
+                        <div>
+                          <Label>CVV</Label>
+                          <Input type="password" placeholder="***" maxLength={4} value={cardForm.card_cvv_encrypted} onChange={(e) => setCardForm({...cardForm, card_cvv_encrypted: e.target.value})} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Billing Address */}
+                    <div className="border-t pt-4 mt-4">
+                      <h4 className="font-medium text-sm mb-3">Billing Address</h4>
+                      <div>
+                        <Label>Street Address</Label>
+                        <Input placeholder="123 Main St" value={cardForm.billing_address} onChange={(e) => setCardForm({...cardForm, billing_address: e.target.value})} />
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 mt-3">
+                        <div>
+                          <Label>City</Label>
+                          <Input placeholder="Seattle" value={cardForm.billing_city} onChange={(e) => setCardForm({...cardForm, billing_city: e.target.value})} />
+                        </div>
+                        <div>
+                          <Label>State</Label>
+                          <Input placeholder="WA" maxLength={2} value={cardForm.billing_state} onChange={(e) => setCardForm({...cardForm, billing_state: e.target.value})} />
+                        </div>
+                        <div>
+                          <Label>ZIP</Label>
+                          <Input placeholder="98101" value={cardForm.billing_zip} onChange={(e) => setCardForm({...cardForm, billing_zip: e.target.value})} />
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <Label>Country</Label>
+                        <Input placeholder="US" value={cardForm.billing_country} onChange={(e) => setCardForm({...cardForm, billing_country: e.target.value})} />
+                      </div>
+                    </div>
+
                     <div>
                       <Label>Notes</Label>
                       <Textarea placeholder="Any additional details..." value={cardForm.notes} onChange={(e) => setCardForm({...cardForm, notes: e.target.value})} />

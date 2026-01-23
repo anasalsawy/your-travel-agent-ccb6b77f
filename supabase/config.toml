@@ -1,5 +1,8 @@
 project_id = "wpwdxtyufpewdyffxlgo"
 
+[functions.smart-quote-v2]
+verify_jwt = false
+
 [functions.send-whatsapp-quote]
 verify_jwt = false
 
