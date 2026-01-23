@@ -553,6 +553,297 @@ export type Database = {
           },
         ]
       }
+      maya_conversation_reviews: {
+        Row: {
+          best_moment: string | null
+          call_log_id: string | null
+          channel: string | null
+          closing_score: number | null
+          conversation_id: string | null
+          customer_id: string | null
+          customer_preferences_learned: Json | null
+          id: string
+          missed_opportunity: string | null
+          objection_handling_score: number | null
+          outcome: string | null
+          outcome_value: number | null
+          overall_score: number | null
+          product_knowledge_score: number | null
+          rapport_score: number | null
+          reviewed_at: string
+          strengths: Json | null
+          suggestions: Json | null
+          tags: string[] | null
+          transcript_snippet: string | null
+          weaknesses: Json | null
+          worst_moment: string | null
+        }
+        Insert: {
+          best_moment?: string | null
+          call_log_id?: string | null
+          channel?: string | null
+          closing_score?: number | null
+          conversation_id?: string | null
+          customer_id?: string | null
+          customer_preferences_learned?: Json | null
+          id?: string
+          missed_opportunity?: string | null
+          objection_handling_score?: number | null
+          outcome?: string | null
+          outcome_value?: number | null
+          overall_score?: number | null
+          product_knowledge_score?: number | null
+          rapport_score?: number | null
+          reviewed_at?: string
+          strengths?: Json | null
+          suggestions?: Json | null
+          tags?: string[] | null
+          transcript_snippet?: string | null
+          weaknesses?: Json | null
+          worst_moment?: string | null
+        }
+        Update: {
+          best_moment?: string | null
+          call_log_id?: string | null
+          channel?: string | null
+          closing_score?: number | null
+          conversation_id?: string | null
+          customer_id?: string | null
+          customer_preferences_learned?: Json | null
+          id?: string
+          missed_opportunity?: string | null
+          objection_handling_score?: number | null
+          outcome?: string | null
+          outcome_value?: number | null
+          overall_score?: number | null
+          product_knowledge_score?: number | null
+          rapport_score?: number | null
+          reviewed_at?: string
+          strengths?: Json | null
+          suggestions?: Json | null
+          tags?: string[] | null
+          transcript_snippet?: string | null
+          weaknesses?: Json | null
+          worst_moment?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_conversation_reviews_call_log_id_fkey"
+            columns: ["call_log_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maya_conversation_reviews_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maya_conversation_reviews_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "customer_conversation_history"
+            referencedColumns: ["conversation_id"]
+          },
+          {
+            foreignKeyName: "maya_conversation_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_conversation_history"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "maya_conversation_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maya_customer_memory: {
+        Row: {
+          avoid_topics: string[] | null
+          booking_history_count: number | null
+          budget_range: string | null
+          common_objections: string[] | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          key_facts: Json | null
+          preferred_airlines: string[] | null
+          preferred_cabin_class: string | null
+          preferred_tone: string | null
+          rapport_level: number | null
+          response_style: string | null
+          total_spend: number | null
+          travel_frequency: string | null
+          trust_level: number | null
+          typical_destinations: string[] | null
+          updated_at: string
+          what_failed: string[] | null
+          what_works: string[] | null
+        }
+        Insert: {
+          avoid_topics?: string[] | null
+          booking_history_count?: number | null
+          budget_range?: string | null
+          common_objections?: string[] | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          key_facts?: Json | null
+          preferred_airlines?: string[] | null
+          preferred_cabin_class?: string | null
+          preferred_tone?: string | null
+          rapport_level?: number | null
+          response_style?: string | null
+          total_spend?: number | null
+          travel_frequency?: string | null
+          trust_level?: number | null
+          typical_destinations?: string[] | null
+          updated_at?: string
+          what_failed?: string[] | null
+          what_works?: string[] | null
+        }
+        Update: {
+          avoid_topics?: string[] | null
+          booking_history_count?: number | null
+          budget_range?: string | null
+          common_objections?: string[] | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          key_facts?: Json | null
+          preferred_airlines?: string[] | null
+          preferred_cabin_class?: string | null
+          preferred_tone?: string | null
+          rapport_level?: number | null
+          response_style?: string | null
+          total_spend?: number | null
+          travel_frequency?: string | null
+          trust_level?: number | null
+          typical_destinations?: string[] | null
+          updated_at?: string
+          what_failed?: string[] | null
+          what_works?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_customer_memory_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "customer_conversation_history"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "maya_customer_memory_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maya_global_learnings: {
+        Row: {
+          applies_to: string[] | null
+          avoid_when: string[] | null
+          confidence_score: number | null
+          description: string
+          discovered_at: string
+          example: string | null
+          failure_count: number | null
+          id: string
+          is_active: boolean | null
+          last_validated: string | null
+          learning_type: string
+          source: string | null
+          success_count: number | null
+          success_rate: number | null
+          title: string
+        }
+        Insert: {
+          applies_to?: string[] | null
+          avoid_when?: string[] | null
+          confidence_score?: number | null
+          description: string
+          discovered_at?: string
+          example?: string | null
+          failure_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_validated?: string | null
+          learning_type: string
+          source?: string | null
+          success_count?: number | null
+          success_rate?: number | null
+          title: string
+        }
+        Update: {
+          applies_to?: string[] | null
+          avoid_when?: string[] | null
+          confidence_score?: number | null
+          description?: string
+          discovered_at?: string
+          example?: string | null
+          failure_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_validated?: string | null
+          learning_type?: string
+          source?: string | null
+          success_count?: number | null
+          success_rate?: number | null
+          title?: string
+        }
+        Relationships: []
+      }
+      maya_prompt_adaptations: {
+        Row: {
+          adaptation_type: string
+          content: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          positive_outcomes: number | null
+          priority: number | null
+          scope: string
+          scope_id: string | null
+          times_used: number | null
+        }
+        Insert: {
+          adaptation_type: string
+          content: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          positive_outcomes?: number | null
+          priority?: number | null
+          scope: string
+          scope_id?: string | null
+          times_used?: number | null
+        }
+        Update: {
+          adaptation_type?: string
+          content?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          positive_outcomes?: number | null
+          priority?: number | null
+          scope?: string
+          scope_id?: string | null
+          times_used?: number | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string

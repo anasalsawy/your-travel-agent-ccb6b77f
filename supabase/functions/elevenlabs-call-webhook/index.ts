@@ -425,6 +425,33 @@ async function saveConversationToHistory(
       .eq("id", aiConversationId);
 
     console.log("[Webhook] Successfully saved", messages.length || 1, "messages to conversation:", aiConversationId);
+
+    // 7. Trigger Maya Coach to analyze the conversation (async, don't wait)
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+    
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      fetch(`${SUPABASE_URL}/functions/v1/maya-coach`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          conversation_id: aiConversationId,
+          call_log_id: callLogId,
+          transcript: transcriptText,
+          customer_id: customerId,
+          customer_phone: phoneNumber,
+          channel: "voice",
+        }),
+      }).catch(err => {
+        console.log("[Webhook] Maya Coach trigger failed (non-blocking):", err.message);
+      });
+      
+      console.log("[Webhook] Triggered Maya Coach for analysis");
+    }
+
     return true;
 
   } catch (error) {

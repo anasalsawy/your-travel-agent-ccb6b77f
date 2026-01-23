@@ -25,6 +25,9 @@ interface CustomerContext {
   recent_requests: string;
   conversation_summary: string;
   preferences: string;
+  // New: Maya's learned insights
+  customer_insights: string;
+  proven_tactics: string;
 }
 
 async function fetchCustomerContext(
@@ -34,11 +37,13 @@ async function fetchCustomerContext(
 ): Promise<CustomerContext> {
   const defaultContext: CustomerContext = {
     customer_name: "valued customer",
-    customer_phone: "",
+    customer_phone: phoneNumber || "",
     customer_email: "",
     recent_requests: "No previous requests on file.",
     conversation_summary: "This is a new customer - be warm and welcoming!",
     preferences: "No known preferences yet.",
+    customer_insights: "",
+    proven_tactics: "",
   };
 
   try {
@@ -50,88 +55,145 @@ async function fetchCustomerContext(
         .rpc("get_or_create_customer_by_phone", { p_phone: phoneNumber });
       if (customer) customerId = customer;
     } else if (userId) {
-      const { data: customer } = await supabase
-        .from("customers")
-        .select("id, name, email, phone")
-        .eq("user_id", userId)
+      // Check profiles table
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, phone")
+        .eq("id", userId)
         .single();
-      if (customer) {
-        customerId = customer.id;
-        defaultContext.customer_name = customer.name || "valued customer";
-        defaultContext.customer_email = customer.email || "";
-        defaultContext.customer_phone = customer.phone || "";
+      if (profile) {
+        customerId = profile.id;
+        defaultContext.customer_name = profile.full_name || "valued customer";
+        defaultContext.customer_email = profile.email || "";
+        defaultContext.customer_phone = profile.phone || "";
       }
+    }
+
+    // Fetch global proven tactics (top 5 learnings)
+    const { data: learnings } = await supabase
+      .from("maya_global_learnings")
+      .select("title, description")
+      .eq("is_active", true)
+      .gte("confidence_score", 6)
+      .order("success_rate", { ascending: false })
+      .limit(5);
+
+    if (learnings && learnings.length > 0) {
+      defaultContext.proven_tactics = learnings
+        .map((l: any) => `• ${l.title}: ${l.description}`)
+        .join("\n");
     }
 
     if (!customerId) {
-      console.log("No customer found, using default context");
+      console.log("No customer found, using default context with global learnings");
       return defaultContext;
     }
 
-    // Fetch customer details
-    const { data: customerData } = await supabase
-      .from("customers")
-      .select("name, email, phone, notes")
+    // Fetch customer profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, email, phone")
       .eq("id", customerId)
       .single();
 
-    if (customerData) {
-      defaultContext.customer_name = customerData.name || "valued customer";
-      defaultContext.customer_email = customerData.email || "";
-      defaultContext.customer_phone = customerData.phone || "";
-      if (customerData.notes) {
-        defaultContext.preferences = customerData.notes;
-      }
+    if (profile) {
+      defaultContext.customer_name = profile.full_name || "valued customer";
+      defaultContext.customer_email = profile.email || "";
+      defaultContext.customer_phone = profile.phone || "";
     }
 
-    // Fetch recent ticket requests (last 5)
+    // Fetch Maya's learned customer memory
+    const { data: memory } = await supabase
+      .from("maya_customer_memory")
+      .select("*")
+      .eq("customer_id", customerId)
+      .single();
+
+    if (memory) {
+      const insights: string[] = [];
+      
+      if (memory.preferred_tone) {
+        insights.push(`Communication: ${memory.preferred_tone}`);
+      }
+      if (memory.response_style) {
+        insights.push(`Decision style: ${memory.response_style}`);
+      }
+      if (memory.preferred_airlines?.length) {
+        insights.push(`Prefers: ${memory.preferred_airlines.join(", ")}`);
+      }
+      if (memory.what_works?.length) {
+        insights.push(`What works: ${memory.what_works.join("; ")}`);
+      }
+      if (memory.what_failed?.length) {
+        insights.push(`Avoid: ${memory.what_failed.join("; ")}`);
+      }
+      if (memory.key_facts) {
+        const facts = typeof memory.key_facts === "string" 
+          ? memory.key_facts 
+          : JSON.stringify(memory.key_facts);
+        if (facts && facts !== "[]") {
+          insights.push(`Key facts: ${facts}`);
+        }
+      }
+      if (memory.rapport_level) {
+        insights.push(`Rapport: ${memory.rapport_level}/10`);
+      }
+      if (memory.booking_history_count > 0) {
+        insights.push(`${memory.booking_history_count} previous bookings ($${memory.total_spend || 0} total)`);
+      }
+
+      defaultContext.customer_insights = insights.join("\n");
+      defaultContext.preferences = insights.slice(0, 3).join("; ") || "No known preferences yet.";
+    }
+
+    // Fetch recent ticket requests
     const { data: requests } = await supabase
       .from("ticket_requests")
-      .select("id, origin, destination, travel_date, passengers, status, quoted_price, created_at")
-      .eq("customer_id", customerId)
+      .select("origin, destination, departure_date, passengers, status, quoted_price")
+      .or(`contact_email.eq.${defaultContext.customer_email},contact_phone.eq.${defaultContext.customer_phone}`)
       .order("created_at", { ascending: false })
       .limit(5);
 
     if (requests && requests.length > 0) {
       const requestSummaries = requests.map((r: any) => {
-        const price = r.quoted_price ? `$${r.quoted_price}` : "pending quote";
-        return `${r.origin} → ${r.destination} on ${r.travel_date} (${r.passengers} pax, ${r.status}, ${price})`;
+        const price = r.quoted_price ? `$${r.quoted_price}` : "pending";
+        return `${r.origin} → ${r.destination} (${r.departure_date}, ${r.status}, ${price})`;
       });
       defaultContext.recent_requests = requestSummaries.join("; ");
     }
 
-    // Fetch recent conversation summary (last conversation)
+    // Fetch recent conversation summary
     const { data: conversations } = await supabase
       .from("ai_conversations")
-      .select("id, summary, updated_at")
+      .select("id")
       .eq("customer_id", customerId)
       .order("updated_at", { ascending: false })
       .limit(1);
 
-    if (conversations && conversations.length > 0 && conversations[0].summary) {
-      defaultContext.conversation_summary = conversations[0].summary;
-    } else {
-      // Try to build summary from recent messages
+    if (conversations && conversations.length > 0) {
+      // Get recent messages to summarize
       const { data: messages } = await supabase
         .from("ai_chat_messages")
         .select("role, content")
-        .eq("customer_id", customerId)
+        .eq("conversation_id", conversations[0].id)
         .order("created_at", { ascending: false })
         .limit(10);
 
       if (messages && messages.length > 0) {
         const topics = messages
           .filter((m: any) => m.role === "user")
-          .map((m: any) => m.content.substring(0, 100))
+          .map((m: any) => m.content.substring(0, 80))
+          .slice(0, 3)
           .join("; ");
-        defaultContext.conversation_summary = `Recent topics discussed: ${topics}`;
+        defaultContext.conversation_summary = `Recent: ${topics}`;
       }
     }
 
     console.log("Loaded customer context:", {
       name: defaultContext.customer_name,
-      hasRequests: defaultContext.recent_requests !== "No previous requests on file.",
-      hasSummary: defaultContext.conversation_summary !== "This is a new customer - be warm and welcoming!",
+      hasMemory: !!memory,
+      hasRequests: requests?.length || 0,
+      hasLearnings: learnings?.length || 0,
     });
 
     return defaultContext;
