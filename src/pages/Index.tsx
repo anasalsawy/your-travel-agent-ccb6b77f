@@ -1,23 +1,564 @@
-import { Layout } from "@/components/layout/Layout";
-import { HeroSection } from "@/components/home/HeroSection";
-import { MarketplaceSection } from "@/components/home/MarketplaceSection";
-import { HowItWorks } from "@/components/home/HowItWorks";
-import { EscrowPromoSection } from "@/components/home/EscrowPromoSection";
-import { TrustSection } from "@/components/home/TrustSection";
-import { TestimonialsSection } from "@/components/home/TestimonialsSection";
-import { CTASection } from "@/components/home/CTASection";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Loader2, Plane, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+import { useVoiceChat } from "@/hooks/useVoiceChat";
+import { VoiceButton } from "@/components/chat/VoiceButton";
+import { supabase } from "@/integrations/supabase/client";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import logo from "@/assets/logo-black-gold-shield.png";
+
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+type ThinkingPhase = "thinking" | "researching" | "composing" | null;
 
 const Index = () => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [thinkingPhase, setThinkingPhase] = useState<ThinkingPhase>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [voiceEnabled] = useState(true);
+  const [hasStarted, setHasStarted] = useState(false);
+
+  const voice = useVoiceChat({
+    onError: (error) => console.error("Voice error:", error),
+  });
+
+  // Auth state
+  useEffect(() => {
+    supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        checkStaffOrAdminRole(session.user.id);
+      } else {
+        setIsStaffOrAdmin(false);
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        checkStaffOrAdminRole(session.user.id);
+      }
+    });
+  }, []);
+
+  const checkStaffOrAdminRole = async (userId: string) => {
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .in("role", ["admin", "staff"]);
+    setIsStaffOrAdmin((data?.length || 0) > 0);
+  };
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, thinkingPhase]);
+
+  useEffect(() => {
+    return () => {
+      if (phaseTimerRef.current) {
+        clearTimeout(phaseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const startThinkingPhases = useCallback(() => {
+    setThinkingPhase("thinking");
+    phaseTimerRef.current = setTimeout(() => {
+      setThinkingPhase("researching");
+      phaseTimerRef.current = setTimeout(() => {
+        setThinkingPhase("composing");
+      }, 600 + Math.random() * 400);
+    }, 800 + Math.random() * 400);
+  }, []);
+
+  const stopThinkingPhases = useCallback(() => {
+    if (phaseTimerRef.current) {
+      clearTimeout(phaseTimerRef.current);
+    }
+    setThinkingPhase(null);
+  }, []);
+
+  const startConversation = (initialMessage?: string) => {
+    setHasStarted(true);
+    setMessages([
+      {
+        role: "assistant",
+        content: "Hey! 👋 I'm Maya, your personal travel agent. I can find you discounted flights, book tickets, search for deals, and handle everything travel-related. What can I help you with today?",
+      },
+    ]);
+    if (initialMessage) {
+      setTimeout(() => {
+        setInput(initialMessage);
+        inputRef.current?.focus();
+      }, 100);
+    } else {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  };
+
+  const sendMessage = async (textOverride?: string, speakResponse = false) => {
+    const messageText = textOverride || input.trim();
+    if (!messageText || isLoading) return;
+
+    const userMessage: Message = { role: "user", content: messageText };
+    setMessages((prev) => [...prev, userMessage]);
+    if (!textOverride) setInput("");
+    setIsLoading(true);
+    startThinkingPhases();
+
+    let assistantContent = "";
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            messages: [...messages, userMessage].map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+            sessionId,
+            conversationId,
+          }),
+        }
+      );
+
+      const newConvId = response.headers.get("X-Conversation-Id");
+      if (newConvId) {
+        setConversationId(newConvId);
+      }
+
+      if (!response.ok || !response.body) {
+        throw new Error("Failed to get response");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let firstChunkReceived = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              if (!firstChunkReceived) {
+                firstChunkReceived = true;
+                stopThinkingPhases();
+                setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+              }
+
+              assistantContent += content;
+              setMessages((prev) => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  role: "assistant",
+                  content: assistantContent,
+                };
+                return updated;
+              });
+            }
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+
+      if (speakResponse && voiceEnabled && assistantContent) {
+        await voice.speakText(assistantContent);
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
+      stopThinkingPhases();
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Oops, something went wrong on my end! Mind trying that again?",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+      voice.setIdle();
+    }
+  };
+
+  const handleVoicePress = () => {
+    if (voice.isSpeaking) {
+      voice.stopSpeaking();
+      return;
+    }
+    voice.startRecording();
+  };
+
+  const handleVoiceRelease = async () => {
+    if (!voice.isRecording) return;
+    
+    const audioBlob = await voice.stopRecording();
+    if (!audioBlob || audioBlob.size < 1000) {
+      voice.setIdle();
+      return;
+    }
+
+    const transcription = await voice.transcribeAudio(audioBlob);
+    if (transcription) {
+      voice.setProcessing();
+      await sendMessage(transcription, true);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const quickActions = [
+    { label: "Find me a cheap flight", icon: Plane },
+    { label: "I need a ticket quote", icon: CreditCard },
+    { label: "How does this work?", icon: HelpCircle },
+  ];
+
+  // Welcome screen before chat starts
+  if (!hasStarted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 flex flex-col">
+        {/* Simple Header */}
+        <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
+          <div className="container mx-auto px-4">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center gap-2">
+                <img src={logo} alt="Your Travel Agent" className="w-10 h-10 object-contain" />
+                <span className="font-display font-bold text-lg hidden sm:block">Your Travel Agent</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {user ? (
+                  <>
+                    {isStaffOrAdmin && (
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link to="/admin">Admin</Link>
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/dashboard">
+                        <User className="w-4 h-4 mr-2" />
+                        Dashboard
+                      </Link>
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/auth">Sign In</Link>
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Hero Section */}
+        <main className="flex-1 flex flex-col items-center justify-center px-4 pt-20">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            {/* Maya Avatar */}
+            <div className="relative inline-flex mb-6">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center text-primary-foreground text-4xl font-bold shadow-2xl shadow-primary/30">
+                M
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-green-500 rounded-full border-4 border-background flex items-center justify-center">
+                <Zap className="w-4 h-4 text-white" />
+              </div>
+            </div>
+
+            <h1 className="text-4xl md:text-5xl font-display font-bold text-foreground mb-4">
+              Meet Maya
+            </h1>
+            <p className="text-xl text-muted-foreground mb-2">
+              Your AI-powered travel agent
+            </p>
+            <p className="text-muted-foreground max-w-lg mx-auto">
+              I find discounted flights, book tickets, track deals, and handle all your travel needs. 
+              Just chat with me like you would a friend.
+            </p>
+          </div>
+
+          {/* Start Chat Button */}
+          <Button 
+            size="lg" 
+            onClick={() => startConversation()}
+            className="rounded-full px-8 py-6 text-lg shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-all mb-8"
+          >
+            <MessageSquare className="w-5 h-5 mr-2" />
+            Start Chatting with Maya
+          </Button>
+
+          {/* Quick Start Options */}
+          <div className="flex flex-wrap gap-3 justify-center max-w-lg">
+            {quickActions.map((action) => (
+              <Button
+                key={action.label}
+                variant="outline"
+                size="sm"
+                onClick={() => startConversation(action.label)}
+                className="rounded-full"
+              >
+                <action.icon className="w-4 h-4 mr-2" />
+                {action.label}
+              </Button>
+            ))}
+          </div>
+
+          {/* Trust Badges */}
+          <div className="flex items-center gap-6 mt-16 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-green-500" />
+              <span>Secure Payments</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Plane className="w-4 h-4 text-primary" />
+              <span>50%+ Off Flights</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span>Instant Quotes</span>
+            </div>
+          </div>
+        </main>
+
+        {/* Simple Footer */}
+        <footer className="py-6 border-t border-border/50">
+          <div className="container mx-auto px-4 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+            <Link to="/faq" className="hover:text-foreground transition-colors">FAQ</Link>
+            <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
+            <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
+            <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
+            <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
+  // Full Chat Interface
   return (
-    <Layout>
-      <HeroSection />
-      <MarketplaceSection />
-      <HowItWorks />
-      <EscrowPromoSection />
-      <TrustSection />
-      <TestimonialsSection />
-      <CTASection />
-    </Layout>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Chat Header */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-b border-border">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setHasStarted(false)} 
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
+                <img src={logo} alt="Your Travel Agent" className="w-8 h-8 object-contain" />
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground font-bold">
+                    M
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
+                </div>
+                <div>
+                  <h1 className="font-semibold text-foreground">Maya</h1>
+                  <p className="text-xs text-muted-foreground">
+                    {voice.isRecording ? "🎤 Listening..." : 
+                     voice.isTranscribing ? "Processing..." :
+                     voice.isSpeaking ? "🔊 Speaking..." :
+                     "Online • Your travel agent"}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {user ? (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/dashboard">
+                    <User className="w-4 h-4" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/auth">Sign In</Link>
+                </Button>
+              )}
+              {isStaffOrAdmin && (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/admin">Admin</Link>
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Messages Area */}
+      <main className="flex-1 pt-16 pb-24">
+        <ScrollArea className="h-[calc(100vh-10rem)]" ref={scrollRef}>
+          <div className="container max-w-3xl mx-auto px-4 py-6">
+            <div className="flex flex-col gap-4">
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={cn(
+                    "flex",
+                    message.role === "user" ? "justify-end" : "justify-start"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "max-w-[85%] md:max-w-[75%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed",
+                      message.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-br-md"
+                        : "bg-muted text-foreground rounded-bl-md"
+                    )}
+                  >
+                    {message.content}
+                  </div>
+                </div>
+              ))}
+              {/* Thinking indicator */}
+              {thinkingPhase && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground ml-1 font-medium flex items-center gap-1.5">
+                    {thinkingPhase === "thinking" && (
+                      <>
+                        <Brain className="w-3 h-3 animate-pulse" />
+                        Maya is thinking...
+                      </>
+                    )}
+                    {thinkingPhase === "researching" && (
+                      <>
+                        <Search className="w-3 h-3 animate-pulse" />
+                        Looking into this...
+                      </>
+                    )}
+                    {thinkingPhase === "composing" && (
+                      <>
+                        <PenTool className="w-3 h-3 animate-pulse" />
+                        Composing response...
+                      </>
+                    )}
+                  </span>
+                  <div className="flex justify-start">
+                    <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
+                      <div className="flex gap-1.5">
+                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+      </main>
+
+      {/* Quick Actions (first message only) */}
+      {messages.length === 1 && (
+        <div className="fixed bottom-24 left-0 right-0 z-40">
+          <div className="container max-w-3xl mx-auto px-4">
+            <div className="flex flex-wrap gap-2 justify-center">
+              {quickActions.map((action) => (
+                <Button
+                  key={action.label}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setInput(action.label);
+                    inputRef.current?.focus();
+                  }}
+                  className="rounded-full text-xs bg-background/80 backdrop-blur-sm"
+                >
+                  <action.icon className="w-3 h-3 mr-1.5" />
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Input Area */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-t border-border">
+        <div className="container max-w-3xl mx-auto px-4 py-4">
+          <div className="flex gap-2">
+            <Input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Message Maya..."
+              disabled={isLoading}
+              className="flex-1 rounded-full bg-muted border-0 focus-visible:ring-1 h-12 px-5"
+            />
+            <VoiceButton
+              state={voice.state}
+              onPress={handleVoicePress}
+              onRelease={handleVoiceRelease}
+              disabled={isLoading}
+              className="h-12 w-12 rounded-full"
+            />
+            <Button
+              onClick={() => sendMessage()}
+              disabled={!input.trim() || isLoading}
+              size="icon"
+              className="rounded-full h-12 w-12"
+            >
+              {isLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
