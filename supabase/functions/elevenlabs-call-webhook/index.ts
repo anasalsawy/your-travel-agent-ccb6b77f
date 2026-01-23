@@ -7,6 +7,72 @@ const corsHeaders = {
 };
 
 /**
+ * Send WhatsApp notification to boss about call completion
+ */
+async function notifyBossAboutCall(params: {
+  phoneNumber: string;
+  transcript: string;
+  summary?: string;
+  duration?: number;
+  confirmationNumber?: string;
+  bookedPrice?: number;
+  airline?: string;
+  route?: string;
+}): Promise<void> {
+  const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
+  const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
+  const ADMIN_PHONE = Deno.env.get("ADMIN_PHONE") || "+17134698336";
+
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    console.log("[BossNotify] Twilio not configured, skipping");
+    return;
+  }
+
+  // Build summary message
+  const durationStr = params.duration ? `${Math.round(params.duration / 60)} min` : "";
+  let message = `📱 *Maya Call Completed*\n`;
+  message += `📞 ${params.phoneNumber} ${durationStr}\n`;
+  
+  if (params.confirmationNumber) {
+    message += `\n✅ BOOKED!\n🔖 Conf: ${params.confirmationNumber}`;
+    if (params.bookedPrice) message += `\n💵 $${params.bookedPrice.toLocaleString()}`;
+  } else if (params.summary) {
+    message += `\n📝 ${params.summary.substring(0, 200)}`;
+  }
+  
+  if (params.route) message += `\n🛫 ${params.route}`;
+  if (params.airline) message += `\n✈️ ${params.airline}`;
+
+  try {
+    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+    const authString = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+
+    const response = await fetch(twilioUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${authString}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        From: `whatsapp:${TWILIO_PHONE_NUMBER}`,
+        To: `whatsapp:${ADMIN_PHONE}`,
+        Body: message,
+      }),
+    });
+
+    if (response.ok) {
+      console.log("[BossNotify] ✅ Sent call notification to boss");
+    } else {
+      const error = await response.text();
+      console.error("[BossNotify] Failed:", error);
+    }
+  } catch (error) {
+    console.error("[BossNotify] Exception:", error);
+  }
+}
+
+/**
  * ELEVENLABS CALL WEBHOOK
  * 
  * Receives call status updates and transcripts from ElevenLabs.
@@ -306,7 +372,7 @@ serve(async (req) => {
       if (updates.confirmation_number) {
         const existingInfo = await supabase
           .from("ticket_requests")
-          .select("issued_ticket_info, admin_notes")
+          .select("issued_ticket_info, admin_notes, origin, destination")
           .eq("id", callLog.ticket_request_id)
           .single();
 
@@ -316,6 +382,18 @@ serve(async (req) => {
             (existingInfo.data.issued_ticket_info ? `\n\n${existingInfo.data.issued_ticket_info}` : "");
           
           ticketUpdates.issued_ticket_info = newInfo;
+
+          // 🎉 Notify boss about successful booking with confirmation!
+          const route = `${existingInfo.data.origin || ''} → ${existingInfo.data.destination || ''}`;
+          notifyBossAboutCall({
+            phoneNumber: callLog.customer_phone || customerPhone || callLog.phone_number,
+            transcript: "",
+            confirmationNumber: updates.confirmation_number,
+            bookedPrice: updates.booked_price,
+            airline: callLog.airline,
+            route: route,
+            duration: updates.duration_seconds || duration,
+          }).catch((err: Error) => console.log("[Webhook] Booking notification failed:", err.message));
         }
       }
 
@@ -522,6 +600,16 @@ async function saveConversationToHistory(
       
       console.log("[Webhook] Triggered Maya Coach for analysis");
     }
+
+    // 8. Send boss notification about call completion (async, don't wait)
+    notifyBossAboutCall({
+      phoneNumber,
+      transcript: transcriptText,
+      summary,
+      duration,
+    }).catch((err: Error) => {
+      console.log("[Webhook] Boss notification failed (non-blocking):", err.message);
+    });
 
     return true;
 

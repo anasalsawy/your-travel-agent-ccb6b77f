@@ -6,6 +6,51 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/**
+ * Send WhatsApp notification to boss about key Maya events
+ */
+async function notifyBoss(type: string, summary: string): Promise<void> {
+  const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
+  const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
+  const ADMIN_PHONE = Deno.env.get("ADMIN_PHONE") || "+17134698336";
+
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    console.log("[BossNotify] Twilio not configured, skipping");
+    return;
+  }
+
+  const emoji = type === 'quote' ? '💬' : type === 'payment' ? '💰' : type === 'booking' ? '✅' : '📢';
+  const message = `${emoji} *Maya Update*\n\n${summary}`;
+
+  try {
+    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+    const authString = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+
+    const response = await fetch(twilioUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${authString}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        From: `whatsapp:${TWILIO_PHONE_NUMBER}`,
+        To: `whatsapp:${ADMIN_PHONE}`,
+        Body: message,
+      }),
+    });
+
+    if (response.ok) {
+      console.log("[BossNotify] ✅ Sent notification to boss:", type);
+    } else {
+      const error = await response.text();
+      console.error("[BossNotify] Failed:", error);
+    }
+  } catch (error) {
+    console.error("[BossNotify] Exception:", error);
+  }
+}
+
 // Owner trigger phrases that Maya should recognize
 const OWNER_TRIGGER_PHRASES = [
   "i'm your boss",
@@ -1976,6 +2021,10 @@ If you find prices like $500-$800, use 650 as average_price. Always return valid
 
           console.log(`Market avg per person: $${averagePrice}, Our price per person: $${pricePerPerson}, Total for ${passengers} passengers: $${totalQuote}`);
 
+          // Notify boss about quote (async, non-blocking)
+          notifyBoss('quote', `Quote given: ${origin} → ${destination}\n💵 $${totalQuote} for ${passengers} pax\n📅 ${departureDate}${returnDate ? ` - ${returnDate}` : ''}\n✈️ ${cabinClass}`)
+            .catch((err: Error) => console.log("[BossNotify] Quote notification failed:", err.message));
+
           return JSON.stringify({
             success: true,
             route: `${origin} → ${destination}`,
@@ -3021,6 +3070,13 @@ If you find prices like $500-$800, use 650 as average_price. Always return valid
               },
               status: "sent"
             });
+
+            // Notify boss about email sent (async)
+            if (args.include_quote_details) {
+              const q = args.include_quote_details;
+              notifyBoss('quote', `📧 Quote emailed to ${args.to_email}\n🛫 ${q.route || 'N/A'}\n💵 $${q.price?.toLocaleString() || 'TBD'}`)
+                .catch((err: Error) => console.log("[BossNotify] Email notification failed:", err.message));
+            }
 
             return JSON.stringify({
               success: true,
