@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall, CreditCard, TrendingUp, Play } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall, CreditCard, TrendingUp, Play, MessagesSquare } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
@@ -19,6 +19,7 @@ import { AdminCallLogs } from "@/components/admin/AdminCallLogs";
 import { AdminInventory } from "@/components/admin/AdminInventory";
 import { AdminQuoteLogs } from "@/components/admin/AdminQuoteLogs";
 import { AdminBookingQueue } from "@/components/admin/AdminBookingQueue";
+import { AdminConversations } from "@/components/admin/AdminConversations";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -117,6 +118,10 @@ export default function AdminPage() {
               </TabsTrigger>
               {isAdmin && (
                 <>
+                  <TabsTrigger value="conversations" className="gap-2">
+                    <MessagesSquare className="w-4 h-4" />
+                    Maya Logs
+                  </TabsTrigger>
                   <TabsTrigger value="inventory" className="gap-2">
                     <CreditCard className="w-4 h-4" />
                     Inventory
@@ -183,6 +188,10 @@ export default function AdminPage() {
 
             {isAdmin && (
               <>
+                <TabsContent value="conversations">
+                  <AdminConversations />
+                </TabsContent>
+
                 <TabsContent value="inventory">
                   <AdminInventory />
                 </TabsContent>
