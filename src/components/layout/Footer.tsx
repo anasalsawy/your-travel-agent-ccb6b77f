@@ -42,6 +42,16 @@ export function Footer() {
                   FAQ
                 </Link>
               </li>
+              <li>
+                <Link to="/about" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  About Us
+                </Link>
+              </li>
+              <li>
+                <Link to="/contact" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  Contact
+                </Link>
+              </li>
             </ul>
           </div>
 
