@@ -1027,25 +1027,7 @@ const TOOLS: any[] = [
       }
     }
   },
-  {
-    type: "function",
-    function: {
-      name: "send_email",
-      description: "Send an email",
-      parameters: {
-        type: "object",
-        properties: {
-          to: { type: "string" },
-          subject: { type: "string" },
-          body: { type: "string" },
-          attach_details: { type: "boolean" },
-          request_id: { type: "string" }
-        },
-        required: ["to", "subject", "body"],
-        additionalProperties: false
-      }
-    }
-  },
+  // NOTE: send_email removed - we cannot send emails. Maya must provide info directly in chat.
   {
     type: "function",
     function: {
