@@ -296,6 +296,51 @@ export type Database = {
           },
         ]
       }
+      gift_cards: {
+        Row: {
+          airline: string
+          balance: number
+          card_identifier: string
+          card_reference: string
+          created_at: string
+          expiry_date: string | null
+          id: string
+          notes: string | null
+          original_balance: number
+          purchase_price: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          airline: string
+          balance: number
+          card_identifier: string
+          card_reference: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          notes?: string | null
+          original_balance: number
+          purchase_price?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          airline?: string
+          balance?: number
+          card_identifier?: string
+          card_reference?: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          notes?: string | null
+          original_balance?: number
+          purchase_price?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       marketplace_listings: {
         Row: {
           buyer_notified_at: string | null
@@ -564,6 +609,87 @@ export type Database = {
           },
         ]
       }
+      points_accounts: {
+        Row: {
+          account_identifier: string
+          airline: string
+          created_at: string
+          expiry_date: string | null
+          id: string
+          login_reference: string
+          notes: string | null
+          owner_name: string | null
+          points_balance: number
+          purchase_price: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_identifier: string
+          airline: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          login_reference: string
+          notes?: string | null
+          owner_name?: string | null
+          points_balance?: number
+          purchase_price?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_identifier?: string
+          airline?: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          login_reference?: string
+          notes?: string | null
+          owner_name?: string | null
+          points_balance?: number
+          purchase_price?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pricing_rules: {
+        Row: {
+          created_at: string
+          discount_percent: number
+          id: string
+          is_active: boolean
+          max_market_price: number | null
+          min_market_price: number | null
+          notes: string | null
+          priority: number
+          rule_name: string
+        }
+        Insert: {
+          created_at?: string
+          discount_percent?: number
+          id?: string
+          is_active?: boolean
+          max_market_price?: number | null
+          min_market_price?: number | null
+          notes?: string | null
+          priority?: number
+          rule_name: string
+        }
+        Update: {
+          created_at?: string
+          discount_percent?: number
+          id?: string
+          is_active?: boolean
+          max_market_price?: number | null
+          min_market_price?: number | null
+          notes?: string | null
+          priority?: number
+          rule_name?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -590,6 +716,87 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      quote_logs: {
+        Row: {
+          admin_notes: string | null
+          auto_approved: boolean
+          conversation_id: string | null
+          created_at: string
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          discount_applied: number | null
+          gift_card_id: string | null
+          id: string
+          market_price: number | null
+          passengers: number
+          payment_method: string | null
+          points_account_id: string | null
+          quoted_price: number
+          route: string
+          status: string
+          travel_dates: string
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          auto_approved?: boolean
+          conversation_id?: string | null
+          created_at?: string
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          discount_applied?: number | null
+          gift_card_id?: string | null
+          id?: string
+          market_price?: number | null
+          passengers?: number
+          payment_method?: string | null
+          points_account_id?: string | null
+          quoted_price: number
+          route: string
+          status?: string
+          travel_dates: string
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          auto_approved?: boolean
+          conversation_id?: string | null
+          created_at?: string
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          discount_applied?: number | null
+          gift_card_id?: string | null
+          id?: string
+          market_price?: number | null
+          passengers?: number
+          payment_method?: string | null
+          points_account_id?: string | null
+          quoted_price?: number
+          route?: string
+          status?: string
+          travel_dates?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_logs_gift_card_id_fkey"
+            columns: ["gift_card_id"]
+            isOneToOne: false
+            referencedRelation: "gift_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_logs_points_account_id_fkey"
+            columns: ["points_account_id"]
+            isOneToOne: false
+            referencedRelation: "points_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       seller_reviews: {
         Row: {
