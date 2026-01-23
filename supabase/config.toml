@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.elevenlabs-get-conversation]
 verify_jwt = false
+
+[functions.smart-quote]
+verify_jwt = false
