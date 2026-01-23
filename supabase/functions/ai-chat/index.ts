@@ -4404,7 +4404,7 @@ serve(async (req) => {
       // Find or create by session_id
       const { data: existingConv } = await supabase
         .from("ai_conversations")
-        .select("id")
+        .select("id, customer_id")
         .eq("session_id", sessionId)
         .maybeSingle();
 
@@ -4423,25 +4423,79 @@ serve(async (req) => {
       }
     }
 
+    // ========== UNIFIED CUSTOMER LINKING ==========
+    // Try to link conversation to a customer profile for unified history
+    let customerId: string | null = null;
+    let customerContext: any = null;
+    
+    // Check if we have an authenticated user (from Authorization header)
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      const { data: { user } } = await supabase.auth.getUser(token);
+      if (user) {
+        // User is signed in - link to their profile
+        customerId = user.id;
+        console.log(`[ai-chat] Authenticated user: ${user.id}`);
+        
+        // Link conversation to customer
+        await supabase.rpc("link_conversation_to_customer", {
+          p_conversation_id: convId,
+          p_customer_id: customerId
+        });
+      }
+    }
+    
+    // If we have a customer, load their full context (all channels)
+    if (customerId) {
+      const { data: context } = await supabase.rpc("get_customer_context", {
+        p_customer_id: customerId
+      });
+      if (context) {
+        customerContext = context;
+        console.log(`[ai-chat] Loaded customer context: ${context.conversation_count || 0} past conversations`);
+      }
+    }
+
     // Load conversation history if this is an existing conversation
     // This is CRITICAL for maintaining context across messages (especially WhatsApp)
     if (existingConversation && messages.length <= 1) {
       console.log(`[ai-chat] Loading conversation history for ${convId}`);
-      const { data: history } = await supabase
-        .from("ai_chat_messages")
-        .select("role, content")
-        .eq("conversation_id", convId)
-        .order("created_at", { ascending: true })
-        .limit(50); // Keep last 50 messages for context
       
-      if (history && history.length > 0) {
-        // Prepend history to current messages (current message is the new one)
-        const lastUserMessage = messages[messages.length - 1];
-        messages = [
-          ...history.map((m: any) => ({ role: m.role, content: m.content })),
-          ...(lastUserMessage ? [lastUserMessage] : [])
-        ];
-        console.log(`[ai-chat] Loaded ${history.length} previous messages`);
+      // If we have full customer context, use messages from ALL their conversations
+      if (customerContext?.recent_messages) {
+        const recentMessages = customerContext.recent_messages || [];
+        // Filter to just the recent ones and format for API
+        const historyMessages = recentMessages
+          .slice(0, 50)
+          .reverse()
+          .map((m: any) => ({ role: m.role, content: m.content }));
+        
+        if (historyMessages.length > 0) {
+          const lastUserMessage = messages[messages.length - 1];
+          messages = [
+            ...historyMessages,
+            ...(lastUserMessage ? [lastUserMessage] : [])
+          ];
+          console.log(`[ai-chat] Loaded ${historyMessages.length} messages from unified history`);
+        }
+      } else {
+        // Fallback: just this conversation's history
+        const { data: history } = await supabase
+          .from("ai_chat_messages")
+          .select("role, content")
+          .eq("conversation_id", convId)
+          .order("created_at", { ascending: true })
+          .limit(50);
+        
+        if (history && history.length > 0) {
+          const lastUserMessage = messages[messages.length - 1];
+          messages = [
+            ...history.map((m: any) => ({ role: m.role, content: m.content })),
+            ...(lastUserMessage ? [lastUserMessage] : [])
+          ];
+          console.log(`[ai-chat] Loaded ${history.length} previous messages`);
+        }
       }
     }
 
@@ -4608,20 +4662,47 @@ serve(async (req) => {
     let activeSystemPrompt = SYSTEM_PROMPT;
     let activeTools = TOOLS;
     
+    // Add customer context to prompt if available
+    let customerContextPrompt = "";
+    if (customerContext) {
+      const profile = customerContext.profile || {};
+      const ticketRequests = customerContext.ticket_requests || [];
+      const orders = customerContext.orders || [];
+      const conversationCount = customerContext.conversation_count || 0;
+      
+      customerContextPrompt = `
+
+═══════════════════════════════════════════════════════════════════
+CUSTOMER CONTEXT (you remember this person!)
+═══════════════════════════════════════════════════════════════════
+${profile.name ? `Name: ${profile.name}` : "Name: Not provided yet"}
+${profile.email ? `Email: ${profile.email}` : ""}
+${profile.phone ? `Phone: ${profile.phone}` : ""}
+Previous conversations: ${conversationCount}
+${ticketRequests.length > 0 ? `\nRecent ticket requests:\n${ticketRequests.slice(0, 3).map((t: any) => `  - ${t.route} (${t.dates}) - Status: ${t.status}${t.quoted_price ? `, Quoted: $${t.quoted_price}` : ''}`).join('\n')}` : ''}
+${orders.length > 0 ? `\nRecent orders:\n${orders.slice(0, 3).map((o: any) => `  - $${o.amount} - Status: ${o.status}`).join('\n')}` : ''}
+
+IMPORTANT: Use this context naturally. If they're a returning customer, acknowledge it warmly.
+If they have pending requests, mention them proactively when relevant.
+═══════════════════════════════════════════════════════════════════`;
+    }
+    
     if (ownerModeJustVerified) {
       // Owner just verified - add the verification confirmation
-      activeSystemPrompt = SYSTEM_PROMPT + `
+      activeSystemPrompt = SYSTEM_PROMPT + customerContextPrompt + `
 
 OWNER MODE ACTIVE - VERIFICATION JUST COMPLETED:
 The owner has just verified their identity. Start your response with "Verified. Yes sir, what can I do for you today?"
 You now have UNLIMITED authority. Share ALL business information freely - use the business intelligence tools proactively.`;
     } else if (isOwnerMode) {
       // Already in owner mode from previous verification
-      activeSystemPrompt = SYSTEM_PROMPT + `
+      activeSystemPrompt = SYSTEM_PROMPT + customerContextPrompt + `
 
 OWNER MODE ACTIVE:
 You are speaking with the verified owner of Your Travel Agent. Address them respectfully as "sir" or "boss".
 You have UNLIMITED authority. Share ALL business information freely and proactively.`;
+    } else {
+      activeSystemPrompt = SYSTEM_PROMPT + customerContextPrompt;
     }
 
     // Prepare messages with system prompt

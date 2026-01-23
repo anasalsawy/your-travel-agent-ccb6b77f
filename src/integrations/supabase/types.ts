@@ -59,6 +59,13 @@ export type Database = {
             referencedRelation: "ai_conversations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "admin_alerts_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "customer_conversation_history"
+            referencedColumns: ["conversation_id"]
+          },
         ]
       }
       ai_chat_messages: {
@@ -94,6 +101,13 @@ export type Database = {
             referencedRelation: "ai_conversations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ai_chat_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "customer_conversation_history"
+            referencedColumns: ["conversation_id"]
+          },
         ]
       }
       ai_conversations: {
@@ -101,6 +115,7 @@ export type Database = {
           admin_notes: string | null
           created_at: string
           customer_email: string | null
+          customer_id: string | null
           customer_name: string | null
           customer_phone: string | null
           id: string
@@ -117,6 +132,7 @@ export type Database = {
           admin_notes?: string | null
           created_at?: string
           customer_email?: string | null
+          customer_id?: string | null
           customer_name?: string | null
           customer_phone?: string | null
           id?: string
@@ -133,6 +149,7 @@ export type Database = {
           admin_notes?: string | null
           created_at?: string
           customer_email?: string | null
+          customer_id?: string | null
           customer_name?: string | null
           customer_phone?: string | null
           id?: string
@@ -145,7 +162,22 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_conversation_history"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       bids: {
         Row: {
@@ -1305,9 +1337,27 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      customer_conversation_history: {
+        Row: {
+          conversation_id: string | null
+          conversation_started: string | null
+          customer_id: string | null
+          email: string | null
+          full_name: string | null
+          last_activity: string | null
+          messages: Json | null
+          phone: string | null
+          session_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      get_customer_context: { Args: { p_customer_id: string }; Returns: Json }
+      get_or_create_customer_by_phone: {
+        Args: { p_phone: string }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1317,6 +1367,10 @@ export type Database = {
       }
       is_approved_seller: { Args: { _user_id: string }; Returns: boolean }
       is_staff_or_admin: { Args: { _user_id: string }; Returns: boolean }
+      link_conversation_to_customer: {
+        Args: { p_conversation_id: string; p_customer_id: string }
+        Returns: undefined
+      }
       submit_order_payment_proof: {
         Args: { p_order_id: string; p_proof_upload_url: string }
         Returns: {
