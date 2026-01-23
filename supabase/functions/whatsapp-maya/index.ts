@@ -638,109 +638,201 @@ serve(async (req) => {
       }
     }
 
-    // 💬 ADMIN QUOTE REPLY - If admin is replying with a quote, forward it to the waiting customer
-    // This only triggers for the MAYA number (not the fatwa number, which was handled above)
+    // 🔓 AUTO-BOSS MODE FOR OWNER - If message is from admin phone, enable boss mode immediately
+    // No PIN required - the phone number IS the verification
     if (isFromAdmin && messageBody && !messageBody.toLowerCase().startsWith("pin:")) {
-      console.log("[WhatsApp Maya] 📤 ADMIN QUOTE DETECTED - finding pending customer...");
+      console.log("[WhatsApp Maya] 👑 OWNER DETECTED - Auto-enabling boss mode for:", fromNumber);
       
-      // Find the most recent pending quote request
-      const { data: pendingAlert } = await supabase
-        .from("admin_alerts")
-        .select("id, conversation_id, customer_context")
-        .eq("alert_type", "quote_request")
-        .is("admin_response", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+      // Check if this is a quote reply (contains specific patterns) or just a regular boss message
+      const isQuoteReply = /^\$?\d+|quote|price|offer|deal/i.test(messageBody.trim().split(' ')[0]);
       
-      if (pendingAlert) {
-        // Get the customer's phone from the conversation
-        const { data: conversation } = await supabase
-          .from("ai_conversations")
-          .select("customer_phone, session_id")
-          .eq("id", pendingAlert.conversation_id)
-          .single();
+      // Find the most recent pending quote request ONLY if this looks like a quote reply
+      if (isQuoteReply) {
+        const { data: pendingAlert } = await supabase
+          .from("admin_alerts")
+          .select("id, conversation_id, customer_context")
+          .eq("alert_type", "quote_request")
+          .is("admin_response", null)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
         
-        if (conversation?.customer_phone) {
-          const customerPhone = conversation.customer_phone;
-          console.log("[WhatsApp Maya] 📤 Sending quote to customer:", customerPhone);
+        if (pendingAlert) {
+          // Get the customer's phone from the conversation
+          const { data: conversation } = await supabase
+            .from("ai_conversations")
+            .select("customer_phone, session_id")
+            .eq("id", pendingAlert.conversation_id)
+            .single();
           
-          // Send quote to customer via WhatsApp
-          const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
-          const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-          const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
-          
-          if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
-            const quoteMessage = `Hey! Great news! 🎉\n\n${messageBody}\n\nWant to proceed? Just reply here or visit yourtravelagent.net to book!\n\n- Maya ✈️`;
+          if (conversation?.customer_phone) {
+            const customerPhone = conversation.customer_phone;
+            console.log("[WhatsApp Maya] 📤 Sending quote to customer:", customerPhone);
             
-            const formattedCustomer = customerPhone.includes("whatsapp:") ? customerPhone : `whatsapp:${customerPhone}`;
-            const formattedFrom = TWILIO_PHONE_NUMBER.includes("whatsapp:") ? TWILIO_PHONE_NUMBER : `whatsapp:${TWILIO_PHONE_NUMBER}`;
+            // Send quote to customer via WhatsApp
+            const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
+            const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
+            const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
             
-            const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
-            const twilioResponse = await fetch(twilioUrl, {
-              method: "POST",
-              headers: {
-                "Authorization": "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: new URLSearchParams({
-                From: formattedFrom,
-                To: formattedCustomer,
-                Body: quoteMessage,
-              }),
-            });
-            
-            if (twilioResponse.ok) {
-              console.log("[WhatsApp Maya] ✅ Quote sent to customer successfully!");
+            if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
+              const quoteMessage = `Hey! Great news! 🎉\n\n${messageBody}\n\nWant to proceed? Just reply here or visit yourtravelagent.net to book!\n\n- Maya ✈️`;
               
-              // Update the alert and conversation
-              await supabase
-                .from("admin_alerts")
-                .update({
-                  admin_response: messageBody,
-                  responded_at: new Date().toISOString(),
-                  is_read: true,
-                })
-                .eq("id", pendingAlert.id);
+              const formattedCustomer = customerPhone.includes("whatsapp:") ? customerPhone : `whatsapp:${customerPhone}`;
+              const formattedFrom = TWILIO_PHONE_NUMBER.includes("whatsapp:") ? TWILIO_PHONE_NUMBER : `whatsapp:${TWILIO_PHONE_NUMBER}`;
               
-              await supabase
-                .from("ai_conversations")
-                .update({ status: "quote_delivered", needs_admin_attention: false })
-                .eq("id", pendingAlert.conversation_id);
+              const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+              const twilioResponse = await fetch(twilioUrl, {
+                method: "POST",
+                headers: {
+                  "Authorization": "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
+                  "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                  From: formattedFrom,
+                  To: formattedCustomer,
+                  Body: quoteMessage,
+                }),
+              });
               
-              // Also add to conversation history so Maya knows the quote was delivered
-              const sessionId = conversation.session_id;
-              let history = conversationHistory.get(sessionId) || [];
-              history.push({ role: "assistant", content: `I sent the customer this quote: "${messageBody}"` });
-              conversationHistory.set(sessionId, history);
-              
-              return new Response(
-                `<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Quote sent to ${customerPhone}!</Message></Response>`,
-                { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
-              );
-            } else {
-              const errorText = await twilioResponse.text();
-              console.error("[WhatsApp Maya] Failed to send quote:", errorText);
-              return new Response(
-                `<?xml version="1.0" encoding="UTF-8"?><Response><Message>❌ Failed to send quote. Error: ${errorText.substring(0, 100)}</Message></Response>`,
-                { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
-              );
+              if (twilioResponse.ok) {
+                console.log("[WhatsApp Maya] ✅ Quote sent to customer successfully!");
+                
+                // Update the alert and conversation
+                await supabase
+                  .from("admin_alerts")
+                  .update({
+                    admin_response: messageBody,
+                    responded_at: new Date().toISOString(),
+                    is_read: true,
+                  })
+                  .eq("id", pendingAlert.id);
+                
+                await supabase
+                  .from("ai_conversations")
+                  .update({ status: "quote_delivered", needs_admin_attention: false })
+                  .eq("id", pendingAlert.conversation_id);
+                
+                // Also add to conversation history so Maya knows the quote was delivered
+                const sessionId = conversation.session_id;
+                let history = conversationHistory.get(sessionId) || [];
+                history.push({ role: "assistant", content: `I sent the customer this quote: "${messageBody}"` });
+                conversationHistory.set(sessionId, history);
+                
+                return new Response(
+                  `<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Quote sent to ${customerPhone}!</Message></Response>`,
+                  { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+                );
+              } else {
+                const errorText = await twilioResponse.text();
+                console.error("[WhatsApp Maya] Failed to send quote:", errorText);
+                return new Response(
+                  `<?xml version="1.0" encoding="UTF-8"?><Response><Message>❌ Failed to send quote. Error: ${errorText.substring(0, 100)}</Message></Response>`,
+                  { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+                );
+              }
             }
           }
-        } else {
-          console.log("[WhatsApp Maya] No customer phone found for conversation");
+        }
+      }
+      
+      // Not a quote reply - treat as boss mode conversation with Maya
+      // Create/get boss mode session
+      const bossSessionId = `whatsapp-boss-${normalizedFrom}`;
+      
+      // Get or create conversation with owner_verified = true
+      let { data: bossConvo } = await supabase
+        .from("ai_conversations")
+        .select("id")
+        .eq("session_id", bossSessionId)
+        .maybeSingle();
+      
+      if (!bossConvo) {
+        const { data: newBossConvo } = await supabase
+          .from("ai_conversations")
+          .insert({
+            session_id: bossSessionId,
+            customer_phone: fromNumber,
+            owner_verified: true,  // AUTO-VERIFIED!
+            status: "owner_mode"
+          })
+          .select("id")
+          .single();
+        bossConvo = newBossConvo;
+        console.log("[WhatsApp Maya] 👑 Created new boss mode conversation:", bossConvo?.id);
+      } else {
+        // Ensure owner_verified is set
+        await supabase
+          .from("ai_conversations")
+          .update({ owner_verified: true, status: "owner_mode" })
+          .eq("id", bossConvo.id);
+      }
+      
+      // Forward to ai-chat with owner mode context
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+      const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+      
+      try {
+        const aiChatResponse = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: messageBody,
+            conversation_id: bossConvo?.id,
+            phone_number: fromNumber,
+            is_owner: true  // Signal owner mode
+          }),
+        });
+        
+        let response = "";
+        const text = await aiChatResponse.text();
+        
+        // Parse SSE response
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+            try {
+              const json = JSON.parse(line.slice(6));
+              if (json.choices?.[0]?.delta?.content) {
+                response += json.choices[0].delta.content;
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+        
+        // Strip markdown for WhatsApp
+        response = response
+          .replace(/\*\*/g, '*')
+          .replace(/#{1,6}\s/g, '')
+          .replace(/`/g, '')
+          .trim();
+        
+        if (response) {
+          // Save to conversation
+          if (bossConvo?.id) {
+            await supabase.from("ai_chat_messages").insert([
+              { conversation_id: bossConvo.id, role: "user", content: messageBody, metadata: { channel: "whatsapp", phone: fromNumber, is_owner: true } },
+              { conversation_id: bossConvo.id, role: "assistant", content: response, metadata: { channel: "whatsapp", owner_mode: true } }
+            ]);
+          }
+          
           return new Response(
-            `<?xml version="1.0" encoding="UTF-8"?><Response><Message>❌ Couldn't find customer phone number for this quote request.</Message></Response>`,
+            `<?xml version="1.0" encoding="UTF-8"?><Response><Message>👑 ${response}</Message></Response>`,
             { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
           );
         }
-      } else {
-        console.log("[WhatsApp Maya] No pending quote requests found");
-        return new Response(
-          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>No pending quote requests. Customers need to message first!</Message></Response>`,
-          { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
-        );
+      } catch (error) {
+        console.error("[WhatsApp Maya] Boss mode ai-chat error:", error);
       }
+      
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>👑 Yes boss! How can I help you today?</Message></Response>`,
+        { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+      );
     }
 
     // 🔐 CHECK FOR VERIFICATION PINS
