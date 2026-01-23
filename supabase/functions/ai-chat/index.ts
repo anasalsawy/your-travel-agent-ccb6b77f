@@ -4531,7 +4531,11 @@ serve(async (req) => {
       ));
     
     // ElevenLabs sends messages directly, our web client sends { messages, sessionId }
+    // Also support { message } for single-message format from WhatsApp and other channels
     let messages = body.messages || [];
+    if (!messages.length && body.message) {
+      messages = [{ role: "user", content: body.message }];
+    }
     let sessionId = body.sessionId || body.session_id || `elevenlabs-${Date.now()}`;
     let conversationId = body.conversationId || body.conversation_id || null;
     
@@ -4715,13 +4719,46 @@ serve(async (req) => {
     // CRITICAL: Load owner_verified from DATABASE, not in-memory (edge functions are stateless!)
     const { data: convData } = await supabase
       .from("ai_conversations")
-      .select("owner_verified")
+      .select("owner_verified, customer_phone")
       .eq("id", convId)
       .single();
     
     let isOwnerMode = convData?.owner_verified || false;
     const verificationState = ownerVerificationStates.get(convId) || { awaitingPin: false, attempts: 0 };
     let ownerModeJustVerified = false;
+
+    // 🔓 AUTO-OWNER DETECTION BY PHONE NUMBER
+    // If the request comes with is_owner: true OR the phone matches admin_phone, auto-enable boss mode
+    const phoneNumber = body.phone_number || convData?.customer_phone;
+    console.log(`[ai-chat] Phone check: phone_number=${phoneNumber}, is_owner=${body.is_owner}`);
+    if (!isOwnerMode && phoneNumber) {
+      const { data: adminPhoneSetting } = await supabase
+        .from("site_settings")
+        .select("value")
+        .eq("key", "admin_phone")
+        .maybeSingle();
+      
+      const adminPhone = adminPhoneSetting?.value || "+17134698336";
+      const normalizedPhone = phoneNumber.replace(/\D/g, '');
+      const normalizedAdmin = adminPhone.replace(/\D/g, '');
+      
+      const isOwnerPhone = normalizedPhone === normalizedAdmin || 
+                           normalizedPhone.endsWith(normalizedAdmin) || 
+                           normalizedAdmin.endsWith(normalizedPhone);
+      
+      if (isOwnerPhone || body.is_owner === true) {
+        isOwnerMode = true;
+        ownerModeJustVerified = true;
+        
+        // Persist to database
+        await supabase
+          .from("ai_conversations")
+          .update({ owner_verified: true })
+          .eq("id", convId);
+        
+        console.log(`[ai-chat] 👑 Auto-enabled owner mode for phone: ${phoneNumber}`);
+      }
+    }
 
     console.log(`[ai-chat] Owner mode for ${convId}: ${isOwnerMode}`);
 
