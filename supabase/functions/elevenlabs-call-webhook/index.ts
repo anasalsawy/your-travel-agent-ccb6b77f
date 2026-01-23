@@ -12,6 +12,9 @@ const corsHeaders = {
  * Receives call status updates and transcripts from ElevenLabs.
  * Updates call_logs and ticket_requests accordingly.
  * 
+ * CRITICAL: On call end, persists the full conversation to ai_chat_messages
+ * so Maya has unified history across voice, web, and WhatsApp channels.
+ * 
  * Configure this webhook URL in your ElevenLabs agent settings:
  * https://[project-id].supabase.co/functions/v1/elevenlabs-call-webhook
  */
@@ -45,12 +48,16 @@ serve(async (req) => {
       status,
       duration,
       transcript,
-      // Additional fields that might be sent
       recording_url,
       summary,
-      // Custom data we passed
       ticket_request_id,
+      // Customer identification (from dynamic variables or caller ID)
+      phone_number,
+      caller_id,
+      customer_id: payloadCustomerId,
     } = payload;
+
+    const customerPhone = phone_number || caller_id;
 
     // Find the call log by call_sid or conversation_id
     let callLog = null;
@@ -75,8 +82,21 @@ serve(async (req) => {
 
     if (!callLog) {
       console.log("[Webhook] No matching call log found for:", { call_sid, conversation_id });
+      
+      // Even without a call log, if we have a completed call with transcript,
+      // we should still save it to conversation history
+      if ((status === "completed" || event_type === "call.completed") && transcript && customerPhone) {
+        await saveConversationToHistory(supabase, {
+          phoneNumber: customerPhone,
+          transcript,
+          summary,
+          duration,
+          conversationId: conversation_id,
+        });
+      }
+      
       return new Response(
-        JSON.stringify({ received: true, matched: false }),
+        JSON.stringify({ received: true, matched: false, history_saved: !!transcript }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -97,6 +117,7 @@ serve(async (req) => {
         "in_progress": "in_progress",
         "answered": "in_progress",
         "completed": "completed",
+        "call.completed": "completed",
         "failed": "failed",
         "busy": "failed",
         "no-answer": "no_answer",
@@ -166,7 +187,7 @@ serve(async (req) => {
         const match = transcriptText.match(pattern);
         if (match && match[1]) {
           const price = parseFloat(match[1].replace(/,/g, ""));
-          if (price > 50 && price < 50000) { // Reasonable flight price range
+          if (price > 50 && price < 50000) {
             updates.booked_price = price;
             console.log("[Webhook] Extracted booked price:", updates.booked_price);
             break;
@@ -187,13 +208,30 @@ serve(async (req) => {
       console.log("[Webhook] Updated call log:", callLog.id, updates);
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // CRITICAL: Save conversation to Maya's unified history on call end
+    // ═══════════════════════════════════════════════════════════════════
+    let historySaved = false;
+    if (updates.status === "completed" && transcript) {
+      const phoneForHistory = customerPhone || callLog.customer_phone;
+      if (phoneForHistory) {
+        historySaved = await saveConversationToHistory(supabase, {
+          phoneNumber: phoneForHistory,
+          transcript,
+          summary,
+          duration: updates.duration_seconds || duration,
+          conversationId: conversation_id || callLog.conversation_id,
+          callLogId: callLog.id,
+        });
+      }
+    }
+
     // If call completed and we have a confirmation, update the ticket request
     if (updates.status === "completed" && callLog.ticket_request_id) {
       const ticketUpdates: Record<string, any> = {
-        active_call_id: null, // Clear active call
+        active_call_id: null,
       };
 
-      // If we got a confirmation number, add it to the ticket info
       if (updates.confirmation_number) {
         const existingInfo = await supabase
           .from("ticket_requests")
@@ -235,6 +273,7 @@ serve(async (req) => {
         success: true, 
         call_log_id: callLog.id,
         updates_applied: Object.keys(updates),
+        history_saved: historySaved,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -248,3 +287,207 @@ serve(async (req) => {
     );
   }
 });
+
+/**
+ * Save the voice call conversation to Maya's unified history (ai_conversations + ai_chat_messages)
+ * This ensures Maya remembers voice conversations just like web/WhatsApp
+ */
+async function saveConversationToHistory(
+  supabase: any,
+  params: {
+    phoneNumber: string;
+    transcript: string | object;
+    summary?: string;
+    duration?: number;
+    conversationId?: string;
+    callLogId?: string;
+  }
+): Promise<boolean> {
+  const { phoneNumber, transcript, summary, duration, conversationId, callLogId } = params;
+  
+  console.log("[Webhook] Saving call to Maya's unified history for:", phoneNumber);
+
+  try {
+    // 1. Get or create customer by phone
+    const { data: customerId } = await supabase.rpc("get_or_create_customer_by_phone", {
+      p_phone: phoneNumber
+    });
+
+    // 2. Create a session ID for voice calls
+    const sessionId = `voice-${phoneNumber.replace(/\D/g, "")}-${Date.now()}`;
+
+    // 3. Find or create conversation for this customer
+    let aiConversationId: string;
+    
+    // Check if there's a recent conversation (within 24 hours) for this customer
+    const { data: existingConvo } = await supabase
+      .from("ai_conversations")
+      .select("id")
+      .eq("customer_phone", phoneNumber)
+      .gte("updated_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (existingConvo) {
+      aiConversationId = existingConvo.id;
+      console.log("[Webhook] Using existing conversation:", aiConversationId);
+    } else {
+      // Create new conversation
+      const { data: newConvo, error: convoError } = await supabase
+        .from("ai_conversations")
+        .insert({
+          session_id: sessionId,
+          customer_id: customerId,
+          customer_phone: phoneNumber,
+          status: "active",
+        })
+        .select("id")
+        .single();
+
+      if (convoError || !newConvo) {
+        console.error("[Webhook] Failed to create conversation:", convoError);
+        return false;
+      }
+      
+      aiConversationId = newConvo.id;
+      console.log("[Webhook] Created new conversation:", aiConversationId);
+    }
+
+    // 4. Parse and save transcript messages
+    const transcriptText = typeof transcript === "string" 
+      ? transcript 
+      : JSON.stringify(transcript);
+    
+    // Parse transcript into individual messages
+    const messages = parseTranscript(transcriptText);
+    
+    if (messages.length === 0) {
+      // If we can't parse individual messages, save as a summary
+      const summaryContent = summary || `[Voice Call - ${duration ? Math.round(duration / 60) + " min" : "completed"}]\n\n${transcriptText}`;
+      
+      await supabase
+        .from("ai_chat_messages")
+        .insert({
+          conversation_id: aiConversationId,
+          role: "system",
+          content: summaryContent,
+          metadata: {
+            source: "voice_call",
+            call_log_id: callLogId,
+            elevenlabs_conversation_id: conversationId,
+            duration_seconds: duration,
+          },
+        });
+    } else {
+      // Insert each message separately
+      const messageInserts = messages.map((msg: { role: string; content: string }) => ({
+        conversation_id: aiConversationId,
+        role: msg.role,
+        content: msg.content,
+        metadata: {
+          source: "voice_call",
+          call_log_id: callLogId,
+          elevenlabs_conversation_id: conversationId,
+        },
+      }));
+
+      const { error: insertError } = await supabase
+        .from("ai_chat_messages")
+        .insert(messageInserts);
+
+      if (insertError) {
+        console.error("[Webhook] Failed to insert messages:", insertError);
+        return false;
+      }
+    }
+
+    // 5. Add call summary as a final system note if provided
+    if (summary) {
+      await supabase
+        .from("ai_chat_messages")
+        .insert({
+          conversation_id: aiConversationId,
+          role: "system",
+          content: `[Voice Call Summary] ${summary}`,
+          metadata: {
+            source: "voice_call_summary",
+            call_log_id: callLogId,
+            duration_seconds: duration,
+          },
+        });
+    }
+
+    // 6. Update conversation timestamp
+    await supabase
+      .from("ai_conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", aiConversationId);
+
+    console.log("[Webhook] Successfully saved", messages.length || 1, "messages to conversation:", aiConversationId);
+    return true;
+
+  } catch (error) {
+    console.error("[Webhook] Error saving to history:", error);
+    return false;
+  }
+}
+
+/**
+ * Parse transcript into individual messages
+ * Handles various transcript formats from ElevenLabs
+ */
+function parseTranscript(transcript: string): Array<{ role: string; content: string }> {
+  const messages: Array<{ role: string; content: string }> = [];
+
+  // Try JSON array format first
+  try {
+    const parsed = JSON.parse(transcript);
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (item.role && item.content) {
+          messages.push({
+            role: item.role === "agent" ? "assistant" : "user",
+            content: item.content,
+          });
+        } else if (item.text && item.speaker) {
+          messages.push({
+            role: item.speaker === "agent" ? "assistant" : "user",
+            content: item.text,
+          });
+        }
+      }
+      return messages;
+    }
+  } catch {
+    // Not JSON, try text parsing
+  }
+
+  // Try line-by-line parsing with speaker labels
+  // Format: "Agent: Hello how can I help?" or "User: I want to book"
+  const lines = transcript.split("\n").filter(l => l.trim());
+  
+  for (const line of lines) {
+    const agentMatch = line.match(/^(?:Agent|Maya|Assistant|AI):\s*(.+)/i);
+    const userMatch = line.match(/^(?:User|Customer|Caller|Human):\s*(.+)/i);
+
+    if (agentMatch) {
+      messages.push({ role: "assistant", content: agentMatch[1].trim() });
+    } else if (userMatch) {
+      messages.push({ role: "user", content: userMatch[1].trim() });
+    }
+  }
+
+  // If no speaker labels, try alternating pattern or return empty
+  if (messages.length === 0 && lines.length >= 2) {
+    // Fallback: assume alternating user/assistant
+    for (let i = 0; i < lines.length; i++) {
+      messages.push({
+        role: i % 2 === 0 ? "user" : "assistant",
+        content: lines[i].trim(),
+      });
+    }
+  }
+
+  return messages;
+}
