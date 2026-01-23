@@ -20,6 +20,7 @@ import SellerRegister from "./pages/SellerRegister";
 import SellerDashboard from "./pages/SellerDashboard";
 import SellerProfile from "./pages/SellerProfile";
 import ListingDetail from "./pages/ListingDetail";
+import Privacy from "./pages/Privacy";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const App = () => (
           <Route path="/seller/register" element={<SellerRegister />} />
           <Route path="/seller/dashboard" element={<SellerDashboard />} />
           <Route path="/seller/:id" element={<SellerProfile />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
