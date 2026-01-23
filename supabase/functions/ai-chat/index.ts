@@ -189,11 +189,16 @@ PayPal works too. Once confirmed, I'll book immediately!"
 FOR EXPENSIVE TICKETS ($2000+):
 Offer 50% deposit: "We can split it - 50% now locks the price, balance before ticketing."
 
-⚠️ EMAIL CAPABILITY - WE CANNOT SEND EMAILS ⚠️
-NEVER promise to email anything. Always provide info directly in chat.
-❌ "I'll email you the details" - WRONG
-❌ "Check your email" - WRONG  
-✅ "Here are the payment details..." - CORRECT
+📧 EMAIL CAPABILITY - USE IT!
+You CAN and SHOULD send emails to customers for:
+- Quote summaries with full details
+- Payment instructions (Zelle/PayPal details)
+- Booking confirmations
+- Follow-ups after quotes
+
+USE THE send_email TOOL to email customers. Example:
+"I just sent you an email with all the details!"
+"Check your inbox - I've emailed you the payment instructions."
 
 ═══════════════════════════════════════════════════════════════════
 INTERNAL PAYMENT & BOOKING (for airline calls - NOT customers)
@@ -415,13 +420,19 @@ Be PROACTIVE - check for pending escrow actions and handle them without being as
 - currency_convert: Convert currencies
 - calculate_trip_cost: Full trip estimate
 
-📞 COMMUNICATION (SMS & CALLS ONLY - NO EMAIL!):
+📞 COMMUNICATION (SMS, EMAIL & CALLS!):
 - send_sms: TEXT customers for updates, confirmations, follow-ups - THIS ACTUALLY SENDS REAL TEXTS!
+- send_email: EMAIL customers with quotes, payment instructions, confirmations - THIS ACTUALLY SENDS REAL EMAILS!
 - send_whatsapp: WhatsApp message
 - make_phone_call: MAKE OUTBOUND PHONE CALLS on owner's behalf - OWNER MODE ONLY!
 - log_note: Add notes to file
 - flag_for_admin: Escalate to supervisor
-⚠️ NO EMAIL CAPABILITY - provide all info directly in chat!
+
+📧 EMAIL BEST PRACTICES:
+- Send quote details by email so customers can reference later
+- Always email payment instructions for clarity
+- Follow up with email after booking confirmations
+- Include all flight details, prices, and next steps in emails
 
 💡 PROACTIVE SMS FOLLOW-UP STRATEGY:
 When you find deals, get quotes, or have updates - TEXT the customer proactively! Don't wait.
@@ -1050,7 +1061,39 @@ const TOOLS: any[] = [
       }
     }
   },
-  // NOTE: send_email removed - we cannot send emails. Maya must provide info directly in chat.
+  {
+    type: "function",
+    function: {
+      name: "send_email",
+      description: "Send an email to a customer with quote details, payment instructions, confirmations, or follow-ups. Use this for formal communications that customers may want to reference later.",
+      parameters: {
+        type: "object",
+        properties: {
+          to_email: { type: "string", description: "Customer's email address" },
+          subject: { type: "string", description: "Email subject line" },
+          message: { type: "string", description: "Email body content (can include flight details, payment info, etc.)" },
+          email_type: { 
+            type: "string", 
+            enum: ["quote", "payment_instructions", "confirmation", "follow_up", "general"],
+            description: "Type of email for proper formatting" 
+          },
+          include_quote_details: {
+            type: "object",
+            description: "Optional quote details to include",
+            properties: {
+              route: { type: "string" },
+              price: { type: "number" },
+              travel_dates: { type: "string" },
+              passengers: { type: "number" },
+              cabin_class: { type: "string" }
+            }
+          }
+        },
+        required: ["to_email", "subject", "message"],
+        additionalProperties: false
+      }
+    }
+  },
   {
     type: "function",
     function: {
@@ -2869,6 +2912,147 @@ If you find prices like $500-$800, use 650 as average_price. Always return valid
           return JSON.stringify({
             success: false,
             message: "Couldn't send SMS right now. I'll follow up another way.",
+          });
+        }
+      }
+
+      case "send_email": {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        
+        if (!supabaseUrl || !supabaseServiceKey) {
+          console.error("Supabase credentials not configured for email");
+          return JSON.stringify({ success: false, message: "Email service temporarily unavailable. Let me give you the info directly instead." });
+        }
+
+        try {
+          // Build email HTML content
+          let htmlContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 20px; border-radius: 8px 8px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">Your Travel Agent</h1>
+                <p style="color: #a0c4e8; margin: 5px 0 0 0; font-size: 14px;">Premium Travel at Unbeatable Prices</p>
+              </div>
+              <div style="background: #f8f9fa; padding: 20px; border: 1px solid #e9ecef; border-top: none;">
+          `;
+
+          // Add quote details if provided
+          if (args.include_quote_details) {
+            const q = args.include_quote_details;
+            htmlContent += `
+              <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #d4af37;">
+                <h2 style="color: #1e3a5f; margin: 0 0 10px 0; font-size: 18px;">✈️ Your Flight Quote</h2>
+                <table style="width: 100%; border-collapse: collapse;">
+                  ${q.route ? `<tr><td style="padding: 8px 0; color: #666;">Route:</td><td style="padding: 8px 0; font-weight: bold;">${q.route}</td></tr>` : ''}
+                  ${q.travel_dates ? `<tr><td style="padding: 8px 0; color: #666;">Travel Dates:</td><td style="padding: 8px 0; font-weight: bold;">${q.travel_dates}</td></tr>` : ''}
+                  ${q.passengers ? `<tr><td style="padding: 8px 0; color: #666;">Passengers:</td><td style="padding: 8px 0; font-weight: bold;">${q.passengers}</td></tr>` : ''}
+                  ${q.cabin_class ? `<tr><td style="padding: 8px 0; color: #666;">Cabin:</td><td style="padding: 8px 0; font-weight: bold;">${q.cabin_class}</td></tr>` : ''}
+                  ${q.price ? `<tr><td style="padding: 8px 0; color: #666;">Total Price:</td><td style="padding: 8px 0; font-weight: bold; color: #28a745; font-size: 20px;">$${q.price.toLocaleString()}</td></tr>` : ''}
+                </table>
+              </div>
+            `;
+          }
+
+          // Add main message
+          htmlContent += `
+              <div style="background: white; padding: 15px; border-radius: 8px;">
+                ${args.message.replace(/\n/g, '<br>')}
+              </div>
+            </div>
+            <div style="background: #1e3a5f; padding: 15px; border-radius: 0 0 8px 8px; text-align: center;">
+              <p style="color: #a0c4e8; margin: 0; font-size: 12px;">Questions? Reply to this email or chat with Maya at yourtravelagent.net</p>
+              <p style="color: #d4af37; margin: 10px 0 0 0; font-size: 11px;">💳 We accept Zelle, PayPal, and Bitcoin for secure payments</p>
+            </div>
+          </div>
+          `;
+
+          // Call send-notification edge function
+          const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              type: "test_email", // Using test_email type but overriding content
+              customerEmail: args.to_email,
+              data: {
+                subject: args.subject,
+                html: htmlContent,
+                custom_content: true
+              }
+            }),
+          });
+
+          // Actually, let's call Resend directly for more control
+          const resendApiKey = Deno.env.get("RESEND_API_KEY");
+          if (!resendApiKey) {
+            console.error("RESEND_API_KEY not configured");
+            return JSON.stringify({ success: false, message: "Email service not configured. Let me give you the info directly instead." });
+          }
+
+          const resendResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${resendApiKey}`,
+            },
+            body: JSON.stringify({
+              from: "Maya at Your Travel Agent <no-reply@your-travel-agent.net>",
+              to: [args.to_email],
+              subject: args.subject,
+              html: htmlContent,
+            }),
+          });
+
+          const resendResult = await resendResponse.json();
+          console.log("Resend email response:", resendResult);
+
+          if (resendResponse.ok && resendResult.id) {
+            // Log success
+            await supabase.from("notification_log").insert({
+              event_type: "email_sent",
+              recipient: args.to_email,
+              payload: { 
+                subject: args.subject, 
+                email_type: args.email_type || "general",
+                resend_id: resendResult.id,
+                has_quote: !!args.include_quote_details
+              },
+              status: "sent"
+            });
+
+            return JSON.stringify({
+              success: true,
+              message: `Email sent to ${args.to_email}! They should receive it shortly.`,
+              email_id: resendResult.id
+            });
+          } else {
+            console.error("Resend error:", resendResult);
+            await supabase.from("notification_log").insert({
+              event_type: "email_failed",
+              recipient: args.to_email,
+              payload: { subject: args.subject, error: resendResult.message || "Unknown error" },
+              status: "failed"
+            });
+
+            return JSON.stringify({
+              success: false,
+              message: "Couldn't send email right now. Let me give you all the details here instead."
+            });
+          }
+        } catch (emailError) {
+          console.error("Email sending error:", emailError);
+          await supabase.from("notification_log").insert({
+            event_type: "email_error",
+            recipient: args.to_email,
+            payload: { subject: args.subject, error: String(emailError) },
+            status: "error"
+          });
+
+          return JSON.stringify({
+            success: false,
+            message: "Email service had an issue. I'll provide all the details directly."
           });
         }
       }
