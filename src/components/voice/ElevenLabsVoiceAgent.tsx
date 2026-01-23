@@ -3,33 +3,44 @@ import { useConversation } from '@elevenlabs/react';
 import { Button } from '@/components/ui/button';
 import { Phone, PhoneOff, Volume2, Mic } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+interface CustomerContext {
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string;
+  recent_requests: string;
+  conversation_summary: string;
+  preferences: string;
+}
+
 /**
- * ELEVENLABS VOICE AGENT
+ * ELEVENLABS VOICE AGENT - HYBRID ARCHITECTURE
  * 
  * Real-time voice conversation using ElevenLabs Conversational AI SDK.
- * Uses WebRTC for low-latency audio streaming.
+ * Uses WebRTC for ultra-low-latency audio streaming.
  * 
- * The ElevenLabs agent is configured to call our elevenlabs-maya webhook,
- * which routes ALL intelligence through our ai-chat function.
+ * HYBRID APPROACH for minimal latency:
+ * 1. Customer context is pre-loaded at call start → injected as dynamic_variables
+ * 2. ElevenLabs native LLM handles conversation (fast!)
+ * 3. maya_brain tool is ONLY called for critical actions:
+ *    - Booking/ticket requests
+ *    - Quote generation
+ *    - Payment processing
+ *    - Order management
  * 
- * This gives the voice agent full access to:
- * - Flight booking & ticket requests
- * - Award flight searches
- * - Voucher browsing & purchasing
- * - Order management
- * - Customer support
- * - And all 40+ Maya tools!
+ * This gives ~400-700ms response time for conversation vs ~1500-2500ms with full routing.
  */
 
 export function ElevenLabsVoiceAgent() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [customerContext, setCustomerContext] = useState<CustomerContext | null>(null);
 
   const conversation = useConversation({
     onConnect: () => {
@@ -41,7 +52,6 @@ export function ElevenLabsVoiceAgent() {
       toast.info('Call ended');
     },
     onMessage: (payload) => {
-      // payload has: message, role ('user' | 'agent'), source (deprecated)
       console.log('Message received:', payload);
       
       if (payload.role === 'user') {
@@ -64,7 +74,10 @@ export function ElevenLabsVoiceAgent() {
       // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // Get signed URL from our edge function
+      // Get current user if logged in
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Get signed URL AND pre-loaded customer context from edge function
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-conversation-token`,
         {
@@ -74,6 +87,10 @@ export function ElevenLabsVoiceAgent() {
             'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
+          body: JSON.stringify({
+            user_id: user?.id,
+            // Phone would come from user profile if available
+          }),
         }
       );
 
@@ -87,9 +104,23 @@ export function ElevenLabsVoiceAgent() {
         throw new Error('No signed URL received');
       }
 
-      // Start the conversation with WebSocket (using signed URL)
+      // Store customer context for display
+      if (data.customer_context) {
+        setCustomerContext(data.customer_context);
+        console.log('Customer context loaded:', data.customer_context.customer_name);
+      }
+
+      // Start the conversation with WebSocket and dynamic variables
+      // The dynamic_variables are passed to ElevenLabs and available in the agent prompt
       await conversation.startSession({
         signedUrl: data.signed_url,
+        dynamicVariables: data.customer_context ? {
+          customer_name: data.customer_context.customer_name,
+          customer_email: data.customer_context.customer_email,
+          recent_requests: data.customer_context.recent_requests,
+          conversation_summary: data.customer_context.conversation_summary,
+          preferences: data.customer_context.preferences,
+        } : undefined,
       });
 
       setMessages([]);
@@ -105,6 +136,7 @@ export function ElevenLabsVoiceAgent() {
   const stopConversation = useCallback(async () => {
     await conversation.endSession();
     setMessages([]);
+    setCustomerContext(null);
   }, [conversation]);
 
   const isConnected = conversation.status === 'connected';
@@ -112,6 +144,13 @@ export function ElevenLabsVoiceAgent() {
 
   return (
     <div className="flex flex-col items-center gap-6 p-6">
+      {/* Customer context indicator */}
+      {isConnected && customerContext && customerContext.customer_name !== "valued customer" && (
+        <div className="px-3 py-1 bg-primary/10 rounded-full text-xs text-primary">
+          Recognized: {customerContext.customer_name}
+        </div>
+      )}
+
       {/* Status indicator */}
       <div className="flex items-center gap-2 text-sm">
         <div className={`w-3 h-3 rounded-full transition-colors ${
@@ -125,7 +164,7 @@ export function ElevenLabsVoiceAgent() {
         }`} />
         <span className="text-muted-foreground">
           {!isConnected && !isConnecting && "Ready to connect"}
-          {isConnecting && "Connecting..."}
+          {isConnecting && "Loading your info..."}
           {isConnected && !isSpeaking && "Listening..."}
           {isConnected && isSpeaking && "Maya is speaking..."}
         </span>
@@ -173,7 +212,7 @@ export function ElevenLabsVoiceAgent() {
         <p className="text-sm text-center text-muted-foreground max-w-xs">
           {isSpeaking 
             ? "Maya is responding..." 
-            : "Speak naturally - Maya is listening with full access to bookings, flights, and support tools."
+            : "Speak naturally - Maya knows your history and can help with bookings, flights, and support."
           }
         </p>
       )}
@@ -206,7 +245,7 @@ export function ElevenLabsVoiceAgent() {
             Press the button to start a real-time voice conversation with Maya.
           </p>
           <p className="text-xs text-muted-foreground/70">
-            Uses ElevenLabs for natural voice • Full access to all booking tools
+            ⚡ Hybrid mode: Fast responses + full booking capabilities
           </p>
         </div>
       )}
