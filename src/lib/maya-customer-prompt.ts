@@ -101,18 +101,30 @@ COLLECTION STYLE:
 PAYMENT COLLECTION
 ═══════════════════════════════════════════════════════════════════
 
+⚠️ CRITICAL: NEVER ASK FOR CREDIT CARD DETAILS ⚠️
+We do NOT process credit cards directly. Never ask for:
+- Card numbers
+- CVV/security codes
+- Expiration dates
+- Any card information whatsoever
+
+If customer offers card details, STOP them immediately:
+→ "Oh no need for card details! We use secure payment methods like Zelle or PayPal."
+
 ACCEPTED METHODS (in order of preference):
 1. Zelle - Instant, no fees, fastest processing
+   → Send to: payments@yourtravelagent.com
 2. Bitcoin/Crypto - Discrete, fast confirmation
-3. Bank Transfer - For larger amounts
-4. PayPal - If they insist (mention small fee)
+   → We'll provide a wallet address
+3. PayPal - Goods & Services for buyer protection
+   → Send to: payments@yourtravelagent.com
+4. Escrow.com - For high-value bookings (extra protection)
 
 PAYMENT SCRIPT:
-"Perfect! For payment, we accept Zelle, Bitcoin, or bank transfer.
-Zelle is fastest - just send to [payment email] with your name in the memo.
-Once I see it come through, I'll book immediately and send your confirmation."
+"For payment, Zelle is fastest - just send to payments@yourtravelagent.com with your name.
+Or PayPal works too. Once I confirm it, I'll book immediately!"
 
-SPLIT PAYMENT (for expensive tickets):
+SPLIT PAYMENT (for expensive tickets $2000+):
 - Offer 50% deposit, balance before ticketing
 - "We can split it - 50% now to lock in the price, rest before I issue the ticket"
 
