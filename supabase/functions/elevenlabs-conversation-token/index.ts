@@ -223,14 +223,21 @@ serve(async (req) => {
   }
 
   try {
-    // Parse request body for customer identification
+    // Parse request body
     let phoneNumber: string | undefined;
     let userId: string | undefined;
+    let isWebhook = false;
 
     try {
       const body = await req.json();
       phoneNumber = body.phone_number;
       userId = body.user_id;
+      
+      // Detect if this is an ElevenLabs webhook call (has conversation_id or agent_id in body)
+      if (body.conversation_id || body.agent_id) {
+        isWebhook = true;
+        console.log("ElevenLabs webhook call detected:", body.conversation_id);
+      }
     } catch {
       // No body provided, that's fine
     }
@@ -244,7 +251,33 @@ serve(async (req) => {
     // Fetch customer context for dynamic variables
     const customerContext = await fetchCustomerContext(supabase, phoneNumber, userId);
 
-    // Get signed URL from ElevenLabs
+    // If this is an ElevenLabs webhook call, return conversation_initiation_client_data format
+    if (isWebhook) {
+      console.log("Returning conversation_initiation_client_data format");
+      
+      // ElevenLabs expects this exact format for initiation webhook
+      const webhookResponse = {
+        dynamic_variables: {
+          customer_name: customerContext.customer_name,
+          customer_email: customerContext.customer_email,
+          customer_phone: customerContext.customer_phone,
+          recent_requests: customerContext.recent_requests,
+          conversation_summary: customerContext.conversation_summary,
+          preferences: customerContext.preferences,
+          customer_insights: customerContext.customer_insights,
+          proven_tactics: customerContext.proven_tactics,
+        },
+        // Optional: Override agent settings per-call
+        // conversation_config_override: {},
+      };
+
+      return new Response(
+        JSON.stringify(webhookResponse),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // For React client calls, get signed URL
     const response = await fetch(
       `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${ELEVENLABS_AGENT_ID}`,
       {
