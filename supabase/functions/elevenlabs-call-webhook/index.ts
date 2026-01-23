@@ -19,6 +19,56 @@ const corsHeaders = {
  * https://[project-id].supabase.co/functions/v1/elevenlabs-call-webhook
  */
 
+/**
+ * Verify HMAC signature from ElevenLabs webhook
+ */
+async function verifyHmacSignature(
+  payload: string,
+  signature: string | null,
+  secret: string
+): Promise<boolean> {
+  if (!signature) {
+    console.error("[Webhook] Missing ElevenLabs-Signature header");
+    return false;
+  }
+
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const signatureBuffer = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(payload)
+    );
+
+    const computedSignature = Array.from(new Uint8Array(signatureBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    // ElevenLabs signature format may be "sha256=<hex>" or just "<hex>"
+    const cleanSignature = signature.replace("sha256=", "").toLowerCase();
+    const isValid = computedSignature === cleanSignature;
+
+    if (!isValid) {
+      console.error("[Webhook] HMAC signature mismatch");
+      console.log("[Webhook] Expected:", computedSignature);
+      console.log("[Webhook] Received:", cleanSignature);
+    }
+
+    return isValid;
+  } catch (error) {
+    console.error("[Webhook] HMAC verification error:", error);
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -26,6 +76,7 @@ serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const WEBHOOK_SECRET = Deno.env.get("ELEVENLABS_WEBHOOK_SECRET");
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     console.error("[Webhook] Missing Supabase credentials");
@@ -35,10 +86,30 @@ serve(async (req) => {
     );
   }
 
+  // Read the raw body for HMAC verification
+  const rawBody = await req.text();
+  
+  // Verify HMAC signature if secret is configured
+  if (WEBHOOK_SECRET) {
+    const signature = req.headers.get("ElevenLabs-Signature") || req.headers.get("x-elevenlabs-signature");
+    const isValid = await verifyHmacSignature(rawBody, signature, WEBHOOK_SECRET);
+    
+    if (!isValid) {
+      console.error("[Webhook] HMAC verification failed - rejecting request");
+      return new Response(
+        JSON.stringify({ error: "Invalid signature" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    console.log("[Webhook] HMAC signature verified successfully");
+  } else {
+    console.warn("[Webhook] ELEVENLABS_WEBHOOK_SECRET not configured - skipping HMAC verification");
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const payload = await req.json();
+    const payload = JSON.parse(rawBody);
     console.log("[Webhook] Received payload:", JSON.stringify(payload, null, 2));
 
     const {
