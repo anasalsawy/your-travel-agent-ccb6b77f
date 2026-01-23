@@ -516,6 +516,35 @@ CRITICAL BEHAVIOR RULES:
 WHEN COLLECTING INFO:
 Gather naturally through conversation, not like a form. Once you have enough REAL info, take action immediately.
 
+═══════════════════════════════════════════════════════════════════
+OWNER/BOSS MODE COMMANDS (when owner_verified = true)
+═══════════════════════════════════════════════════════════════════
+
+When in Boss Mode, you have additional tools to manage customers and send messages:
+
+SENDING MESSAGES TO CUSTOMERS:
+When the owner says things like:
+- "Tell Sarah her flight is changed to Delta"
+- "Message the last customer about the delay"
+- "Let them know the price is $2500"
+- "Send John an update about his booking"
+
+Use the send_customer_message tool with:
+- customer_identifier: name, email, phone, or "last" for most recent
+- message: the core message (you'll personalize it as Maya)
+- channel: "whatsapp" (default), "sms", or "email"
+
+GETTING CUSTOMER INFO:
+- "Show me recent customers" → get_recent_customers
+- "Who's waiting on a quote?" → get_recent_customers with filter: "pending_quote"
+- "List pending payments" → get_recent_customers with filter: "pending_payment"
+
+UPDATING STATUS:
+- "Mark Sarah as ticketed" → update_customer_status
+- "Add a note to John's request" → update_customer_status with note
+
+Always confirm what you did: "Done! Sent Sarah: 'Your flight has been changed to Delta...'"
+
 Remember: You're Maya, a real travel consultant who can do almost anything to help customers. Be natural, be helpful, be human. Nothing stops you from helping.`;
 
 // Comprehensive tool definitions
@@ -1774,6 +1803,56 @@ const TOOLS: any[] = [
           search_recency: { type: "string", enum: ["day", "week", "month", "year"], description: "Filter results by recency" }
         },
         required: ["query"],
+        additionalProperties: false
+      }
+    }
+  },
+  // ==================== OWNER COMMAND TOOLS (BOSS MODE ONLY) ====================
+  {
+    type: "function",
+    function: {
+      name: "send_customer_message",
+      description: "Send a WhatsApp/SMS message to a customer on behalf of Maya. ONLY execute for verified owner in Boss Mode. Use this when the owner says things like 'tell Sarah her flight changed' or 'message the customer about the delay'.",
+      parameters: {
+        type: "object",
+        properties: {
+          customer_identifier: { type: "string", description: "Customer name, email, phone number, or 'last' for most recent customer" },
+          message: { type: "string", description: "The message to send to the customer (Maya will personalize it)" },
+          channel: { type: "string", enum: ["whatsapp", "sms", "email"], description: "Communication channel (default: whatsapp)" }
+        },
+        required: ["customer_identifier", "message"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_recent_customers",
+      description: "Get a list of recent customers with their contact info and latest interactions. ONLY execute for verified owner in Boss Mode.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: { type: "number", description: "Number of customers to return (default: 10)" },
+          filter: { type: "string", description: "Optional filter: 'pending_quote', 'pending_payment', 'recent_call', 'all'" }
+        },
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_customer_status",
+      description: "Update a customer's ticket request status or add notes. ONLY execute for verified owner in Boss Mode.",
+      parameters: {
+        type: "object",
+        properties: {
+          customer_identifier: { type: "string", description: "Customer name, email, phone, or request ID" },
+          status: { type: "string", description: "New status: 'quote_sent', 'payment_pending', 'ticketed', 'completed', 'cancelled'" },
+          note: { type: "string", description: "Note to add to the request" }
+        },
+        required: ["customer_identifier"],
         additionalProperties: false
       }
     }
@@ -4543,6 +4622,232 @@ If you find prices like $500-$800, use 650 as average_price. Always return valid
           console.error("Perplexity error:", error);
           return JSON.stringify({ success: false, error: "Search failed unexpectedly." });
         }
+      }
+
+      // ==================== OWNER COMMAND TOOLS (BOSS MODE ONLY) ====================
+      case "send_customer_message": {
+        // Verify owner mode
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command is only available in Boss Mode." });
+        }
+
+        const identifier = args.customer_identifier?.toLowerCase();
+        const channel = args.channel || "whatsapp";
+        let customerPhone: string | null = null;
+        let customerEmail: string | null = null;
+        let customerName: string | null = null;
+
+        // Find the customer
+        if (identifier === "last" || identifier === "recent" || identifier === "latest") {
+          // Get most recent customer from ticket_requests or ai_conversations
+          const { data: recentRequest } = await supabase
+            .from("ticket_requests")
+            .select("contact_phone, contact_email, passenger_name")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (recentRequest) {
+            customerPhone = recentRequest.contact_phone;
+            customerEmail = recentRequest.contact_email;
+            customerName = recentRequest.passenger_name;
+          }
+        } else {
+          // Search by name, email, or phone
+          const { data: matchingRequests } = await supabase
+            .from("ticket_requests")
+            .select("contact_phone, contact_email, passenger_name")
+            .or(`passenger_name.ilike.%${identifier}%,contact_email.ilike.%${identifier}%,contact_phone.ilike.%${identifier}%`)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          
+          if (matchingRequests?.length) {
+            customerPhone = matchingRequests[0].contact_phone;
+            customerEmail = matchingRequests[0].contact_email;
+            customerName = matchingRequests[0].passenger_name;
+          }
+        }
+
+        if (!customerPhone && !customerEmail) {
+          return JSON.stringify({ 
+            success: false, 
+            error: `Could not find customer "${args.customer_identifier}". Try a name, email, phone, or "last" for the most recent customer.`
+          });
+        }
+
+        // Send the message
+        const personalizedMessage = `Hey${customerName ? ` ${customerName.split(' ')[0]}` : ''}! ${args.message}\n\n- Maya ✈️`;
+
+        if (channel === "whatsapp" || channel === "sms") {
+          const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
+          const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
+          const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
+
+          if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER || !customerPhone) {
+            return JSON.stringify({ success: false, error: "Twilio not configured or no phone number for customer" });
+          }
+
+          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+          const fromNumber = channel === "whatsapp" ? `whatsapp:${TWILIO_PHONE_NUMBER}` : TWILIO_PHONE_NUMBER;
+          const toNumber = channel === "whatsapp" ? `whatsapp:${customerPhone}` : customerPhone;
+
+          const response = await fetch(twilioUrl, {
+            method: "POST",
+            headers: {
+              "Authorization": "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              From: fromNumber,
+              To: toNumber,
+              Body: personalizedMessage,
+            }),
+          });
+
+          if (response.ok) {
+            // Notify boss about the message sent
+            notifyBoss('message', `📤 Sent to ${customerName || customerPhone}:\n"${args.message}"`)
+              .catch((err: Error) => console.log("[BossNotify] Message notification failed:", err.message));
+            
+            return JSON.stringify({ 
+              success: true, 
+              message: `Sent ${channel} to ${customerName || customerPhone}: "${args.message}"`
+            });
+          } else {
+            const error = await response.text();
+            return JSON.stringify({ success: false, error: `Failed to send: ${error.substring(0, 100)}` });
+          }
+        } else if (channel === "email" && customerEmail) {
+          const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+          if (!RESEND_API_KEY) {
+            return JSON.stringify({ success: false, error: "Email not configured" });
+          }
+
+          const response = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "Maya <maya@yourtravelagent.net>",
+              to: [customerEmail],
+              subject: "Update from Your Travel Agent ✈️",
+              html: `<p>${personalizedMessage.replace(/\n/g, '<br>')}</p>`,
+            }),
+          });
+
+          if (response.ok) {
+            return JSON.stringify({ 
+              success: true, 
+              message: `Emailed ${customerName || customerEmail}: "${args.message}"`
+            });
+          }
+        }
+
+        return JSON.stringify({ success: false, error: "Could not send message" });
+      }
+
+      case "get_recent_customers": {
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command is only available in Boss Mode." });
+        }
+
+        const limit = args.limit || 10;
+        let query = supabase
+          .from("ticket_requests")
+          .select("id, passenger_name, contact_email, contact_phone, origin, destination, status, created_at, quoted_price")
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (args.filter === "pending_quote") {
+          query = query.in("status", ["submitted", "pending"]);
+        } else if (args.filter === "pending_payment") {
+          query = query.eq("status", "quote_sent");
+        }
+
+        const { data: customers, error } = await query;
+
+        if (error) {
+          return JSON.stringify({ success: false, error: "Failed to fetch customers" });
+        }
+
+        const summary = customers?.map((c: any) => ({
+          name: c.passenger_name || "Unknown",
+          email: c.contact_email,
+          phone: c.contact_phone,
+          route: `${c.origin} → ${c.destination}`,
+          status: c.status,
+          price: c.quoted_price,
+          date: c.created_at
+        }));
+
+        return JSON.stringify({ 
+          success: true, 
+          customers: summary,
+          count: customers?.length || 0
+        });
+      }
+
+      case "update_customer_status": {
+        const { data: ownerCheck } = await supabase
+          .from("ai_conversations")
+          .select("owner_verified")
+          .eq("id", conversationId)
+          .single();
+        
+        if (!ownerCheck?.owner_verified) {
+          return JSON.stringify({ success: false, error: "This command is only available in Boss Mode." });
+        }
+
+        const identifier = args.customer_identifier?.toLowerCase();
+        
+        // Find the ticket request
+        const { data: matchingRequests } = await supabase
+          .from("ticket_requests")
+          .select("id, passenger_name, admin_notes")
+          .or(`passenger_name.ilike.%${identifier}%,contact_email.ilike.%${identifier}%,id.eq.${identifier}`)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (!matchingRequests?.length) {
+          return JSON.stringify({ success: false, error: `Could not find request for "${args.customer_identifier}"` });
+        }
+
+        const request = matchingRequests[0];
+        const updates: any = {};
+        
+        if (args.status) updates.status = args.status;
+        if (args.note) {
+          const existingNotes = request.admin_notes || "";
+          updates.admin_notes = `${existingNotes}\n[${new Date().toLocaleString()}] ${args.note}`.trim();
+        }
+
+        const { error } = await supabase
+          .from("ticket_requests")
+          .update(updates)
+          .eq("id", request.id);
+
+        if (error) {
+          return JSON.stringify({ success: false, error: "Failed to update request" });
+        }
+
+        return JSON.stringify({ 
+          success: true, 
+          message: `Updated ${request.passenger_name || request.id}: ${args.status ? `status → ${args.status}` : ""} ${args.note ? `note added` : ""}`
+        });
       }
 
       default:
