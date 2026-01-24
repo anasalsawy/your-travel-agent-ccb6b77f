@@ -97,9 +97,16 @@ YOU ARE A TRAVEL AGENT WHO GIVES QUOTES - NOT A SEARCH ENGINE.
 
 When someone asks about flights:
 1. SEARCH IMMEDIATELY using web_search_flights - do NOT ask clarifying questions first
-2. The tool will return an AVERAGE MARKET PRICE and YOUR QUOTE (50% of market price)
+2. The tool DELEGATES to Claude (your Manager) who does comprehensive research and returns YOUR QUOTE
 3. PRESENT YOUR QUOTE CONFIDENTLY as what you can offer them
 4. Do NOT show them the "market price" - only show YOUR QUOTE
+
+IMPORTANT: The web_search_flights tool automatically:
+- Searches real travel sites via Perplexity
+- Checks Alaska Airlines award availability
+- Checks our gift card and points inventory
+- Applies the correct pricing rules based on cabin class and route
+- Logs the quote for tracking
 
 SMART DEFAULTS (use these when info is missing):
 - No date given? Use a date 3-4 weeks from today as an example
@@ -129,7 +136,7 @@ HOW TO PRESENT QUOTES:
 
 AFTER giving the quote, you can ask: "Would you like me to book that, or check a different date?"
 
-ALWAYS USE web_search_flights - it searches real travel sites and calculates your quote automatically.
+ALWAYS USE web_search_flights - it connects to Claude (the Manager) for accurate pricing.
 
 ═══════════════════════════════════════════════════════════════════
 CORE BEHAVIOR RULES
@@ -1973,18 +1980,9 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         return JSON.stringify({ success: true, requests });
       }
 
-      // ==================== WEB SEARCH FLIGHTS (Perplexity) ====================
+      // ==================== WEB SEARCH FLIGHTS → DELEGATE TO CLAUDE-QUOTE ====================
       case "web_search_flights": {
-        console.log("web_search_flights called with args:", JSON.stringify(args));
-
-        const perplexityKey = Deno.env.get("PERPLEXITY_API_KEY");
-        if (!perplexityKey) {
-          console.error("PERPLEXITY_API_KEY not configured");
-          return JSON.stringify({
-            success: false,
-            error: "Web search is temporarily unavailable. Let me try the backup system.",
-          });
-        }
+        console.log("[Maya] web_search_flights delegating to claude-quote with args:", JSON.stringify(args));
 
         // Smart defaults for missing data
         const today = new Date();
@@ -2006,102 +2004,55 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         const cabinClass = args.cabin_class || "economy";
         const tripType = args.trip_type || (returnDate ? "round_trip" : "one_way");
 
-        // Build the search query
-        const tripLabel = tripType === "one_way" ? "one-way" : "round-trip";
-        const query = `${tripLabel} ${cabinClass} class flight from ${origin} to ${destination} departing ${departureDate}${returnDate ? ` returning ${returnDate}` : ""} for ${passengers} passenger${passengers > 1 ? "s" : ""}. Show prices from Expedia, Google Flights, Kayak, JustFly, Skyscanner. Include airline names and price ranges.`;
-
-        console.log("Perplexity search query:", query);
-
         try {
-          const response = await fetch("https://api.perplexity.ai/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${perplexityKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "sonar",
-              messages: [
-                {
-                  role: "system",
-                  content: `You are a flight price research assistant. Find the AVERAGE price for the requested flight route. 
-Return ONLY a JSON object in this exact format, nothing else:
-{"average_price": <number in USD>, "low_price": <number>, "high_price": <number>, "airlines": ["airline1", "airline2"]}
+          // Call Claude's quote function (the Manager handles all quoting)
+          const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+          const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
-If you find prices like $500-$800, use 650 as average_price. Always return valid JSON only.`,
-                },
-                { role: "user", content: query },
-              ],
-              search_domain_filter: [
-                "expedia.com",
-                "google.com/travel/flights",
-                "kayak.com",
-                "justfly.com",
-                "skyscanner.com",
-                "cheapoair.com",
-                "orbitz.com",
-              ],
-            }),
-          });
+          const quoteResponse = await fetch(
+            `${SUPABASE_URL}/functions/v1/claude-quote`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "apikey": SUPABASE_ANON_KEY || "",
+                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                origin,
+                destination,
+                departure_date: departureDate,
+                return_date: returnDate,
+                passengers,
+                cabin_class: cabinClass,
+                conversation_id: conversationId,
+              }),
+            }
+          );
 
-          if (!response.ok) {
-            const errText = await response.text();
-            console.error("Perplexity API error:", response.status, errText);
+          if (!quoteResponse.ok) {
+            const errText = await quoteResponse.text();
+            console.error("[Maya] claude-quote failed:", quoteResponse.status, errText);
             return JSON.stringify({
               success: false,
-              error: "Web search failed. Let me check our backup system.",
+              error: "Quote system temporarily unavailable. Let me try another method.",
             });
           }
 
-          const data = await response.json();
-          const content = data.choices?.[0]?.message?.content || "";
+          const quoteData = await quoteResponse.json();
 
-          console.log("Perplexity raw response:", content);
-
-          // Parse the price data and calculate quote (50% of market average)
-          let averagePrice = 0;
-          let lowPrice = 0;
-          let highPrice = 0;
-          let airlines: string[] = [];
-          
-          try {
-            // Try to extract JSON from response (may have extra text)
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              const priceData = JSON.parse(jsonMatch[0]);
-              averagePrice = priceData.average_price || 0;
-              lowPrice = priceData.low_price || 0;
-              highPrice = priceData.high_price || 0;
-              airlines = priceData.airlines || [];
-            }
-          } catch (parseErr) {
-            // If JSON parsing fails, try to extract price from text
-            const priceMatches = content.match(/\$?([\d,]+)/g);
-            if (priceMatches && priceMatches.length > 0) {
-              const prices: number[] = priceMatches.map((p: string) => parseInt(p.replace(/[$,]/g, ""), 10)).filter((p: number) => p > 50 && p < 50000);
-              if (prices.length > 0) {
-                averagePrice = Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length);
-                lowPrice = Math.min(...prices);
-                highPrice = Math.max(...prices);
-              }
-            }
+          if (!quoteData.success) {
+            console.error("[Maya] claude-quote returned error:", quoteData.message);
+            return JSON.stringify({
+              success: false,
+              error: quoteData.message || "Could not generate quote. Let me try another method.",
+            });
           }
 
-          // If we still don't have a price, use a reasonable estimate based on route
-          if (averagePrice === 0) {
-            // Fallback estimates
-            averagePrice = cabinClass === "first" ? 3000 : cabinClass === "business" ? 1500 : 400;
-            console.log("Using fallback estimate:", averagePrice);
-          }
-
-          // Calculate our quote: 50% of market average PER PERSON, then multiply by passengers
-          const pricePerPerson = Math.round(averagePrice * 0.5);
-          const totalQuote = pricePerPerson * passengers;
-
-          console.log(`Market avg per person: $${averagePrice}, Our price per person: $${pricePerPerson}, Total for ${passengers} passengers: $${totalQuote}`);
+          console.log(`[Maya] claude-quote success: $${quoteData.quoted_price} (${quoteData.discount_percent}% off $${quoteData.market_price})`);
 
           // Notify boss about quote (async, non-blocking)
-          notifyBoss('quote', `Quote given: ${origin} → ${destination}\n💵 $${totalQuote} for ${passengers} pax\n📅 ${departureDate}${returnDate ? ` - ${returnDate}` : ''}\n✈️ ${cabinClass}`)
+          notifyBoss('quote', `Quote given: ${origin} → ${destination}\n💵 $${quoteData.quoted_price} for ${passengers} pax\n📅 ${departureDate}${returnDate ? ` - ${returnDate}` : ''}\n✈️ ${cabinClass}${quoteData.booking_method ? `\n🎯 ${quoteData.booking_method}` : ''}`)
             .catch((err: Error) => console.log("[BossNotify] Quote notification failed:", err.message));
 
           return JSON.stringify({
@@ -2112,17 +2063,21 @@ If you find prices like $500-$800, use 650 as average_price. Always return valid
             trip_type: tripType,
             cabin_class: cabinClass,
             passengers,
-            market_average_per_person: averagePrice,
-            price_per_person: pricePerPerson,
-            total_quote: totalQuote,
-            airlines: airlines,
-            instruction: `IMPORTANT: Tell the customer you can get them this flight for $${totalQuote} total for ${passengers} passenger${passengers > 1 ? 's' : ''} ($${pricePerPerson} per person). Do NOT mention the market average price. Quote the TOTAL price of $${totalQuote}.`,
+            market_average_per_person: quoteData.market_price ? Math.round(quoteData.market_price / passengers) : null,
+            price_per_person: Math.round(quoteData.quoted_price / passengers),
+            total_quote: quoteData.quoted_price,
+            discount_percent: quoteData.discount_percent,
+            booking_method: quoteData.booking_method,
+            confidence: quoteData.confidence,
+            quote_id: quoteData.quote_id,
+            instruction: `IMPORTANT: Tell the customer you can get them this flight for $${quoteData.quoted_price} total for ${passengers} passenger${passengers > 1 ? 's' : ''} ($${Math.round(quoteData.quoted_price / passengers)} per person). Do NOT mention the market price. Quote the TOTAL price of $${quoteData.quoted_price}.`,
           });
+
         } catch (error) {
-          console.error("Web search error:", error);
+          console.error("[Maya] Quote delegation error:", error);
           return JSON.stringify({
             success: false,
-            error: "Web search failed. Let me try another method.",
+            error: "Quote system error. Let me try another method.",
           });
         }
       }
