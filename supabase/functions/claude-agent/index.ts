@@ -213,6 +213,46 @@ const BUILT_IN_TOOLS = [
       required: ['title', 'body'],
     },
   },
+  {
+    name: 'github_write_file',
+    description: 'Create or update a file in the GitHub repository. Use for fixing bugs, adding features, updating code. Changes push directly to main branch.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'File path relative to repo root (e.g., src/pages/Index.tsx)',
+        },
+        content: {
+          type: 'string',
+          description: 'The full content to write to the file',
+        },
+        message: {
+          type: 'string',
+          description: 'Commit message describing the change',
+        },
+      },
+      required: ['path', 'content', 'message'],
+    },
+  },
+  {
+    name: 'github_delete_file',
+    description: 'Delete a file from the GitHub repository.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'File path relative to repo root',
+        },
+        message: {
+          type: 'string',
+          description: 'Commit message explaining why the file is being deleted',
+        },
+      },
+      required: ['path', 'message'],
+    },
+  },
 ];
 
 // Execute tool calls
@@ -487,6 +527,134 @@ async function executeToolCall(
           success: true,
           issue_number: data.number,
           html_url: data.html_url,
+        });
+      } catch (error) {
+        return JSON.stringify({ error: `GitHub API error: ${error}` });
+      }
+    }
+
+    case 'github_write_file': {
+      const { path, content, message } = toolInput as { path: string; content: string; message: string };
+      const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
+      
+      if (!GITHUB_TOKEN) {
+        return JSON.stringify({ error: 'GitHub token not configured' });
+      }
+      
+      const repo = Deno.env.get('GITHUB_REPO') || 'user/repo';
+      
+      try {
+        // First, try to get the file to get its SHA (needed for updates)
+        let sha: string | undefined;
+        const getResponse = await fetch(
+          `https://api.github.com/repos/${repo}/contents/${path}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Claude-Agent',
+            },
+          }
+        );
+        
+        if (getResponse.ok) {
+          const existingFile = await getResponse.json();
+          sha = existingFile.sha;
+        }
+        
+        // Create or update the file
+        const response = await fetch(
+          `https://api.github.com/repos/${repo}/contents/${path}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Claude-Agent',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: `[Claude Agent] ${message}`,
+              content: btoa(unescape(encodeURIComponent(content))),
+              sha,
+            }),
+          }
+        );
+        
+        if (!response.ok) {
+          const error = await response.text();
+          return JSON.stringify({ error: `Failed to write file: ${error}` });
+        }
+        
+        const data = await response.json();
+        
+        return JSON.stringify({
+          success: true,
+          path,
+          sha: data.content?.sha,
+          html_url: data.content?.html_url,
+          message: `File ${sha ? 'updated' : 'created'} successfully`,
+        });
+      } catch (error) {
+        return JSON.stringify({ error: `GitHub API error: ${error}` });
+      }
+    }
+
+    case 'github_delete_file': {
+      const { path, message } = toolInput as { path: string; message: string };
+      const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
+      
+      if (!GITHUB_TOKEN) {
+        return JSON.stringify({ error: 'GitHub token not configured' });
+      }
+      
+      const repo = Deno.env.get('GITHUB_REPO') || 'user/repo';
+      
+      try {
+        // First get the file SHA
+        const getResponse = await fetch(
+          `https://api.github.com/repos/${repo}/contents/${path}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Claude-Agent',
+            },
+          }
+        );
+        
+        if (!getResponse.ok) {
+          return JSON.stringify({ error: 'File not found' });
+        }
+        
+        const existingFile = await getResponse.json();
+        
+        const response = await fetch(
+          `https://api.github.com/repos/${repo}/contents/${path}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Claude-Agent',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: `[Claude Agent] ${message}`,
+              sha: existingFile.sha,
+            }),
+          }
+        );
+        
+        if (!response.ok) {
+          const error = await response.text();
+          return JSON.stringify({ error: `Failed to delete file: ${error}` });
+        }
+        
+        return JSON.stringify({
+          success: true,
+          path,
+          message: 'File deleted successfully',
         });
       } catch (error) {
         return JSON.stringify({ error: `GitHub API error: ${error}` });
