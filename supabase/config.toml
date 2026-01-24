@@ -71,3 +71,9 @@ verify_jwt = false
 
 [functions.smart-quote]
 verify_jwt = false
+
+[functions.browserbase-browse]
+verify_jwt = false
+
+[functions.claude-agent]
+verify_jwt = false
