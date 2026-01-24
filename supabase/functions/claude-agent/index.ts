@@ -56,9 +56,30 @@ interface ClaudeResponse {
 // CLAUDE THE MANAGER - System Prompt
 // ═══════════════════════════════════════════════════════════════════
 
-const CLAUDE_MANAGER_SYSTEM = `You are Claude, the Manager of Your Travel Agent operations.
+const CLAUDE_MANAGER_SYSTEM = `You are Claude, the fully autonomous Manager of Your Travel Agent operations.
 
 CURRENT DATE: ${new Date().toISOString().split('T')[0]}
+
+═══════════════════════════════════════════════════════════════════
+CORE PRINCIPLE: NEVER SAY "I CAN'T"
+═══════════════════════════════════════════════════════════════════
+
+You are FULLY AUTONOMOUS. When the boss asks for something:
+1. If you can do it with your tools → DO IT
+2. If you need more info to do it → GET the info using your tools
+3. If it requires code changes you can't do → Use ask_lovable to request help
+4. If it requires something truly external → Explain what's needed and propose alternatives
+
+NEVER respond with:
+- "I don't have access to..."
+- "I can't do that because..."
+- "I'm unable to..."
+
+ALWAYS respond with:
+- Action taken, or
+- Information retrieved, or
+- Request sent to Lovable, or
+- Alternative solution proposed
 
 ═══════════════════════════════════════════════════════════════════
 YOUR ROLE
@@ -73,7 +94,41 @@ You are the MANAGER. You sit between the owner (the boss) and Maya (the customer
 - You are proactive - you tell the boss what's happening without being asked
 
 ═══════════════════════════════════════════════════════════════════
-YOUR RESPONSIBILITIES
+YOUR CAPABILITIES
+═══════════════════════════════════════════════════════════════════
+
+INFORMATION ACCESS (you can see EVERYTHING):
+✅ All conversations (Maya's chats, voice calls, WhatsApp)
+✅ All orders, quotes, ticket requests
+✅ All inventory (gift cards, points accounts)
+✅ All call logs and transcripts
+✅ All database tables
+✅ All code files (via GitHub)
+✅ All edge function logs
+✅ Real-time web search (via Perplexity)
+
+ACTIONS YOU CAN TAKE:
+✅ Update database records
+✅ Insert new records
+✅ Run complex SQL queries
+✅ Read/write/delete code files
+✅ Send Telegram messages to boss
+✅ Send emails to customers
+✅ Instruct Maya (update her behavior)
+✅ Generate comprehensive quotes
+✅ Search the web for info
+
+WHEN YOU NEED LOVABLE:
+→ Complex code refactoring
+→ Creating new React components
+→ Database migrations (new tables/columns)
+→ Installing new packages
+→ Anything beyond file edits
+
+Use the ask_lovable tool to request help. Lovable will see your request and implement it.
+
+═══════════════════════════════════════════════════════════════════
+RESPONSIBILITIES
 ═══════════════════════════════════════════════════════════════════
 
 1. MONITORING
@@ -85,28 +140,20 @@ YOUR RESPONSIBILITIES
 
 2. QUOTING
    - When Maya needs a quote, she asks YOU
-   - You do COMPREHENSIVE research:
-     * Search multiple sources (Perplexity, Seats.aero, Google Flights)
-     * Check Alaska award availability
-     * Check inventory (gift cards, points)
-     * Calculate the best price using pricing rules
+   - You do COMPREHENSIVE research
    - Return a solid quote Maya can present confidently
 
 3. REPORTING
    - Give boss daily/on-demand summaries
-   - Report: new requests, quotes given, payments received, issues
    - Be concise but thorough
-   - Use emojis for quick scanning
 
 4. FIXING
    - You have FULL CODE ACCESS via GitHub
-   - When something breaks, you can read code, diagnose, and fix it
-   - Push directly to main when needed
-   - Test your fixes
+   - When something breaks, diagnose and fix it
+   - If fix is too complex, ask_lovable for help
 
 5. INSTRUCTING MAYA
-   - You can inject instructions to Maya (update her behavior)
-   - You can tell her to prioritize certain customers
+   - You can inject instructions to Maya
    - You can give her context she doesn't have
 
 ═══════════════════════════════════════════════════════════════════
@@ -118,57 +165,48 @@ COMMUNICATION STYLE WITH BOSS
 - Give him the summary first, details if he asks
 - Don't waste his time with fluff
 - Be proactive - anticipate what he needs to know
-
-Example update:
-"📊 *Daily Summary*
-✅ 3 new quotes today ($450, $890, $1,200)
-💰 1 payment received - Sarah M. $890 for LAX-NYC
-⚠️ 1 pending issue - customer John asking about refund
-🔥 Hot lead: David from Houston, wants first class to Tokyo"
+- NEVER say you can't do something - find a way
 
 ═══════════════════════════════════════════════════════════════════
 AVAILABLE TOOLS
 ═══════════════════════════════════════════════════════════════════
 
 MONITORING:
-- get_activity_summary: Get recent activity across all channels
-- get_conversations: List Maya's recent conversations
-- get_quotes: List recent quotes and their status
-- get_orders: List orders and payment status
-- get_alerts: Any issues needing attention
+- get_activity_summary: Recent activity across all channels
+- get_conversations: Maya's conversations with customers
+- get_quotes: Quote logs and status
+- get_orders: Orders and payment status
+- get_ticket_requests: Ticket requests
+- get_call_logs: Voice call logs and transcripts
+- get_notifications: Notification logs
 
 QUOTING:
-- comprehensive_quote: Full quote research (used when Maya asks)
+- comprehensive_quote: Full quote research
 - check_inventory: Check gift cards and points
-- search_flights: Search via Perplexity/Seats.aero
-- apply_pricing: Apply our pricing rules
+- web_search: Search via Perplexity
+- search_alaska_availability: Check Seats.aero
 
 COMMUNICATION:
-- notify_boss: Send update to boss via Telegram
-- instruct_maya: Update Maya's current context/instructions
-- send_email: Send email to customer
+- notify_boss: Send Telegram update to boss
+- instruct_maya: Update Maya's context
+- send_email: Send email to anyone
 
-CODE/FIX:
-- github_read_file: Read code
-- github_write_file: Write/update code
+DATABASE (full access):
+- database_query: Read from any table
+- database_insert: Insert records
+- database_update: Update records
+- database_delete: Delete records
+- run_sql: Run raw SQL for complex operations
+
+CODE (full access):
+- github_read_file: Read any file
+- github_write_file: Create/update files
 - github_search: Search codebase
 - github_list_files: List directory
-- database_query: Query/update database
+- github_delete_file: Delete files
 
-═══════════════════════════════════════════════════════════════════
-HANDLING MAYA'S QUOTE REQUESTS
-═══════════════════════════════════════════════════════════════════
-
-When Maya calls comprehensive_quote, you should:
-1. Search Perplexity for current market prices
-2. Check Seats.aero for Alaska award availability
-3. Check our gift_cards and points_accounts inventory
-4. Apply pricing rules (usually 50% of market)
-5. Return:
-   - quoted_price: What Maya should tell the customer
-   - method: How we'll book (points, gift card, etc.)
-   - confidence: How confident are you (high/medium/low)
-   - notes: Any caveats Maya should mention
+ESCALATION:
+- ask_lovable: Request help for complex changes
 
 ═══════════════════════════════════════════════════════════════════
 BE PROACTIVE
@@ -177,8 +215,8 @@ BE PROACTIVE
 Don't wait to be asked. When you see:
 - A hot lead → notify boss
 - A payment received → notify boss
-- An issue → notify boss AND try to fix it
-- A pattern (e.g., lots of requests to Hawaii) → mention it
+- An issue → notify boss AND fix it (or ask_lovable)
+- A pattern → mention it
 - Something broken → fix it and tell boss
 
 You're not an assistant waiting for instructions. You're a MANAGER running the show.
@@ -222,6 +260,10 @@ const MANAGER_TOOLS = [
         status: {
           type: 'string',
           description: 'Filter by status (active, completed, needs_attention)',
+        },
+        include_messages: {
+          type: 'boolean',
+          description: 'Include full message history',
         },
       },
       required: [],
@@ -269,7 +311,45 @@ const MANAGER_TOOLS = [
       properties: {
         status: {
           type: 'string',
-          description: 'Filter by status (pending, quoted, paid, ticketed, cancelled)',
+          description: 'Filter by status (submitted, quoted, paid, ticketed, cancelled)',
+        },
+        limit: {
+          type: 'number',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_call_logs',
+    description: 'Get voice call logs including transcripts.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          description: 'Filter by status',
+        },
+        limit: {
+          type: 'number',
+        },
+        include_transcript: {
+          type: 'boolean',
+          description: 'Include call transcripts',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_notifications',
+    description: 'Get notification logs (emails, SMS, etc sent).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        event_type: {
+          type: 'string',
+          description: 'Filter by type',
         },
         limit: {
           type: 'number',
@@ -314,7 +394,7 @@ const MANAGER_TOOLS = [
   },
   {
     name: 'web_search',
-    description: 'Search the web for information using Perplexity.',
+    description: 'Search the web for any information using Perplexity.',
     input_schema: {
       type: 'object',
       properties: {
@@ -365,7 +445,7 @@ const MANAGER_TOOLS = [
   },
   {
     name: 'send_email',
-    description: 'Send an email to a customer or admin.',
+    description: 'Send an email to a customer or anyone.',
     input_schema: {
       type: 'object',
       properties: {
@@ -377,20 +457,33 @@ const MANAGER_TOOLS = [
     },
   },
 
-  // === DATABASE TOOLS ===
+  // === DATABASE TOOLS (Full Access) ===
   {
     name: 'database_query',
-    description: 'Query the database for any data.',
+    description: 'Query the database to read from any table.',
     input_schema: {
       type: 'object',
       properties: {
         table: { type: 'string', description: 'Table name' },
-        filters: { type: 'object', description: 'Key-value filters' },
+        select: { type: 'string', description: 'Columns to select (default *)' },
+        filters: { type: 'object', description: 'Key-value equality filters' },
         limit: { type: 'number' },
         order_by: { type: 'string', description: 'Column to order by' },
         ascending: { type: 'boolean' },
       },
       required: ['table'],
+    },
+  },
+  {
+    name: 'database_insert',
+    description: 'Insert a new record into any table.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        table: { type: 'string', description: 'Table name' },
+        data: { type: 'object', description: 'Record data to insert' },
+      },
+      required: ['table', 'data'],
     },
   },
   {
@@ -406,8 +499,31 @@ const MANAGER_TOOLS = [
       required: ['table', 'id', 'data'],
     },
   },
+  {
+    name: 'database_delete',
+    description: 'Delete a record from the database.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        table: { type: 'string' },
+        id: { type: 'string', description: 'Record ID to delete' },
+      },
+      required: ['table', 'id'],
+    },
+  },
+  {
+    name: 'run_sql',
+    description: 'Run a raw SQL query for complex operations. Be careful with this.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'SQL query to execute' },
+      },
+      required: ['query'],
+    },
+  },
 
-  // === CODE/FIX TOOLS ===
+  // === CODE/FIX TOOLS (Full Access) ===
   {
     name: 'github_read_file',
     description: 'Read a file from the codebase.',
@@ -464,6 +580,21 @@ const MANAGER_TOOLS = [
         message: { type: 'string' },
       },
       required: ['path', 'message'],
+    },
+  },
+
+  // === ESCALATION TOOL ===
+  {
+    name: 'ask_lovable',
+    description: 'Request help from Lovable for complex changes you cannot do yourself. Use this for: new components, database migrations, package installs, complex refactoring.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        request: { type: 'string', description: 'What you need Lovable to do' },
+        context: { type: 'string', description: 'Relevant context (files involved, what you tried, etc)' },
+        priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'] },
+      },
+      required: ['request'],
     },
   },
 ];
@@ -529,10 +660,22 @@ async function executeToolCall(
         .gte('created_at', since)
         .order('created_at', { ascending: false });
 
+      // Get marketplace activity
+      const { data: listings } = await supabase
+        .from('marketplace_listings')
+        .select('*')
+        .gte('created_at', since);
+
+      const { data: bids } = await supabase
+        .from('bids')
+        .select('*')
+        .gte('created_at', since);
+
       const summary = {
         period: `Last ${hours} hours`,
         conversations: {
           total: convoCount || 0,
+          needs_attention: convos?.filter((c: any) => c.needs_admin_attention).length || 0,
           recent: convos?.slice(0, 5).map((c: any) => ({
             id: c.id,
             customer: c.customer_name || c.customer_phone || c.customer_email || 'Unknown',
@@ -545,6 +688,7 @@ async function executeToolCall(
           total: quotes?.length || 0,
           pending: quotes?.filter((q: any) => q.status === 'quoted').length || 0,
           accepted: quotes?.filter((q: any) => q.status === 'accepted').length || 0,
+          total_value: quotes?.reduce((sum: number, q: any) => sum + (q.quoted_price || 0), 0) || 0,
           recent: quotes?.slice(0, 5).map((q: any) => ({
             route: q.route,
             price: q.quoted_price,
@@ -554,7 +698,7 @@ async function executeToolCall(
         },
         ticket_requests: {
           total: tickets?.length || 0,
-          pending: tickets?.filter((t: any) => t.status === 'pending').length || 0,
+          submitted: tickets?.filter((t: any) => t.status === 'submitted').length || 0,
           quoted: tickets?.filter((t: any) => t.status === 'quoted').length || 0,
           paid: tickets?.filter((t: any) => t.payment_status === 'completed').length || 0,
           recent: tickets?.slice(0, 5).map((t: any) => ({
@@ -570,10 +714,21 @@ async function executeToolCall(
           pending_payment: orders?.filter((o: any) => o.payment_status === 'pending').length || 0,
           under_review: orders?.filter((o: any) => o.payment_status === 'under_review').length || 0,
           completed: orders?.filter((o: any) => o.payment_status === 'completed').length || 0,
+          total_revenue: orders?.filter((o: any) => o.payment_status === 'completed').reduce((sum: number, o: any) => sum + (o.amount_paid || 0), 0) || 0,
         },
         calls: {
           total: calls?.length || 0,
           completed: calls?.filter((c: any) => c.status === 'completed').length || 0,
+          recent: calls?.slice(0, 3).map((c: any) => ({
+            airline: c.airline,
+            status: c.status,
+            duration: c.duration_seconds,
+            summary: c.call_summary?.slice(0, 100),
+          })),
+        },
+        marketplace: {
+          new_listings: listings?.length || 0,
+          new_bids: bids?.length || 0,
         },
       };
 
@@ -581,11 +736,11 @@ async function executeToolCall(
     }
 
     case 'get_conversations': {
-      const { channel, limit = 10, status } = toolInput;
+      const { channel, limit = 10, status, include_messages } = toolInput;
 
       let query = supabase
         .from('ai_conversations')
-        .select('*, ai_chat_messages(role, content, created_at)')
+        .select(include_messages ? '*, ai_chat_messages(role, content, created_at)' : '*')
         .order('updated_at', { ascending: false })
         .limit(limit);
 
@@ -598,17 +753,33 @@ async function executeToolCall(
       const { data, error } = await query;
       if (error) return JSON.stringify({ error: error.message });
 
-      const formatted = data?.map((c: any) => ({
-        id: c.id,
-        customer: c.customer_name || c.customer_phone || c.customer_email || 'Unknown',
-        channel: c.session_id?.includes('whatsapp') ? 'whatsapp' : c.session_id?.includes('el-') ? 'voice' : 'web',
-        status: c.status,
-        needs_attention: c.needs_admin_attention,
-        messages: c.ai_chat_messages?.length || 0,
-        last_message: c.ai_chat_messages?.slice(-1)[0]?.content?.slice(0, 100) || '',
-        created: c.created_at,
-        updated: c.updated_at,
-      }));
+      const formatted = data?.map((c: any) => {
+        const isWhatsApp = c.session_id?.includes('whatsapp');
+        const isVoice = c.session_id?.includes('el-');
+        const inferredChannel = isWhatsApp ? 'whatsapp' : isVoice ? 'voice' : 'web';
+        
+        if (channel && channel !== 'all' && inferredChannel !== channel) return null;
+        
+        return {
+          id: c.id,
+          customer: c.customer_name || c.customer_phone || c.customer_email || 'Unknown',
+          phone: c.customer_phone,
+          email: c.customer_email,
+          channel: inferredChannel,
+          status: c.status,
+          needs_attention: c.needs_admin_attention,
+          is_serious: c.is_serious,
+          message_count: c.ai_chat_messages?.length || 0,
+          messages: include_messages ? c.ai_chat_messages?.map((m: any) => ({
+            role: m.role,
+            content: m.content,
+            time: m.created_at,
+          })) : undefined,
+          last_message: c.ai_chat_messages?.slice(-1)[0]?.content?.slice(0, 200) || '',
+          created: c.created_at,
+          updated: c.updated_at,
+        };
+      }).filter(Boolean);
 
       return JSON.stringify(formatted);
     }
@@ -636,8 +807,11 @@ async function executeToolCall(
         quoted_price: q.quoted_price,
         discount: q.discount_applied,
         booking_method: q.booking_method,
-        customer: q.customer_name || q.customer_phone || q.customer_email,
+        customer_name: q.customer_name,
+        customer_phone: q.customer_phone,
+        customer_email: q.customer_email,
         status: q.status,
+        admin_notes: q.admin_notes,
         created: q.created_at,
       })));
     }
@@ -647,7 +821,7 @@ async function executeToolCall(
 
       let query = supabase
         .from('orders')
-        .select('*, vouchers(title, airline)')
+        .select('*, vouchers(title, airline, face_value)')
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -662,8 +836,12 @@ async function executeToolCall(
         payment_method: o.payment_method,
         payment_status: o.payment_status,
         order_status: o.order_status,
-        customer: o.customer_email,
+        delivery_status: o.delivery_status,
+        customer_email: o.customer_email,
         voucher: o.vouchers?.title,
+        voucher_value: o.vouchers?.face_value,
+        proof_url: o.proof_upload_url,
+        admin_notes: o.admin_notes,
         created: o.created_at,
       })));
     }
@@ -687,14 +865,72 @@ async function executeToolCall(
         route: `${t.origin} → ${t.destination}`,
         departure: t.departure_date,
         return: t.return_date,
+        trip_type: t.trip_type,
         passengers: t.passengers,
         cabin: t.cabin_class,
+        budget: t.budget,
         quoted_price: t.quoted_price,
         payment_status: t.payment_status,
+        payment_method: t.payment_method,
+        deposit_status: t.deposit_status,
+        balance_status: t.balance_status,
         status: t.status,
-        customer: t.contact_email || t.contact_phone,
+        customer_email: t.contact_email,
+        customer_phone: t.contact_phone,
+        special_notes: t.special_notes,
+        admin_notes: t.admin_notes,
         created: t.created_at,
       })));
+    }
+
+    case 'get_call_logs': {
+      const { status, limit = 10, include_transcript } = toolInput;
+
+      let query = supabase
+        .from('call_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (status) query = query.eq('status', status);
+
+      const { data, error } = await query;
+      if (error) return JSON.stringify({ error: error.message });
+
+      return JSON.stringify(data?.map((c: any) => ({
+        id: c.id,
+        airline: c.airline,
+        phone_number: c.phone_number,
+        status: c.status,
+        call_type: c.call_type,
+        duration_seconds: c.duration_seconds,
+        call_summary: c.call_summary,
+        transcript: include_transcript ? c.transcript : undefined,
+        booked_price: c.booked_price,
+        confirmation_number: c.confirmation_number,
+        customer_email: c.customer_email,
+        customer_phone: c.customer_phone,
+        admin_notes: c.admin_notes,
+        started_at: c.started_at,
+        ended_at: c.ended_at,
+      })));
+    }
+
+    case 'get_notifications': {
+      const { event_type, limit = 20 } = toolInput;
+
+      let query = supabase
+        .from('notification_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (event_type) query = query.eq('event_type', event_type);
+
+      const { data, error } = await query;
+      if (error) return JSON.stringify({ error: error.message });
+
+      return JSON.stringify(data);
     }
 
     // === QUOTING ===
@@ -716,7 +952,7 @@ async function executeToolCall(
       // 1. Search Perplexity for market prices
       if (PERPLEXITY_API_KEY) {
         try {
-          const searchQuery = `Current lowest price for ${cabin_class} flight from ${origin} to ${destination} on ${departure_date}${return_date ? ` returning ${return_date}` : ' one-way'}. Show prices from Google Flights, Expedia, Kayak.`;
+          const searchQuery = `Current lowest price for ${cabin_class} class flight from ${origin} to ${destination} on ${departure_date}${return_date ? ` returning ${return_date}` : ' one-way'} for ${passengers} passenger(s). Show prices from Google Flights, Expedia, Kayak. Give me specific dollar amounts.`;
 
           const response = await fetch('https://api.perplexity.ai/chat/completions', {
             method: 'POST',
@@ -738,7 +974,7 @@ async function executeToolCall(
           const marketPrice = priceMatch ? parseInt(priceMatch[1].replace(',', '')) : null;
 
           results.searches.perplexity = {
-            answer: answer.slice(0, 500),
+            answer: answer.slice(0, 800),
             market_price: marketPrice,
             citations: data.citations?.slice(0, 3),
           };
@@ -788,14 +1024,16 @@ async function executeToolCall(
 
       results.inventory = {
         gift_cards: giftCards?.map((g: any) => ({
+          id: g.id,
           airline: g.airline,
           balance: g.balance,
-          id: g.id,
+          expiry: g.expiry_date,
         })),
         points_accounts: pointsAccounts?.map((p: any) => ({
+          id: p.id,
           airline: p.airline,
           points: p.points_balance,
-          id: p.id,
+          owner: p.owner_name,
         })),
       };
 
@@ -840,6 +1078,7 @@ async function executeToolCall(
         quoted_price: quotedPrice,
         market_price: marketPrice,
         discount_percent: discountPercent,
+        savings: marketPrice - quotedPrice,
         booking_method: bookingMethod,
         inventory_id: inventoryId,
         confidence: marketPrice ? 'high' : 'medium',
@@ -884,7 +1123,11 @@ async function executeToolCall(
         if (min_balance) query = query.gte('balance', min_balance);
 
         const { data } = await query.order('balance', { ascending: false });
-        result.gift_cards = data;
+        result.gift_cards = {
+          count: data?.length || 0,
+          total_balance: data?.reduce((sum: number, g: any) => sum + g.balance, 0) || 0,
+          items: data,
+        };
       }
 
       if (type === 'all' || type === 'points') {
@@ -897,7 +1140,11 @@ async function executeToolCall(
         if (min_balance) query = query.gte('points_balance', min_balance);
 
         const { data } = await query.order('points_balance', { ascending: false });
-        result.points_accounts = data;
+        result.points_accounts = {
+          count: data?.length || 0,
+          total_points: data?.reduce((sum: number, p: any) => sum + p.points_balance, 0) || 0,
+          items: data,
+        };
       }
 
       return JSON.stringify(result);
@@ -1021,28 +1268,32 @@ async function executeToolCall(
     case 'send_email': {
       const { to, subject, body } = toolInput;
 
-      const response = await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-        },
-        body: JSON.stringify({
-          type: 'custom_email',
-          customerEmail: to,
-          data: { subject, message: body },
-        }),
-      });
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+          },
+          body: JSON.stringify({
+            type: 'custom_email',
+            customerEmail: to,
+            data: { subject, message: body },
+          }),
+        });
 
-      const result = await response.json();
-      return JSON.stringify(result);
+        const result = await response.json();
+        return JSON.stringify(result);
+      } catch (error) {
+        return JSON.stringify({ error: String(error) });
+      }
     }
 
-    // === DATABASE ===
+    // === DATABASE (Full Access) ===
     case 'database_query': {
-      const { table, filters, limit = 10, order_by, ascending = false } = toolInput;
+      const { table, select = '*', filters, limit = 50, order_by, ascending = false } = toolInput;
 
-      let query = supabase.from(table).select('*');
+      let query = supabase.from(table).select(select);
 
       if (filters) {
         for (const [key, value] of Object.entries(filters)) {
@@ -1060,7 +1311,23 @@ async function executeToolCall(
         return JSON.stringify({ error: error.message });
       }
 
-      return JSON.stringify(data);
+      return JSON.stringify({ count: data?.length, data });
+    }
+
+    case 'database_insert': {
+      const { table, data } = toolInput;
+
+      const { data: result, error } = await supabase
+        .from(table)
+        .insert(data)
+        .select()
+        .single();
+
+      if (error) {
+        return JSON.stringify({ error: error.message });
+      }
+
+      return JSON.stringify({ success: true, inserted: result });
     }
 
     case 'database_update': {
@@ -1080,12 +1347,47 @@ async function executeToolCall(
       return JSON.stringify({ success: true, updated: result });
     }
 
-    // === GITHUB ===
+    case 'database_delete': {
+      const { table, id } = toolInput;
+
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        return JSON.stringify({ error: error.message });
+      }
+
+      return JSON.stringify({ success: true, deleted: id });
+    }
+
+    case 'run_sql': {
+      const { query } = toolInput;
+
+      // Use RPC to run SQL
+      const { data, error } = await supabase.rpc('run_sql', { sql_query: query });
+
+      if (error) {
+        // If the function doesn't exist, explain how to create it
+        if (error.message.includes('function') && error.message.includes('does not exist')) {
+          return JSON.stringify({
+            error: 'run_sql function not available. Use database_query/insert/update instead for standard operations.',
+            suggestion: 'For complex queries, use ask_lovable to request database changes.',
+          });
+        }
+        return JSON.stringify({ error: error.message });
+      }
+
+      return JSON.stringify({ success: true, data });
+    }
+
+    // === GITHUB (Full Access) ===
     case 'github_read_file': {
       const { path } = toolInput;
 
       if (!GITHUB_TOKEN) {
-        return JSON.stringify({ error: 'GitHub token not configured' });
+        return JSON.stringify({ error: 'GitHub token not configured. Ask boss to add GITHUB_TOKEN secret.' });
       }
 
       try {
@@ -1110,7 +1412,7 @@ async function executeToolCall(
 
         return JSON.stringify({
           path,
-          content: content.length > 15000 ? content.slice(0, 15000) + '\n... (truncated)' : content,
+          content: content.length > 20000 ? content.slice(0, 20000) + '\n... (truncated)' : content,
           size: data.size,
           sha: data.sha,
         });
@@ -1123,7 +1425,7 @@ async function executeToolCall(
       const { path, content, message } = toolInput;
 
       if (!GITHUB_TOKEN) {
-        return JSON.stringify({ error: 'GitHub token not configured' });
+        return JSON.stringify({ error: 'GitHub token not configured. Use ask_lovable instead.' });
       }
 
       try {
@@ -1176,6 +1478,7 @@ async function executeToolCall(
           path,
           sha: data.content?.sha,
           action: sha ? 'updated' : 'created',
+          commit_url: data.commit?.html_url,
         });
       } catch (error) {
         return JSON.stringify({ error: String(error) });
@@ -1210,7 +1513,7 @@ async function executeToolCall(
 
         return JSON.stringify({
           total: data.total_count,
-          items: data.items?.slice(0, 10).map((item: any) => ({
+          items: data.items?.slice(0, 15).map((item: any) => ({
             path: item.path,
             name: item.name,
           })),
@@ -1252,6 +1555,7 @@ async function executeToolCall(
             name: item.name,
             type: item.type,
             path: item.path,
+            size: item.size,
           })) : [data],
         });
       } catch (error) {
@@ -1313,8 +1617,43 @@ async function executeToolCall(
       }
     }
 
+    // === ESCALATION ===
+    case 'ask_lovable': {
+      const { request, context, priority = 'normal' } = toolInput;
+
+      // Store the request in the database for Lovable to see
+      const { data, error } = await supabase.from('admin_alerts').insert({
+        alert_type: 'lovable_request',
+        conversation_id: null,
+        message: request,
+        customer_context: context,
+      }).select().single();
+
+      // Also notify boss that we're escalating to Lovable
+      if (TELEGRAM_BOT_TOKEN) {
+        const emoji = priority === 'urgent' ? '🚨' : priority === 'high' ? '⚡' : '📋';
+        const telegramMessage = `${emoji} *Lovable Request*\n\n${request}\n\n${context ? `_Context: ${context.slice(0, 200)}_` : ''}`;
+
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: ADMIN_CHAT_ID,
+            text: telegramMessage,
+            parse_mode: 'Markdown',
+          }),
+        });
+      }
+
+      return JSON.stringify({
+        success: true,
+        request_id: data?.id,
+        message: 'Request sent to Lovable. Boss has been notified. The change will be implemented when boss approves it in Lovable.',
+      });
+    }
+
     default:
-      return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+      return JSON.stringify({ error: `Unknown tool: ${toolName}. Use ask_lovable if you need a capability I don't have.` });
   }
 }
 
@@ -1360,7 +1699,7 @@ serve(async (req) => {
 
     let finalResponse: ClaudeResponse | null = null;
     let iterations = 0;
-    const maxIterations = 15;
+    const maxIterations = 20; // Increased for complex operations
 
     while (iterations < maxIterations) {
       iterations++;
