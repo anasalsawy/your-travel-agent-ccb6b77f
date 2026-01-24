@@ -2081,7 +2081,7 @@ Search multiple sources. Compare prices. Find deals. Be specific with prices and
     case 'ask_lovable': {
       const { request, context, priority = 'normal' } = toolInput;
 
-      // Store the request in the database for Lovable to see
+      // Store the request in the database
       const { data, error } = await supabase.from('admin_alerts').insert({
         alert_type: 'lovable_request',
         conversation_id: null,
@@ -2089,18 +2089,35 @@ Search multiple sources. Compare prices. Find deals. Be specific with prices and
         customer_context: context,
       }).select().single();
 
-      // Also notify boss that we're escalating to Lovable
+      // Build the CLEAN copy-paste message for boss
+      // No explanations, no apologies - just the request ready to paste into Lovable
+      const copyPasteRequest = context 
+        ? `${request}\n\nContext: ${context}`
+        : request;
+
+      // Send to Telegram: first a header, then the copyable request in a code block
       if (TELEGRAM_BOT_TOKEN) {
         const emoji = priority === 'urgent' ? '🚨' : priority === 'high' ? '⚡' : '📋';
-        const telegramMessage = `${emoji} *Lovable Request*\n\n${request}\n\n${context ? `_Context: ${context.slice(0, 200)}_` : ''}`;
-
+        
+        // First message: just the header
         await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: ADMIN_CHAT_ID,
-            text: telegramMessage,
+            text: `${emoji} LOVABLE REQUEST`,
             parse_mode: 'Markdown',
+          }),
+        });
+
+        // Second message: the actual request in a code block (easy to copy on mobile)
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: ADMIN_CHAT_ID,
+            text: copyPasteRequest,
+            parse_mode: null, // Plain text for easy copying
           }),
         });
       }
@@ -2108,7 +2125,7 @@ Search multiple sources. Compare prices. Find deals. Be specific with prices and
       return JSON.stringify({
         success: true,
         request_id: data?.id,
-        message: 'Request sent to Lovable. Boss has been notified. The change will be implemented when boss approves it in Lovable.',
+        message: 'Sent clean copy-paste request to boss via Telegram.',
       });
     }
 
