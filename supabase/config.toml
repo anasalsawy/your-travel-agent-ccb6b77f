@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.claude-agent]
 verify_jwt = false
+
+[functions.claude-telegram]
+verify_jwt = false
