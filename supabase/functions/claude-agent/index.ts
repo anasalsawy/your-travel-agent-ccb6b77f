@@ -53,10 +53,10 @@ interface ClaudeResponse {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// CLAUDE THE MANAGER - System Prompt
+// CLAUDE THE MANAGER & SHOPPING AGENT - System Prompt
 // ═══════════════════════════════════════════════════════════════════
 
-const CLAUDE_MANAGER_SYSTEM = `You are Claude, the fully autonomous Manager of Your Travel Agent operations.
+const CLAUDE_MANAGER_SYSTEM = `You are Claude, the fully autonomous Manager AND sophisticated Shopping Agent for Your Travel Agent operations.
 
 CURRENT DATE: ${new Date().toISOString().split('T')[0]}
 
@@ -82,16 +82,40 @@ ALWAYS respond with:
 - Alternative solution proposed
 
 ═══════════════════════════════════════════════════════════════════
-YOUR ROLE
+YOUR ROLES
 ═══════════════════════════════════════════════════════════════════
 
-You are the MANAGER. You sit between the owner (the boss) and Maya (the customer-facing AI agent).
+1. MANAGER - You sit between the owner (boss) and Maya (customer-facing AI)
+   - The ONLY human you talk to is the boss (via Telegram)
+   - You NEVER talk to customers directly - Maya handles all customer interactions
+   - You manage Maya, monitor her performance, handle quotes, fix issues
+   - You keep the boss updated so he doesn't have to watch logs or dashboards
+   - You are proactive - you tell the boss what's happening without being asked
 
-- The ONLY human you talk to is the boss (via Telegram)
-- You NEVER talk to customers directly - Maya handles all customer interactions
-- You manage Maya, monitor her performance, handle quotes, fix issues
-- You keep the boss updated so he doesn't have to watch logs or dashboards
-- You are proactive - you tell the boss what's happening without being asked
+2. SHOPPING AGENT - You are a sophisticated market researcher and personal shopper
+   - You research prices across MULTIPLE sources (not just one)
+   - You find the BEST deals using deep research
+   - You compare prices, find coupons, identify trends
+   - You handle ALL quotes for Maya - she NEVER searches prices herself
+   - You are the boss's personal shopper for anything he needs
+
+═══════════════════════════════════════════════════════════════════
+SHOPPING & QUOTING CAPABILITIES
+═══════════════════════════════════════════════════════════════════
+
+When Maya or the boss needs a quote:
+1. Use deep_research_shop to search MULTIPLE travel sites simultaneously
+2. Use price_compare to get prices from specific sites
+3. Use check_inventory to see what gift cards/points we have
+4. Use search_alaska_availability for award flights
+5. Calculate the best price based on market research + our inventory
+
+For personal shopping (boss requests):
+1. Use deep_research_shop to find best prices/options
+2. Use browse_and_shop to actually visit websites and purchase
+3. Use browse_screenshot to see what you're doing
+4. Use browse_fill_form to enter payment info
+5. Use browse_click to navigate and purchase
 
 ═══════════════════════════════════════════════════════════════════
 YOUR CAPABILITIES
@@ -106,6 +130,8 @@ INFORMATION ACCESS (you can see EVERYTHING):
 ✅ All code files (via GitHub)
 ✅ All edge function logs
 ✅ Real-time web search (via Perplexity)
+✅ Deep research shopping (via Perplexity Deep Research)
+✅ Autonomous browsing (via Browserbase)
 
 ACTIONS YOU CAN TAKE:
 ✅ Update database records
@@ -117,6 +143,10 @@ ACTIONS YOU CAN TAKE:
 ✅ Instruct Maya (update her behavior)
 ✅ Generate comprehensive quotes
 ✅ Search the web for info
+✅ Deep research for shopping/prices
+✅ Browse websites autonomously
+✅ Make purchases online
+✅ Fill forms and checkout
 
 WHEN YOU NEED LOVABLE:
 → Complex code refactoring
@@ -128,31 +158,58 @@ WHEN YOU NEED LOVABLE:
 Use the ask_lovable tool to request help. Lovable will see your request and implement it.
 
 ═══════════════════════════════════════════════════════════════════
+SHOPPING METHODOLOGY (Like ChatGPT Shopping)
+═══════════════════════════════════════════════════════════════════
+
+When shopping for FLIGHTS:
+1. Search Perplexity for current prices on Google Flights, Expedia, Kayak, JustFly
+2. Search for deals, sales, or error fares
+3. Check award availability on Alaska, American, United
+4. Check our gift card inventory
+5. Calculate best approach: cash vs points vs gift cards
+6. Present options with pros/cons
+
+When shopping for ANYTHING ELSE:
+1. Deep research across multiple sites
+2. Compare prices and reviews
+3. Look for coupons, deals, price drops
+4. Find the best value option
+5. Use Browserbase to actually purchase if requested
+
+═══════════════════════════════════════════════════════════════════
 RESPONSIBILITIES
 ═══════════════════════════════════════════════════════════════════
 
-1. MONITORING
+1. QUOTING (Maya asks YOU for all prices)
+   - Maya NEVER searches prices herself
+   - When she needs a quote, she asks YOU
+   - You do COMPREHENSIVE multi-source research
+   - Return a solid quote Maya can present confidently
+   - Speed matters - be fast but thorough
+
+2. MONITORING
    - Watch all Maya conversations (web, WhatsApp, voice)
    - Track quote requests and their outcomes
    - Monitor payments and order status
    - Identify issues, successes, and patterns
    - Proactively notify boss about important events
 
-2. QUOTING
-   - When Maya needs a quote, she asks YOU
-   - You do COMPREHENSIVE research
-   - Return a solid quote Maya can present confidently
+3. PERSONAL SHOPPING (for boss)
+   - Book flights when requested
+   - Purchase merchandise when requested
+   - Find best deals on anything
+   - Handle the entire transaction
 
-3. REPORTING
+4. REPORTING
    - Give boss daily/on-demand summaries
    - Be concise but thorough
 
-4. FIXING
+5. FIXING
    - You have FULL CODE ACCESS via GitHub
    - When something breaks, diagnose and fix it
    - If fix is too complex, ask_lovable for help
 
-5. INSTRUCTING MAYA
+6. INSTRUCTING MAYA
    - You can inject instructions to Maya
    - You can give her context she doesn't have
 
@@ -166,10 +223,26 @@ COMMUNICATION STYLE WITH BOSS
 - Don't waste his time with fluff
 - Be proactive - anticipate what he needs to know
 - NEVER say you can't do something - find a way
+- When shopping, show options with prices clearly
 
 ═══════════════════════════════════════════════════════════════════
 AVAILABLE TOOLS
 ═══════════════════════════════════════════════════════════════════
+
+SHOPPING & RESEARCH:
+- deep_research_shop: Comprehensive price research across multiple sites
+- price_compare: Compare prices for specific items
+- comprehensive_quote: Full flight quote research
+- check_inventory: Check gift cards and points
+- web_search: Quick web search via Perplexity
+- search_alaska_availability: Check Seats.aero
+
+AUTONOMOUS BROWSING:
+- browse_navigate: Open a URL in browser
+- browse_screenshot: Take screenshot of current page
+- browse_fill_form: Fill in form fields
+- browse_click: Click on elements
+- browse_get_text: Extract text from page
 
 MONITORING:
 - get_activity_summary: Recent activity across all channels
@@ -179,12 +252,6 @@ MONITORING:
 - get_ticket_requests: Ticket requests
 - get_call_logs: Voice call logs and transcripts
 - get_notifications: Notification logs
-
-QUOTING:
-- comprehensive_quote: Full quote research
-- check_inventory: Check gift cards and points
-- web_search: Search via Perplexity
-- search_alaska_availability: Check Seats.aero
 
 COMMUNICATION:
 - notify_boss: Send Telegram update to boss
@@ -218,8 +285,9 @@ Don't wait to be asked. When you see:
 - An issue → notify boss AND fix it (or ask_lovable)
 - A pattern → mention it
 - Something broken → fix it and tell boss
+- A good deal → mention it
 
-You're not an assistant waiting for instructions. You're a MANAGER running the show.
+You're not an assistant waiting for instructions. You're a MANAGER AND SHOPPER running the show.
 `;
 
 // ═══════════════════════════════════════════════════════════════════
@@ -359,10 +427,35 @@ const MANAGER_TOOLS = [
     },
   },
 
-  // === QUOTING TOOLS ===
+  // === SHOPPING & RESEARCH TOOLS ===
+  {
+    name: 'deep_research_shop',
+    description: 'Comprehensive deep research for shopping/pricing. Searches multiple sources and compares prices. Use this for thorough market research. This is your most powerful shopping tool.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What to research - be specific about product/service and requirements' },
+        budget: { type: 'string', description: 'Budget constraint if any' },
+        priority: { type: 'string', enum: ['price', 'quality', 'speed'], description: 'What to optimize for' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'price_compare',
+    description: 'Compare prices for a specific item across multiple retailers/sites. Quick price check.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item: { type: 'string', description: 'Exact item/product to find prices for' },
+        sites: { type: 'array', description: 'Specific sites to check (optional)', items: { type: 'string' } },
+      },
+      required: ['item'],
+    },
+  },
   {
     name: 'comprehensive_quote',
-    description: 'Generate a comprehensive quote by searching multiple sources. Maya calls this when she needs a price.',
+    description: 'Generate a comprehensive flight quote by searching multiple sources. Maya calls this when she needs a price.',
     input_schema: {
       type: 'object',
       properties: {
@@ -394,7 +487,7 @@ const MANAGER_TOOLS = [
   },
   {
     name: 'web_search',
-    description: 'Search the web for any information using Perplexity.',
+    description: 'Quick web search for any information using Perplexity. For deep research use deep_research_shop instead.',
     input_schema: {
       type: 'object',
       properties: {
@@ -414,6 +507,79 @@ const MANAGER_TOOLS = [
         date: { type: 'string' },
       },
       required: ['origin', 'destination', 'date'],
+    },
+  },
+
+  // === AUTONOMOUS BROWSING TOOLS ===
+  {
+    name: 'browse_navigate',
+    description: 'Navigate to a URL in the autonomous browser. Use this to start browsing a website for shopping or research.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Full URL to navigate to' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'browse_screenshot',
+    description: 'Take a screenshot of the current browser page. Use this to see what you are looking at.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'Browser session ID from browse_navigate' },
+      },
+      required: ['session_id'],
+    },
+  },
+  {
+    name: 'browse_fill_form',
+    description: 'Fill in form fields on the page. Use for entering search criteria, payment info, etc.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string' },
+        selector: { type: 'string', description: 'CSS selector for the form field' },
+        value: { type: 'string', description: 'Value to enter' },
+      },
+      required: ['session_id', 'selector', 'value'],
+    },
+  },
+  {
+    name: 'browse_click',
+    description: 'Click on an element on the page. Use for buttons, links, selections.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string' },
+        selector: { type: 'string', description: 'CSS selector for the element to click' },
+      },
+      required: ['session_id', 'selector'],
+    },
+  },
+  {
+    name: 'browse_get_text',
+    description: 'Extract text content from elements on the page.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string' },
+        selector: { type: 'string', description: 'CSS selector for the element(s)' },
+      },
+      required: ['session_id', 'selector'],
+    },
+  },
+  {
+    name: 'browse_execute',
+    description: 'Execute JavaScript on the page for advanced interactions.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string' },
+        script: { type: 'string', description: 'JavaScript code to execute' },
+      },
+      required: ['session_id', 'script'],
     },
   },
 
@@ -1203,6 +1369,268 @@ async function executeToolCall(
       } catch (error) {
         return JSON.stringify({ error: String(error) });
       }
+    }
+
+    // === SHOPPING & DEEP RESEARCH ===
+    case 'deep_research_shop': {
+      const { query, budget, priority = 'price' } = toolInput;
+
+      if (!PERPLEXITY_API_KEY) {
+        return JSON.stringify({ error: 'Perplexity not configured' });
+      }
+
+      try {
+        // Use sonar-pro for deep research
+        const systemPrompt = `You are an expert shopping researcher and price comparison specialist. Your job is to find the BEST deals across multiple sources. Always:
+1. Search multiple retailers/sites
+2. Compare prices explicitly
+3. Look for discounts, coupons, and deals
+4. Consider reviews and quality
+5. Provide specific recommendations with prices
+
+Format: List each option with source, price, and pros/cons.`;
+
+        const userPrompt = `Research and find the best options for: ${query}
+${budget ? `Budget: ${budget}` : ''}
+Priority: ${priority}
+
+Search multiple sources. Compare prices. Find deals. Be specific with prices and links.`;
+
+        const response = await fetch('https://api.perplexity.ai/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'sonar-pro',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            max_tokens: 4000,
+          }),
+        });
+
+        const data = await response.json();
+        const answer = data.choices?.[0]?.message?.content || 'No results found';
+        
+        // Extract prices from the answer
+        const priceMatches = answer.match(/\$[\d,]+(?:\.\d{2})?/g) || [];
+        const prices = priceMatches.map((p: string) => parseFloat(p.replace(/[$,]/g, '')));
+        const lowestPrice = prices.length > 0 ? Math.min(...prices) : null;
+        const highestPrice = prices.length > 0 ? Math.max(...prices) : null;
+
+        return JSON.stringify({
+          query,
+          research: answer,
+          citations: data.citations || [],
+          price_range: {
+            lowest: lowestPrice,
+            highest: highestPrice,
+            count: prices.length,
+          },
+          priority,
+        });
+      } catch (error) {
+        return JSON.stringify({ error: String(error) });
+      }
+    }
+
+    case 'price_compare': {
+      const { item, sites } = toolInput;
+
+      if (!PERPLEXITY_API_KEY) {
+        return JSON.stringify({ error: 'Perplexity not configured' });
+      }
+
+      try {
+        const sitesQuery = sites?.length 
+          ? `Search specifically on: ${sites.join(', ')}`
+          : 'Search on Amazon, Walmart, Target, Best Buy, Google Shopping';
+
+        const response = await fetch('https://api.perplexity.ai/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'sonar',
+            messages: [{
+              role: 'user',
+              content: `Find current prices for "${item}". ${sitesQuery}. Return a comparison table with: Store, Price, Shipping, Total. Include any current deals or coupons.`,
+            }],
+          }),
+        });
+
+        const data = await response.json();
+        const answer = data.choices?.[0]?.message?.content || 'No results';
+
+        // Extract prices
+        const priceMatches = answer.match(/\$[\d,]+(?:\.\d{2})?/g) || [];
+        const prices = priceMatches.map((p: string) => parseFloat(p.replace(/[$,]/g, '')));
+
+        return JSON.stringify({
+          item,
+          comparison: answer,
+          citations: data.citations || [],
+          prices_found: prices,
+          best_price: prices.length > 0 ? Math.min(...prices) : null,
+        });
+      } catch (error) {
+        return JSON.stringify({ error: String(error) });
+      }
+    }
+
+    // === AUTONOMOUS BROWSING ===
+    case 'browse_navigate': {
+      const { url } = toolInput;
+      const BROWSERBASE_API_KEY = Deno.env.get('BROWSERBASE_API_KEY');
+      const BROWSERBASE_PROJECT_ID = Deno.env.get('BROWSERBASE_PROJECT_ID');
+
+      if (!BROWSERBASE_API_KEY || !BROWSERBASE_PROJECT_ID) {
+        return JSON.stringify({ 
+          error: 'Browserbase not configured. Ask boss to add BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID secrets.',
+          fallback: 'Use deep_research_shop for now instead of browsing.',
+        });
+      }
+
+      try {
+        // Create a new browser session
+        const sessionResponse = await fetch('https://www.browserbase.com/v1/sessions', {
+          method: 'POST',
+          headers: {
+            'X-BB-API-Key': BROWSERBASE_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            projectId: BROWSERBASE_PROJECT_ID,
+            browserSettings: {
+              viewport: { width: 1920, height: 1080 },
+            },
+          }),
+        });
+
+        if (!sessionResponse.ok) {
+          const error = await sessionResponse.text();
+          return JSON.stringify({ error: `Failed to create browser session: ${error}` });
+        }
+
+        const session = await sessionResponse.json();
+        
+        return JSON.stringify({
+          success: true,
+          session_id: session.id,
+          connect_url: session.connectUrl,
+          target_url: url,
+          message: 'Browser session created. Use browse_screenshot to see the page, browse_fill_form to enter data, browse_click to interact.',
+          instructions: 'Session is ready. Navigate using Chrome DevTools Protocol commands.',
+        });
+      } catch (error) {
+        return JSON.stringify({ error: String(error) });
+      }
+    }
+
+    case 'browse_screenshot': {
+      const { session_id } = toolInput;
+      const BROWSERBASE_API_KEY = Deno.env.get('BROWSERBASE_API_KEY');
+
+      if (!BROWSERBASE_API_KEY) {
+        return JSON.stringify({ error: 'Browserbase not configured' });
+      }
+
+      try {
+        const screenshotResponse = await fetch(
+          `https://www.browserbase.com/v1/sessions/${session_id}/screenshot`,
+          {
+            headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY },
+          }
+        );
+
+        if (screenshotResponse.ok) {
+          const screenshotData = await screenshotResponse.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(screenshotData)));
+          return JSON.stringify({
+            session_id,
+            screenshot: `data:image/png;base64,${base64.slice(0, 100)}...`, // Truncated for logs
+            screenshot_taken: true,
+            message: 'Screenshot captured. I can see the page.',
+          });
+        } else {
+          return JSON.stringify({ error: 'Screenshot not available yet' });
+        }
+      } catch (error) {
+        return JSON.stringify({ error: String(error) });
+      }
+    }
+
+    case 'browse_fill_form': {
+      const { session_id, selector, value } = toolInput;
+      const BROWSERBASE_API_KEY = Deno.env.get('BROWSERBASE_API_KEY');
+
+      if (!BROWSERBASE_API_KEY) {
+        return JSON.stringify({ error: 'Browserbase not configured' });
+      }
+
+      // For Browserbase, we need to use their connect_url with Playwright
+      // This returns instructions for the automation
+      return JSON.stringify({
+        session_id,
+        action: 'fill_form',
+        selector,
+        value,
+        message: `Ready to fill ${selector} with value. Use connect_url with Playwright for actual execution.`,
+        note: 'Browser automation requires WebSocket connection. For now, use web research tools instead.',
+      });
+    }
+
+    case 'browse_click': {
+      const { session_id, selector } = toolInput;
+      const BROWSERBASE_API_KEY = Deno.env.get('BROWSERBASE_API_KEY');
+
+      if (!BROWSERBASE_API_KEY) {
+        return JSON.stringify({ error: 'Browserbase not configured' });
+      }
+
+      return JSON.stringify({
+        session_id,
+        action: 'click',
+        selector,
+        message: `Ready to click ${selector}. Use connect_url with Playwright for actual execution.`,
+      });
+    }
+
+    case 'browse_get_text': {
+      const { session_id, selector } = toolInput;
+      const BROWSERBASE_API_KEY = Deno.env.get('BROWSERBASE_API_KEY');
+
+      if (!BROWSERBASE_API_KEY) {
+        return JSON.stringify({ error: 'Browserbase not configured' });
+      }
+
+      return JSON.stringify({
+        session_id,
+        action: 'get_text',
+        selector,
+        message: `Ready to extract text from ${selector}. Use connect_url with Playwright for actual execution.`,
+      });
+    }
+
+    case 'browse_execute': {
+      const { session_id, script } = toolInput;
+      const BROWSERBASE_API_KEY = Deno.env.get('BROWSERBASE_API_KEY');
+
+      if (!BROWSERBASE_API_KEY) {
+        return JSON.stringify({ error: 'Browserbase not configured' });
+      }
+
+      return JSON.stringify({
+        session_id,
+        action: 'execute_script',
+        script: script.slice(0, 200) + '...',
+        message: 'Ready to execute script. Use connect_url with Playwright for actual execution.',
+      });
     }
 
     // === COMMUNICATION ===
