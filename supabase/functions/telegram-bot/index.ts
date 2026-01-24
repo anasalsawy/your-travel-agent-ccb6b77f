@@ -56,9 +56,57 @@ function getCabinLabel(cabin: string | null): string {
   return labels[cabin || "economy"] || "Economy";
 }
 
+// Admin chat IDs that can use Claude commands
+const ADMIN_CHAT_IDS = ['7023792563'];
+
+// Call Claude agent
+async function callClaudeAgent(message: string, context?: string): Promise<string> {
+  const systemPrompt = `You are Claude, a senior developer assistant working for the boss. You have access to:
+- Database queries (ticket_requests, orders, profiles, quote_logs, call_logs, etc.)
+- Web browsing via Browserbase
+- Web search via Perplexity
+- GitHub repository access for code reading and debugging
+- Notification sending
+
+You are the "intern" who gets things done. Be concise, technical, and action-oriented.
+When asked to debug or analyze code, use your tools to investigate thoroughly.
+Format responses for Telegram (use markdown sparingly, keep it readable).
+
+${context ? `Context: ${context}` : ''}`;
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/claude-agent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+      },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: message }],
+        system: systemPrompt,
+        max_tokens: 4096,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[Claude] Agent error:', error);
+      return `❌ Error calling Claude: ${error}`;
+    }
+
+    const data = await response.json();
+    return data.content || 'No response from Claude';
+  } catch (error) {
+    console.error('[Claude] Error:', error);
+    return `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  }
+}
+
 // Handle /start command
 async function handleStart(chatId: number) {
-  const welcomeMessage = `
+  const isAdmin = ADMIN_CHAT_IDS.includes(chatId.toString());
+  
+  let welcomeMessage = `
 🛫 <b>Welcome to Your Travel Agent Bot!</b>
 
 I can help you:
@@ -74,7 +122,22 @@ I can help you:
 /link - Link your Telegram to your seller account
 /vouchers - Browse available vouchers
 /help - Show this help message
+`;
 
+  if (isAdmin) {
+    welcomeMessage += `
+<b>🤖 Claude Commands (Admin Only):</b>
+/claude [message] - Talk to Claude
+/status - System status report
+/logs - View recent error logs
+/search [query] - Search the codebase
+/read [file] - Read a file
+/debug [issue] - Analyze an issue
+/db [query] - Query database
+`;
+  }
+
+  welcomeMessage += `
 Ready to find great travel deals? Try /listings to get started!
   `;
   await sendMessage(chatId, welcomeMessage);
@@ -607,12 +670,97 @@ serve(async (req) => {
         }
       } else if (text.startsWith("/help") || text === "/h") {
         await handleHelp(chatId);
+      } else if (text.startsWith("/claude ") || text.startsWith("/c ")) {
+        // Claude direct message
+        if (!ADMIN_CHAT_IDS.includes(chatId.toString())) {
+          await sendMessage(chatId, "⛔ Claude commands are admin-only.");
+        } else {
+          const query = text.replace(/^\/(claude|c)\s+/, "");
+          await sendMessage(chatId, "🤔 Working on it...");
+          const response = await callClaudeAgent(query);
+          await sendMessage(chatId, response);
+        }
+      } else if (text.startsWith("/status")) {
+        if (!ADMIN_CHAT_IDS.includes(chatId.toString())) {
+          await sendMessage(chatId, "⛔ Admin command only.");
+        } else {
+          await sendMessage(chatId, "📊 Fetching status...");
+          const response = await callClaudeAgent(
+            "Give me a quick status report. Check: 1) Recent ticket_requests (last 5), 2) Any pending orders, 3) Recent call_logs. Be brief."
+          );
+          await sendMessage(chatId, `📊 <b>Status Report</b>\n\n${response}`);
+        }
+      } else if (text.startsWith("/logs")) {
+        if (!ADMIN_CHAT_IDS.includes(chatId.toString())) {
+          await sendMessage(chatId, "⛔ Admin command only.");
+        } else {
+          await sendMessage(chatId, "📋 Fetching logs...");
+          const response = await callClaudeAgent(
+            'Query the notification_log table for recent errors (status = "error"). Show last 10 with timestamps and error messages.'
+          );
+          await sendMessage(chatId, `📋 <b>Recent Logs</b>\n\n${response}`);
+        }
+      } else if (text.startsWith("/search ")) {
+        if (!ADMIN_CHAT_IDS.includes(chatId.toString())) {
+          await sendMessage(chatId, "⛔ Admin command only.");
+        } else {
+          const query = text.replace("/search ", "");
+          await sendMessage(chatId, `🔍 Searching for: ${query}...`);
+          const response = await callClaudeAgent(
+            `Search the codebase for: "${query}". Use the github_search tool to find relevant files and code snippets.`
+          );
+          await sendMessage(chatId, response);
+        }
+      } else if (text.startsWith("/read ")) {
+        if (!ADMIN_CHAT_IDS.includes(chatId.toString())) {
+          await sendMessage(chatId, "⛔ Admin command only.");
+        } else {
+          const filepath = text.replace("/read ", "");
+          await sendMessage(chatId, `📖 Reading: ${filepath}...`);
+          const response = await callClaudeAgent(
+            `Read the file: "${filepath}" from the GitHub repository. Show me the key parts and summarize what it does.`
+          );
+          await sendMessage(chatId, response);
+        }
+      } else if (text.startsWith("/debug ")) {
+        if (!ADMIN_CHAT_IDS.includes(chatId.toString())) {
+          await sendMessage(chatId, "⛔ Admin command only.");
+        } else {
+          const issue = text.replace("/debug ", "");
+          await sendMessage(chatId, `🔧 Debugging: ${issue}...`);
+          const response = await callClaudeAgent(
+            `Debug this issue: "${issue}". 
+            1) Check relevant logs in the database
+            2) Search for related code
+            3) Analyze the flow
+            4) Provide your findings and suggested fix`
+          );
+          await sendMessage(chatId, `🔧 <b>Debug Report</b>\n\n${response}`);
+        }
+      } else if (text.startsWith("/db ")) {
+        if (!ADMIN_CHAT_IDS.includes(chatId.toString())) {
+          await sendMessage(chatId, "⛔ Admin command only.");
+        } else {
+          const query = text.replace("/db ", "");
+          await sendMessage(chatId, `🗄️ Querying: ${query}...`);
+          const response = await callClaudeAgent(
+            `Database query request: "${query}". Use the database_query tool to fetch this data and present it clearly.`
+          );
+          await sendMessage(chatId, response);
+        }
       } else {
-        // Unknown command or regular message
-        await sendMessage(
-          chatId,
-          "👋 I didn't understand that command.\n\nTry:\n/listings - View marketplace\n/mybids - Your bids\n/vouchers - Browse vouchers\n/help - All commands"
-        );
+        // Check if it's an admin sending a message without command - treat as Claude chat
+        if (ADMIN_CHAT_IDS.includes(chatId.toString()) && text.length > 5) {
+          await sendMessage(chatId, "🤔 Working on it...");
+          const response = await callClaudeAgent(text);
+          await sendMessage(chatId, response);
+        } else {
+          // Unknown command or regular message
+          await sendMessage(
+            chatId,
+            "👋 I didn't understand that command.\n\nTry:\n/listings - View marketplace\n/mybids - Your bids\n/vouchers - Browse vouchers\n/help - All commands"
+          );
+        }
       }
     }
 
