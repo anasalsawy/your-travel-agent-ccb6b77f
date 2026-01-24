@@ -148,6 +148,71 @@ const BUILT_IN_TOOLS = [
       required: ['type', 'message'],
     },
   },
+  {
+    name: 'github_read_file',
+    description: 'Read a file from the GitHub repository. Use for code review, debugging, understanding implementation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'File path relative to repo root (e.g., src/pages/Index.tsx)',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'github_search',
+    description: 'Search for code patterns in the GitHub repository. Use for finding functions, debugging, understanding codebase.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query (code pattern, function name, etc.)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'github_list_files',
+    description: 'List files in a directory of the GitHub repository.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Directory path relative to repo root (e.g., src/components)',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'github_create_issue',
+    description: 'Create a GitHub issue with a bug report or fix suggestion.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Issue title',
+        },
+        body: {
+          type: 'string',
+          description: 'Issue body with details, analysis, and suggested fix',
+        },
+        labels: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Labels to apply (e.g., ["bug", "claude-suggestion"])',
+        },
+      },
+      required: ['title', 'body'],
+    },
+  },
 ];
 
 // Execute tool calls
@@ -253,6 +318,179 @@ async function executeToolCall(
       
       const result = await response.json();
       return JSON.stringify(result);
+    }
+
+    case 'github_read_file': {
+      const { path } = toolInput as { path: string };
+      const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
+      
+      if (!GITHUB_TOKEN) {
+        return JSON.stringify({ error: 'GitHub token not configured' });
+      }
+      
+      // Get repo info from environment or use default
+      const repo = 'user/repo'; // Will be determined from git config
+      
+      try {
+        const response = await fetch(
+          `https://api.github.com/repos/${repo}/contents/${path}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Claude-Agent',
+            },
+          }
+        );
+        
+        if (!response.ok) {
+          const error = await response.text();
+          return JSON.stringify({ error: `Failed to read file: ${error}` });
+        }
+        
+        const data = await response.json();
+        const content = atob(data.content);
+        
+        return JSON.stringify({
+          path,
+          content: content.length > 10000 ? content.slice(0, 10000) + '\n... (truncated)' : content,
+          size: data.size,
+          sha: data.sha,
+        });
+      } catch (error) {
+        return JSON.stringify({ error: `GitHub API error: ${error}` });
+      }
+    }
+
+    case 'github_search': {
+      const { query } = toolInput as { query: string };
+      const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
+      
+      if (!GITHUB_TOKEN) {
+        return JSON.stringify({ error: 'GitHub token not configured' });
+      }
+      
+      const repo = 'user/repo';
+      
+      try {
+        const response = await fetch(
+          `https://api.github.com/search/code?q=${encodeURIComponent(query)}+repo:${repo}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Claude-Agent',
+            },
+          }
+        );
+        
+        if (!response.ok) {
+          const error = await response.text();
+          return JSON.stringify({ error: `Search failed: ${error}` });
+        }
+        
+        const data = await response.json();
+        
+        return JSON.stringify({
+          total_count: data.total_count,
+          items: data.items?.slice(0, 10).map((item: any) => ({
+            path: item.path,
+            name: item.name,
+            html_url: item.html_url,
+          })),
+        });
+      } catch (error) {
+        return JSON.stringify({ error: `GitHub API error: ${error}` });
+      }
+    }
+
+    case 'github_list_files': {
+      const { path } = toolInput as { path: string };
+      const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
+      
+      if (!GITHUB_TOKEN) {
+        return JSON.stringify({ error: 'GitHub token not configured' });
+      }
+      
+      const repo = 'user/repo';
+      
+      try {
+        const response = await fetch(
+          `https://api.github.com/repos/${repo}/contents/${path || ''}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Claude-Agent',
+            },
+          }
+        );
+        
+        if (!response.ok) {
+          const error = await response.text();
+          return JSON.stringify({ error: `Failed to list files: ${error}` });
+        }
+        
+        const data = await response.json();
+        
+        return JSON.stringify({
+          path,
+          files: Array.isArray(data) ? data.map((item: any) => ({
+            name: item.name,
+            type: item.type,
+            path: item.path,
+            size: item.size,
+          })) : [{ name: data.name, type: data.type, path: data.path }],
+        });
+      } catch (error) {
+        return JSON.stringify({ error: `GitHub API error: ${error}` });
+      }
+    }
+
+    case 'github_create_issue': {
+      const { title, body, labels } = toolInput as { title: string; body: string; labels?: string[] };
+      const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
+      
+      if (!GITHUB_TOKEN) {
+        return JSON.stringify({ error: 'GitHub token not configured' });
+      }
+      
+      const repo = 'user/repo';
+      
+      try {
+        const response = await fetch(
+          `https://api.github.com/repos/${repo}/issues`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Claude-Agent',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              title,
+              body: `## Claude Agent Analysis\n\n${body}\n\n---\n*This issue was created by Claude Agent*`,
+              labels: labels || ['claude-suggestion'],
+            }),
+          }
+        );
+        
+        if (!response.ok) {
+          const error = await response.text();
+          return JSON.stringify({ error: `Failed to create issue: ${error}` });
+        }
+        
+        const data = await response.json();
+        
+        return JSON.stringify({
+          success: true,
+          issue_number: data.number,
+          html_url: data.html_url,
+        });
+      } catch (error) {
+        return JSON.stringify({ error: `GitHub API error: ${error}` });
+      }
     }
 
     default:
