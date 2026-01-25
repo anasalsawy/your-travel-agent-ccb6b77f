@@ -5,8 +5,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Your admin phone/chat ID for authorization
-const ADMIN_CHAT_IDS = ['7023792563']; // Add your Telegram chat ID
+// Admin chat IDs from env (supports comma-separated list)
+const ADMIN_CHAT_ID_ENV = Deno.env.get('ADMIN_TELEGRAM_CHAT_ID') || '7023792563';
+const ADMIN_CHAT_IDS = ADMIN_CHAT_ID_ENV.split(',').map(id => id.trim());
 
 interface TelegramUpdate {
   update_id: number;

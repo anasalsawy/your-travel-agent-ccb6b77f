@@ -56,8 +56,9 @@ function getCabinLabel(cabin: string | null): string {
   return labels[cabin || "economy"] || "Economy";
 }
 
-// Admin chat IDs that can use Claude commands
-const ADMIN_CHAT_IDS = ['7023792563'];
+// Admin chat IDs that can use Claude commands (from env or fallback)
+const ADMIN_CHAT_ID_ENV = Deno.env.get('ADMIN_TELEGRAM_CHAT_ID') || '7023792563';
+const ADMIN_CHAT_IDS = ADMIN_CHAT_ID_ENV.split(',').map(id => id.trim());
 
 // Call Claude agent
 async function callClaudeAgent(message: string, context?: string): Promise<string> {
