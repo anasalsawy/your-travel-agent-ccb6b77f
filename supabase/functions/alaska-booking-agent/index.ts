@@ -3,9 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
  * ALASKA AIRLINES AUTONOMOUS BOOKING AGENT
- * 
- * Direct CDP-based browser automation via Browserbase.
- * No external AI - pure programmatic control.
+ * Self-executing CDP automation via Browserbase WebSocket.
  */
 
 const corsHeaders = {
@@ -20,201 +18,403 @@ interface BookingRequest {
   return_date?: string;
   target_price?: number;
   passenger_email: string;
-  decline_insurance: boolean;
+  decline_insurance?: boolean;
   accounts?: Array<{ email: string; password: string }>;
+  dry_run?: boolean; // If true, don't actually book - just search
 }
 
-// CDP command helper
-async function sendCDP(ws: WebSocket, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const id = Math.floor(Math.random() * 1000000);
-    
-    const timeout = setTimeout(() => {
-      reject(new Error(`CDP command ${method} timed out`));
-    }, 30000);
+class CDPClient {
+  private ws: WebSocket;
+  private messageId = 0;
+  private pendingRequests: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }> = new Map();
+  private logs: string[] = [];
 
-    const handler = (event: MessageEvent) => {
+  constructor(ws: WebSocket, logs: string[]) {
+    this.ws = ws;
+    this.logs = logs;
+    
+    this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.id === id) {
-          clearTimeout(timeout);
-          ws.removeEventListener('message', handler);
-          if (data.error) {
-            reject(new Error(data.error.message));
-          } else {
-            resolve(data.result);
+        if (data.id !== undefined) {
+          const pending = this.pendingRequests.get(data.id);
+          if (pending) {
+            this.pendingRequests.delete(data.id);
+            if (data.error) {
+              pending.reject(new Error(data.error.message));
+            } else {
+              pending.resolve(data.result);
+            }
           }
         }
       } catch (e) {
         // Ignore parse errors for events
       }
     };
+  }
 
-    ws.addEventListener('message', handler);
-    ws.send(JSON.stringify({ id, method, params }));
-  });
-}
+  log(msg: string) {
+    console.log(`[CDP] ${msg}`);
+    this.logs.push(`${new Date().toISOString()} - ${msg}`);
+  }
 
-// Wait for page to be ready
-async function waitForLoad(ws: WebSocket, timeout = 15000): Promise<void> {
-  return new Promise((resolve) => {
+  async send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const id = ++this.messageId;
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`Timeout: ${method}`));
+      }, 30000);
+
+      this.pendingRequests.set(id, {
+        resolve: (v) => { clearTimeout(timeout); resolve(v); },
+        reject: (e) => { clearTimeout(timeout); reject(e); },
+      });
+
+      this.ws.send(JSON.stringify({ id, method, params }));
+    });
+  }
+
+  async navigate(url: string): Promise<void> {
+    this.log(`Navigating to: ${url}`);
+    await this.send('Page.navigate', { url });
+    await this.waitForLoad();
+  }
+
+  async waitForLoad(timeout = 15000): Promise<void> {
     const start = Date.now();
-    const check = async () => {
+    while (Date.now() - start < timeout) {
       try {
-        const result = await sendCDP(ws, 'Runtime.evaluate', {
+        const result = await this.send('Runtime.evaluate', {
           expression: 'document.readyState',
           returnByValue: true,
         }) as { result: { value: string } };
         
         if (result?.result?.value === 'complete') {
-          resolve();
+          await this.wait(500); // Extra buffer
           return;
         }
       } catch (e) {
-        // Page not ready yet
+        // Page not ready
       }
-      
-      if (Date.now() - start < timeout) {
-        setTimeout(check, 500);
-      } else {
-        resolve(); // Timeout, proceed anyway
-      }
-    };
-    check();
-  });
-}
-
-// Click element by selector
-async function click(ws: WebSocket, selector: string): Promise<boolean> {
-  try {
-    const result = await sendCDP(ws, 'Runtime.evaluate', {
-      expression: `
-        (function() {
-          const el = document.querySelector('${selector}');
-          if (el) {
-            el.click();
-            return true;
-          }
-          return false;
-        })()
-      `,
-      returnByValue: true,
-    }) as { result: { value: boolean } };
-    return result?.result?.value === true;
-  } catch (e) {
-    console.error('[CDP] Click failed:', e);
-    return false;
+      await this.wait(500);
+    }
   }
-}
 
-// Click element by text content
-async function clickByText(ws: WebSocket, text: string, tag = '*'): Promise<boolean> {
-  try {
-    const result = await sendCDP(ws, 'Runtime.evaluate', {
-      expression: `
-        (function() {
-          const elements = Array.from(document.querySelectorAll('${tag}'));
-          const el = elements.find(e => e.textContent && e.textContent.includes('${text}'));
-          if (el) {
-            el.click();
-            return true;
-          }
-          return false;
-        })()
-      `,
-      returnByValue: true,
-    }) as { result: { value: boolean } };
-    return result?.result?.value === true;
-  } catch (e) {
-    console.error('[CDP] ClickByText failed:', e);
-    return false;
+  async wait(ms: number): Promise<void> {
+    return new Promise(r => setTimeout(r, ms));
   }
-}
 
-// Type into input field
-async function typeText(ws: WebSocket, selector: string, text: string): Promise<boolean> {
-  try {
-    // First focus the element
-    await sendCDP(ws, 'Runtime.evaluate', {
-      expression: `
-        (function() {
-          const el = document.querySelector('${selector}');
-          if (el) {
-            el.focus();
-            el.value = '';
-            return true;
-          }
-          return false;
-        })()
-      `,
-    });
+  async evaluate<T>(expression: string): Promise<T> {
+    const result = await this.send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    }) as { result: { value: T } };
+    return result?.result?.value;
+  }
 
-    // Type each character
+  async click(selector: string): Promise<boolean> {
+    const clicked = await this.evaluate<boolean>(`
+      (function() {
+        const el = document.querySelector('${selector}');
+        if (el) { el.click(); return true; }
+        return false;
+      })()
+    `);
+    this.log(`Click ${selector}: ${clicked ? 'success' : 'not found'}`);
+    return clicked;
+  }
+
+  async clickText(text: string, tag = '*'): Promise<boolean> {
+    const clicked = await this.evaluate<boolean>(`
+      (function() {
+        const els = Array.from(document.querySelectorAll('${tag}'));
+        const el = els.find(e => e.textContent && e.textContent.trim().includes('${text}'));
+        if (el) { el.click(); return true; }
+        return false;
+      })()
+    `);
+    this.log(`Click text "${text}": ${clicked ? 'success' : 'not found'}`);
+    return clicked;
+  }
+
+  async type(selector: string, text: string): Promise<boolean> {
+    // Focus and clear
+    await this.evaluate(`
+      (function() {
+        const el = document.querySelector('${selector}');
+        if (el) { el.focus(); el.value = ''; }
+      })()
+    `);
+
+    // Type character by character with delays
     for (const char of text) {
-      await sendCDP(ws, 'Input.dispatchKeyEvent', {
-        type: 'keyDown',
-        text: char,
-      });
-      await sendCDP(ws, 'Input.dispatchKeyEvent', {
-        type: 'keyUp',
-        text: char,
-      });
-      await new Promise(r => setTimeout(r, 50)); // Human-like delay
+      await this.send('Input.dispatchKeyEvent', { type: 'keyDown', text: char });
+      await this.send('Input.dispatchKeyEvent', { type: 'keyUp', text: char });
+      await this.wait(30);
     }
 
-    // Set value directly as backup
-    await sendCDP(ws, 'Runtime.evaluate', {
-      expression: `
-        (function() {
-          const el = document.querySelector('${selector}');
-          if (el) {
-            el.value = '${text}';
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-            return true;
-          }
-          return false;
-        })()
-      `,
-      returnByValue: true,
-    });
+    // Set value directly as backup and trigger events
+    await this.evaluate(`
+      (function() {
+        const el = document.querySelector('${selector}');
+        if (el) {
+          el.value = '${text}';
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      })()
+    `);
 
+    this.log(`Type into ${selector}: ${text.substring(0, 3)}***`);
     return true;
-  } catch (e) {
-    console.error('[CDP] TypeText failed:', e);
-    return false;
   }
-}
 
-// Take screenshot
-async function screenshot(ws: WebSocket): Promise<string> {
-  try {
-    const result = await sendCDP(ws, 'Page.captureScreenshot', {
+  async screenshot(): Promise<string> {
+    const result = await this.send('Page.captureScreenshot', {
       format: 'png',
       quality: 80,
     }) as { data: string };
+    this.log('Screenshot captured');
     return result?.data || '';
-  } catch (e) {
-    console.error('[CDP] Screenshot failed:', e);
-    return '';
+  }
+
+  async getURL(): Promise<string> {
+    return this.evaluate<string>('window.location.href');
+  }
+
+  async getTitle(): Promise<string> {
+    return this.evaluate<string>('document.title');
+  }
+
+  async waitForSelector(selector: string, timeout = 10000): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const found = await this.evaluate<boolean>(`!!document.querySelector('${selector}')`);
+      if (found) return true;
+      await this.wait(500);
+    }
+    return false;
+  }
+
+  async waitForText(text: string, timeout = 10000): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const found = await this.evaluate<boolean>(`document.body.innerText.includes('${text}')`);
+      if (found) return true;
+      await this.wait(500);
+    }
+    return false;
   }
 }
 
-// Get page URL
-async function getURL(ws: WebSocket): Promise<string> {
+async function runBookingAutomation(
+  cdp: CDPClient,
+  request: BookingRequest,
+  account: { email: string; password: string }
+): Promise<{ success: boolean; step: string; error?: string; screenshot?: string; data?: Record<string, unknown> }> {
+  
   try {
-    const result = await sendCDP(ws, 'Runtime.evaluate', {
-      expression: 'window.location.href',
-      returnByValue: true,
-    }) as { result: { value: string } };
-    return result?.result?.value || '';
-  } catch (e) {
-    return '';
+    // Step 1: Navigate to Alaska Airlines
+    cdp.log('Step 1: Opening Alaska Airlines...');
+    await cdp.navigate('https://www.alaskaair.com');
+    await cdp.wait(3000);
+    
+    let screenshot = await cdp.screenshot();
+    const title = await cdp.getTitle();
+    cdp.log(`Page loaded: ${title}`);
+
+    // Step 2: Click Sign In
+    cdp.log('Step 2: Looking for Sign In...');
+    
+    // Try multiple selectors for sign in
+    const signInClicked = 
+      await cdp.clickText('Sign in') ||
+      await cdp.clickText('Log in') ||
+      await cdp.click('[data-testid="sign-in"]') ||
+      await cdp.click('button[aria-label*="sign in" i]') ||
+      await cdp.click('a[href*="login"]');
+    
+    if (!signInClicked) {
+      screenshot = await cdp.screenshot();
+      return { success: false, step: 'sign_in_button', error: 'Could not find Sign In button', screenshot };
+    }
+    
+    await cdp.wait(3000);
+    await cdp.waitForLoad();
+
+    // Step 3: Enter credentials
+    cdp.log('Step 3: Entering credentials...');
+    
+    // Wait for login form
+    const emailFieldFound = await cdp.waitForSelector('input[type="email"], input[name="email"], input[id*="email" i], input[name="username"]', 5000);
+    
+    if (!emailFieldFound) {
+      screenshot = await cdp.screenshot();
+      return { success: false, step: 'login_form', error: 'Login form not found', screenshot };
+    }
+
+    // Type email
+    await cdp.type('input[type="email"], input[name="email"], input[id*="email" i], input[name="username"]', account.email);
+    await cdp.wait(500);
+
+    // Type password
+    await cdp.type('input[type="password"], input[name="password"]', account.password);
+    await cdp.wait(500);
+
+    // Click submit
+    const loginSubmitted = 
+      await cdp.click('button[type="submit"]') ||
+      await cdp.clickText('Sign in', 'button') ||
+      await cdp.clickText('Log in', 'button') ||
+      await cdp.clickText('Continue', 'button');
+
+    if (!loginSubmitted) {
+      screenshot = await cdp.screenshot();
+      return { success: false, step: 'login_submit', error: 'Could not submit login form', screenshot };
+    }
+
+    await cdp.wait(5000);
+    await cdp.waitForLoad();
+    
+    // Check for login errors
+    const currentUrl = await cdp.getURL();
+    cdp.log(`After login URL: ${currentUrl}`);
+    
+    const hasError = await cdp.evaluate<boolean>(`
+      document.body.innerText.toLowerCase().includes('invalid') ||
+      document.body.innerText.toLowerCase().includes('incorrect') ||
+      document.body.innerText.toLowerCase().includes('error')
+    `);
+    
+    if (hasError) {
+      screenshot = await cdp.screenshot();
+      return { success: false, step: 'login_verify', error: 'Login failed - invalid credentials?', screenshot };
+    }
+
+    // Step 4: Navigate to booking
+    cdp.log('Step 4: Going to flight search...');
+    
+    // Look for booking/search area
+    await cdp.clickText('Book') || await cdp.clickText('Search') || await cdp.click('a[href*="book"]');
+    await cdp.wait(2000);
+
+    // Step 5: Fill search form
+    cdp.log('Step 5: Filling flight search...');
+    
+    // Origin
+    const originFields = 'input[id*="origin" i], input[name*="from" i], input[placeholder*="from" i], input[aria-label*="from" i]';
+    await cdp.type(originFields, request.origin);
+    await cdp.wait(1000);
+    // Select from dropdown
+    await cdp.click('li[role="option"], .autocomplete-item, .suggestion');
+    await cdp.wait(500);
+
+    // Destination
+    const destFields = 'input[id*="destination" i], input[name*="to" i], input[placeholder*="to" i], input[aria-label*="to" i]';
+    await cdp.type(destFields, request.destination);
+    await cdp.wait(1000);
+    await cdp.click('li[role="option"], .autocomplete-item, .suggestion');
+    await cdp.wait(500);
+
+    // Departure date - this is tricky as date pickers vary
+    cdp.log(`Setting departure date: ${request.departure_date}`);
+    await cdp.click('input[id*="depart" i], input[name*="depart" i], button[aria-label*="departure" i]');
+    await cdp.wait(1000);
+    
+    // For date pickers, we often need to type the date directly
+    await cdp.evaluate(`
+      const dateInputs = document.querySelectorAll('input[type="date"], input[id*="date" i]');
+      dateInputs.forEach(el => {
+        if (el.id.toLowerCase().includes('depart')) {
+          el.value = '${request.departure_date}';
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    `);
+
+    // Step 6: Search flights
+    cdp.log('Step 6: Searching flights...');
+    
+    const searchClicked = 
+      await cdp.clickText('Search', 'button') ||
+      await cdp.clickText('Find flights', 'button') ||
+      await cdp.click('button[type="submit"]');
+    
+    if (!searchClicked) {
+      screenshot = await cdp.screenshot();
+      return { success: false, step: 'search_submit', error: 'Could not submit search', screenshot };
+    }
+
+    await cdp.wait(8000);
+    await cdp.waitForLoad();
+    
+    screenshot = await cdp.screenshot();
+    
+    // Check if results loaded
+    const hasResults = await cdp.evaluate<boolean>(`
+      document.body.innerText.includes('$') ||
+      document.body.innerText.includes('Select') ||
+      document.querySelectorAll('[class*="flight"]').length > 0
+    `);
+
+    if (!hasResults) {
+      return { 
+        success: false, 
+        step: 'search_results', 
+        error: 'No flight results found', 
+        screenshot,
+        data: { url: await cdp.getURL() }
+      };
+    }
+
+    // If dry run, stop here
+    if (request.dry_run) {
+      return {
+        success: true,
+        step: 'search_complete',
+        screenshot,
+        data: {
+          message: 'Dry run - search completed successfully',
+          url: await cdp.getURL(),
+        }
+      };
+    }
+
+    // Step 7: Select flight (look for price near target)
+    cdp.log(`Step 7: Looking for flight near $${request.target_price}...`);
+    
+    // This is where we'd parse prices and select the best option
+    // For now, click the first "Select" button
+    await cdp.clickText('Select', 'button') || await cdp.click('button[class*="select" i]');
+    await cdp.wait(3000);
+
+    // Continue through booking flow...
+    // This would need to be customized based on Alaska's actual UI
+
+    screenshot = await cdp.screenshot();
+    
+    return {
+      success: true,
+      step: 'booking_in_progress',
+      screenshot,
+      data: {
+        url: await cdp.getURL(),
+        message: 'Booking flow initiated - manual review recommended',
+      }
+    };
+
+  } catch (error) {
+    const screenshot = await cdp.screenshot().catch(() => '');
+    return {
+      success: false,
+      step: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      screenshot,
+    };
   }
 }
-
-// Wait helper
-const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -225,7 +425,6 @@ serve(async (req) => {
   const BROWSERBASE_PROJECT_ID = Deno.env.get('BROWSERBASE_PROJECT_ID');
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  
   const DEFAULT_EMAIL = Deno.env.get('ALASKA_LOGIN_EMAIL');
   const DEFAULT_PASSWORD = Deno.env.get('ALASKA_LOGIN_PASSWORD');
 
@@ -247,24 +446,44 @@ serve(async (req) => {
     const body: BookingRequest = await req.json();
     log(`Request: ${body.origin} → ${body.destination} on ${body.departure_date}`);
 
-    const {
-      origin,
-      destination,
-      departure_date,
-      return_date,
-      target_price = 700,
-      passenger_email,
-      decline_insurance = true,
-      accounts = []
-    } = body;
-
-    const account = accounts[0] || { email: DEFAULT_EMAIL, password: DEFAULT_PASSWORD };
+    const account = body.accounts?.[0] || { email: DEFAULT_EMAIL || '', password: DEFAULT_PASSWORD || '' };
     
     if (!account.email || !account.password) {
       return new Response(
-        JSON.stringify({ error: 'No account credentials provided', logs }),
+        JSON.stringify({ error: 'No account credentials', logs }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // First, close any existing sessions
+    log('Checking for existing sessions...');
+    try {
+      const listResponse = await fetch('https://www.browserbase.com/v1/sessions', {
+        headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY },
+      });
+      
+      if (listResponse.ok) {
+        const sessions = await listResponse.json();
+        for (const s of sessions) {
+          if (s.status === 'RUNNING') {
+            log(`Closing existing session: ${s.id}`);
+            await fetch(`https://www.browserbase.com/v1/sessions/${s.id}`, {
+              method: 'PUT',
+              headers: {
+                'X-BB-API-Key': BROWSERBASE_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ status: 'REQUEST_RELEASE' }),
+            });
+          }
+        }
+        // Wait for sessions to close
+        if (sessions.some((s: { status: string }) => s.status === 'RUNNING')) {
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
+    } catch (e) {
+      log(`Session cleanup error: ${e}`);
     }
 
     // Create Browserbase session
@@ -287,9 +506,8 @@ serve(async (req) => {
 
     if (!sessionResponse.ok) {
       const error = await sessionResponse.text();
-      log(`Session creation failed: ${error}`);
       return new Response(
-        JSON.stringify({ error: `Failed to create session: ${error}`, logs }),
+        JSON.stringify({ error: `Session creation failed: ${error}`, logs }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -297,96 +515,89 @@ serve(async (req) => {
     const session = await sessionResponse.json();
     log(`Session created: ${session.id}`);
 
-    // Get debug connection info
+    // Get WebSocket URL for CDP
     const debugResponse = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/debug`, {
       headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY },
     });
     
-    if (!debugResponse.ok) {
-      throw new Error('Failed to get debug connection');
-    }
-    
     const debugInfo = await debugResponse.json();
-    const wsUrl = debugInfo.debuggerFullscreenUrl?.replace('https://', 'wss://').replace('/devtools/inspector.html', '') 
-               || debugInfo.wsUrl;
+    log(`Debug info: ${JSON.stringify(Object.keys(debugInfo))}`);
     
-    log(`Connecting to CDP: ${wsUrl ? 'found' : 'not found'}`);
-
-    // For now, we'll use the simpler approach of returning session info
-    // Full CDP automation requires WebSocket support in Deno which has limitations
+    // Browserbase provides a WebSocket URL for CDP
+    // Format: wss://connect.browserbase.com/...
+    const wsUrl = debugInfo.debuggerWsUrl || session.connectUrl?.replace('wss://', 'wss://') || null;
     
-    // Alternative: Use Browserbase's REST API for basic actions
-    const connectUrl = session.connectUrl;
-    
-    // Store job for external processing
-    const { data: queueEntry, error: queueError } = await supabase
-      .from('booking_queue')
-      .insert({
-        booking_method: 'browserbase_cdp',
-        inventory_type: 'alaska_account',
-        status: 'pending',
-        booking_result: {
-          session_id: session.id,
-          connect_url: connectUrl,
+    if (!wsUrl) {
+      log('No WebSocket URL found, returning session for manual connection');
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'CDP WebSocket URL not available',
+        session: {
+          id: session.id,
           debug_url: `https://www.browserbase.com/sessions/${session.id}`,
-          ws_url: wsUrl,
-          request: body,
-          account_email: account.email,
-          automation_steps: [
-            { step: 1, action: 'navigate', url: 'https://www.alaskaair.com' },
-            { step: 2, action: 'click', target: 'Sign In button' },
-            { step: 3, action: 'type', target: 'email field', value: account.email },
-            { step: 4, action: 'type', target: 'password field', value: '***' },
-            { step: 5, action: 'click', target: 'submit button' },
-            { step: 6, action: 'navigate', target: 'booking page' },
-            { step: 7, action: 'fill_search', origin, destination, departure_date, return_date },
-            { step: 8, action: 'search_flights' },
-            { step: 9, action: 'select_flight', target_price },
-            { step: 10, action: 'fill_passenger', email: passenger_email },
-            { step: 11, action: 'decline_insurance', value: decline_insurance },
-            { step: 12, action: 'complete_booking' },
-          ],
-          logs,
+          connect_url: session.connectUrl,
         },
-      })
-      .select()
-      .single();
-
-    if (queueError) {
-      log(`Queue insert error: ${queueError.message}`);
-    } else {
-      log(`Queued job: ${queueEntry?.id}`);
+        logs,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Return session info - the actual automation needs a persistent runtime
-    // Option 1: Use a separate worker/server that connects via Playwright
-    // Option 2: Use Browserbase's upcoming automation API
-    // Option 3: Build a hybrid with shorter-running CDP commands
+    // Connect via WebSocket
+    log(`Connecting to CDP: ${wsUrl.substring(0, 50)}...`);
+    
+    const ws = new WebSocket(wsUrl);
+    
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('WebSocket connection timeout')), 10000);
+      ws.onopen = () => { clearTimeout(timeout); resolve(); };
+      ws.onerror = (e) => { clearTimeout(timeout); reject(new Error('WebSocket error')); };
+    });
+    
+    log('WebSocket connected!');
+
+    // Initialize CDP
+    const cdp = new CDPClient(ws, logs);
+    await cdp.send('Page.enable');
+    await cdp.send('Runtime.enable');
+    await cdp.send('Input.enable');
+
+    // Run the automation
+    const result = await runBookingAutomation(cdp, body, account);
+    
+    // Close WebSocket
+    ws.close();
+    
+    // Store result
+    await supabase.from('booking_queue').insert({
+      booking_method: 'browserbase_cdp_auto',
+      inventory_type: 'alaska_account',
+      status: result.success ? 'completed' : 'failed',
+      booking_result: {
+        ...result,
+        session_id: session.id,
+        request: body,
+        logs,
+      },
+      error_message: result.error,
+    });
 
     return new Response(JSON.stringify({
-      success: true,
-      status: 'session_ready',
-      message: 'Browser session created. Connect via CDP to automate.',
+      ...result,
       session: {
         id: session.id,
         debug_url: `https://www.browserbase.com/sessions/${session.id}`,
-        connect_url: connectUrl,
       },
-      queue_id: queueEntry?.id,
-      next_steps: [
-        'Open debug_url to watch the browser',
-        'Use Playwright with connect_url for full automation',
-        `const browser = await chromium.connectOverCDP('${connectUrl}')`,
-      ],
       logs,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    log(`Error: ${error instanceof Error ? error.message : 'Unknown'}`);
+    log(`Fatal error: ${error instanceof Error ? error.message : 'Unknown'}`);
     return new Response(
       JSON.stringify({ 
+        success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         logs,
       }),
