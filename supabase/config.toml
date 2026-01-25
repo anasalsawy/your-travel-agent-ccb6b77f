@@ -1,5 +1,8 @@
 project_id = "wpwdxtyufpewdyffxlgo"
 
+[functions.alaska-booking-agent]
+verify_jwt = false
+
 [functions.smart-quote-v2]
 verify_jwt = false
 
