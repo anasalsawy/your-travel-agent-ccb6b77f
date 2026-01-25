@@ -392,15 +392,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const FATWA_AGENT_ID = Deno.env.get("FATWA_AGENT_ID"); // Check if fatwa service is configured
   const FATWA_TWILIO_NUMBER = Deno.env.get("FATWA_TWILIO_NUMBER"); // Dedicated fatwa phone number
 
-  if (!LOVABLE_API_KEY) {
-    console.error("[WhatsApp Maya] LOVABLE_API_KEY is not configured");
+  if (!ANTHROPIC_API_KEY) {
+    console.error("[WhatsApp Maya] ANTHROPIC_API_KEY is not configured");
     return new Response(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Service temporarily unavailable. Please try again later.</Message></Response>`,
       { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
@@ -1031,27 +1031,33 @@ Could not find market prices for this route.
       }
     }
 
-    // Call AI with customer context + price research context
+    // Call Claude AI with customer context + price research context
     const fullSystemPrompt = SYSTEM_PROMPT + customerContextPrompt + priceResearchContext;
     
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Convert messages to Anthropic format
+    const anthropicMessages = history.map((m: any) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.content,
+    }));
+    
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5.2",
-        messages: [
-          { role: "system", content: fullSystemPrompt },
-          ...history,
-        ],
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1024,
+        system: fullSystemPrompt,
+        messages: anthropicMessages,
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error("[WhatsApp Maya] AI Gateway error:", aiResponse.status, errorText);
+      console.error("[WhatsApp Maya] Anthropic Claude error:", aiResponse.status, errorText);
       
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Oops! Something went wrong. Try again in a sec!</Message></Response>`,
@@ -1060,7 +1066,13 @@ Could not find market prices for this route.
     }
 
     const aiData = await aiResponse.json();
-    let assistantResponse = aiData.choices?.[0]?.message?.content || "";
+    // Extract text content from Anthropic's response format
+    let assistantResponse = "";
+    for (const block of aiData.content || []) {
+      if (block.type === "text") {
+        assistantResponse += block.text;
+      }
+    }
 
     if (!assistantResponse.trim()) {
       assistantResponse = "Hey! 👋 I'm Maya from Your Travel Agent. What can I help you with today? ✈️";

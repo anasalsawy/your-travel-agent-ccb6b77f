@@ -4871,8 +4871,8 @@ serve(async (req) => {
       );
     }
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -5253,21 +5253,39 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       ...messages,
     ];
 
-    // Use GPT-5.2 for all channels - unified Maya experience
-    const modelToUse = "openai/gpt-5.2";
+    // Use Claude 3.5 Sonnet for all channels - unified Maya experience
+    const modelToUse = "claude-sonnet-4-20250514";
+    
+    // Convert tools to Anthropic format
+    const anthropicTools = activeTools.map((tool: any) => ({
+      name: tool.function.name,
+      description: tool.function.description,
+      input_schema: tool.function.parameters,
+    }));
+    
+    // Convert messages to Anthropic format (separate system from messages)
+    const systemPrompt = apiMessages.find((m: any) => m.role === "system")?.content || "";
+    const anthropicMessages = apiMessages
+      .filter((m: any) => m.role !== "system")
+      .map((m: any) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      }));
     
     // First API call - may include tool calls
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: modelToUse,
-        messages: apiMessages,
-        tools: activeTools,
-        stream: false,
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: anthropicMessages,
+        tools: anthropicTools,
       }),
     });
 
@@ -5293,50 +5311,72 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
     }
 
     let result = await response.json();
-    let assistantMessage = result.choices?.[0]?.message;
+    
+    // Convert Anthropic response format to our internal format
+    // Anthropic returns: { content: [...], stop_reason, ... }
+    // We need to extract text and tool_use blocks
+    let textContent = "";
+    let toolCalls: any[] = [];
+    
+    for (const block of result.content || []) {
+      if (block.type === "text") {
+        textContent += block.text;
+      } else if (block.type === "tool_use") {
+        toolCalls.push({
+          id: block.id,
+          name: block.name,
+          input: block.input,
+        });
+      }
+    }
 
     // Handle tool calls in a loop (up to 10 iterations for complex multi-tool chains)
     let iterations = 0;
     const maxIterations = 10;
+    let currentMessages = [...anthropicMessages];
     
-    while (assistantMessage?.tool_calls && iterations < maxIterations) {
+    while (toolCalls.length > 0 && iterations < maxIterations) {
       iterations++;
-      console.log(`Processing tool calls (iteration ${iterations}):`, assistantMessage.tool_calls.length);
+      console.log(`Processing tool calls (iteration ${iterations}):`, toolCalls.length);
 
-      // Execute all tool calls
-      const toolResults = [];
-      for (const toolCall of assistantMessage.tool_calls) {
-        const toolName = toolCall.function.name;
-        const toolArgs = JSON.parse(toolCall.function.arguments || "{}");
+      // Add assistant message with tool use to conversation
+      currentMessages.push({
+        role: "assistant",
+        content: result.content,
+      });
+
+      // Execute all tool calls and format results for Anthropic
+      const toolResultBlocks = [];
+      for (const toolCall of toolCalls) {
+        const toolResult = await executeTool(supabase, toolCall.name, toolCall.input, convId);
         
-        const toolResult = await executeTool(supabase, toolName, toolArgs, convId);
-        
-        toolResults.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
+        toolResultBlocks.push({
+          type: "tool_result",
+          tool_use_id: toolCall.id,
           content: toolResult,
         });
       }
 
-      // Add assistant message and tool results to conversation
-      const updatedMessages = [
-        ...apiMessages,
-        assistantMessage,
-        ...toolResults,
-      ];
+      // Add tool results as user message
+      currentMessages.push({
+        role: "user",
+        content: toolResultBlocks,
+      });
 
-      // Get follow-up response (use same model as initial call)
-      const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      // Get follow-up response from Claude
+      const followUpResponse = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           model: modelToUse,
-          messages: updatedMessages,
-          tools: TOOLS,
-          stream: false,
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: currentMessages,
+          tools: anthropicTools,
         }),
       });
 
@@ -5346,11 +5386,25 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       }
 
       result = await followUpResponse.json();
-      assistantMessage = result.choices?.[0]?.message;
+      
+      // Extract new content and tool calls
+      textContent = "";
+      toolCalls = [];
+      for (const block of result.content || []) {
+        if (block.type === "text") {
+          textContent += block.text;
+        } else if (block.type === "tool_use") {
+          toolCalls.push({
+            id: block.id,
+            name: block.name,
+            input: block.input,
+          });
+        }
+      }
     }
 
     // Extract final content
-    const finalContent = assistantMessage?.content || "I'm on it! Give me just a moment...";
+    const finalContent = textContent || "I'm on it! Give me just a moment...";
 
     // Save assistant message
     await supabase.from("ai_chat_messages").insert({
