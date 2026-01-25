@@ -455,8 +455,11 @@ serve(async (req) => {
       );
     }
 
-    // First, close any existing sessions
-    log('Checking for existing sessions...');
+    // Try to find an existing RUNNING session to reuse
+    log('Looking for reusable session...');
+    let session: any = null;
+    let wsUrl: string | null = null;
+
     try {
       const listResponse = await fetch('https://www.browserbase.com/v1/sessions', {
         headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY },
@@ -464,68 +467,74 @@ serve(async (req) => {
       
       if (listResponse.ok) {
         const sessions = await listResponse.json();
-        for (const s of sessions) {
-          if (s.status === 'RUNNING') {
-            log(`Closing existing session: ${s.id}`);
-            await fetch(`https://www.browserbase.com/v1/sessions/${s.id}`, {
-              method: 'PUT',
-              headers: {
-                'X-BB-API-Key': BROWSERBASE_API_KEY,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ status: 'REQUEST_RELEASE' }),
-            });
+        // Find a RUNNING session to reuse (sessions persist for 1min minimum)
+        const runningSessions = sessions.filter((s: any) => s.status === 'RUNNING');
+        if (runningSessions.length > 0) {
+          session = runningSessions[0];
+          log(`Reusing existing session: ${session.id}`);
+          
+          // Get WebSocket URL for existing session
+          const debugResponse = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/debug`, {
+            headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY },
+          });
+          const debugInfo = await debugResponse.json();
+          log(`Debug info keys: ${JSON.stringify(Object.keys(debugInfo))}`);
+          
+          // Use the root WebSocket URL
+          wsUrl = debugInfo.wsUrl || debugInfo.debuggerWsUrl;
+          if (debugInfo.pages && debugInfo.pages.length > 0) {
+            log(`Page available: ${debugInfo.pages[0].title || 'untitled'}`);
           }
-        }
-        // Wait for sessions to close
-        if (sessions.some((s: { status: string }) => s.status === 'RUNNING')) {
-          await new Promise(r => setTimeout(r, 3000));
         }
       }
     } catch (e) {
-      log(`Session cleanup error: ${e}`);
+      log(`Session lookup error: ${e}`);
     }
 
-    // Create Browserbase session
-    log('Creating browser session...');
-    const sessionResponse = await fetch('https://www.browserbase.com/v1/sessions', {
-      method: 'POST',
-      headers: {
-        'X-BB-API-Key': BROWSERBASE_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        projectId: BROWSERBASE_PROJECT_ID,
-        browserSettings: {
-          viewport: { width: 1920, height: 1080 },
-          fingerprint: { devices: ['desktop'], operatingSystems: ['macos'] },
+    // Create new session only if none exist
+    if (!session || !wsUrl) {
+      log('Creating new browser session...');
+      const sessionResponse = await fetch('https://www.browserbase.com/v1/sessions', {
+        method: 'POST',
+        headers: {
+          'X-BB-API-Key': BROWSERBASE_API_KEY,
+          'Content-Type': 'application/json',
         },
-        keepAlive: true,
-      }),
-    });
+        body: JSON.stringify({
+          projectId: BROWSERBASE_PROJECT_ID,
+          browserSettings: {
+            viewport: { width: 1920, height: 1080 },
+            fingerprint: { devices: ['desktop'], operatingSystems: ['macos'] },
+          },
+          keepAlive: true, // Persist for reuse
+        }),
+      });
 
-    if (!sessionResponse.ok) {
-      const error = await sessionResponse.text();
-      return new Response(
-        JSON.stringify({ error: `Session creation failed: ${error}`, logs }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (!sessionResponse.ok) {
+        const error = await sessionResponse.text();
+        return new Response(
+          JSON.stringify({ error: `Session creation failed: ${error}`, logs }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      session = await sessionResponse.json();
+      log(`Session created: ${session.id}`);
+
+      // Get WebSocket URL for CDP
+      const debugResponse = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/debug`, {
+        headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY },
+      });
+      
+      const debugInfo = await debugResponse.json();
+      log(`Debug info: ${JSON.stringify(Object.keys(debugInfo))}`);
+      
+      // Use the root WebSocket URL
+      wsUrl = debugInfo.wsUrl || debugInfo.debuggerWsUrl;
+      if (debugInfo.pages && debugInfo.pages.length > 0) {
+        log(`Page available: ${debugInfo.pages[0].title || 'untitled'}`);
+      }
     }
-
-    const session = await sessionResponse.json();
-    log(`Session created: ${session.id}`);
-
-    // Get WebSocket URL for CDP
-    const debugResponse = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/debug`, {
-      headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY },
-    });
-    
-    const debugInfo = await debugResponse.json();
-    log(`Debug info: ${JSON.stringify(Object.keys(debugInfo))}`);
-    
-    // Browserbase provides a WebSocket URL for CDP
-    // Format: wss://connect.browserbase.com/...
-    const wsUrl = debugInfo.debuggerWsUrl || session.connectUrl?.replace('wss://', 'wss://') || null;
     
     if (!wsUrl) {
       log('No WebSocket URL found, returning session for manual connection');
@@ -558,6 +567,23 @@ serve(async (req) => {
 
     // Initialize CDP
     const cdp = new CDPClient(ws, logs);
+    
+    // First, attach to a page target
+    cdp.log('Getting available targets...');
+    const targetsResult = await cdp.send('Target.getTargets', {}) as { targetInfos: Array<{ targetId: string; type: string; url: string }> };
+    const pageTarget = targetsResult.targetInfos.find(t => t.type === 'page');
+    
+    if (!pageTarget) {
+      // Create a new page if none exist
+      cdp.log('No page target found, creating one...');
+      const createResult = await cdp.send('Target.createTarget', { url: 'about:blank' }) as { targetId: string };
+      await cdp.send('Target.attachToTarget', { targetId: createResult.targetId, flatten: true });
+    } else {
+      cdp.log(`Attaching to existing page: ${pageTarget.url}`);
+      await cdp.send('Target.attachToTarget', { targetId: pageTarget.targetId, flatten: true });
+    }
+    
+    // Now enable page domains
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
     await cdp.send('Input.enable');
