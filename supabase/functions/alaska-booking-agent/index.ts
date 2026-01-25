@@ -246,7 +246,6 @@ serve(async (req) => {
                 operatingSystems: ['macos'],
               },
             },
-            proxies: true, // Use residential proxy for better anti-bot evasion
             keepAlive: true,
           }),
         });
