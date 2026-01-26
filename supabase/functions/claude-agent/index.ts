@@ -2144,12 +2144,12 @@ serve(async (req) => {
   }
 
   try {
-    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    if (!ANTHROPIC_API_KEY) {
-      throw new Error('Anthropic API key not configured');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('Lovable API key not configured');
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -2163,105 +2163,115 @@ serve(async (req) => {
       temperature = 0.7,
     } = body;
 
-    // Merge manager tools with any custom tools
-    const allTools = [...MANAGER_TOOLS, ...tools];
-
-    console.log(`[Claude Manager] Processing ${messages.length} messages with ${allTools.length} tools`);
-
-    // Build Claude messages
-    let claudeMessages: any[] = messages.map(m => ({
-      role: m.role,
-      content: m.content,
+    // Merge manager tools with any custom tools - convert to OpenAI format
+    const allTools = [...MANAGER_TOOLS, ...tools].map(t => ({
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.input_schema,
+      },
     }));
 
-    let finalResponse: ClaudeResponse | null = null;
+    console.log(`[Claude Manager] Processing ${messages.length} messages with ${allTools.length} tools via Lovable AI`);
+
+    // Build OpenAI-format messages with system prompt
+    let openaiMessages: any[] = [
+      { role: 'system', content: system },
+      ...messages.map(m => ({
+        role: m.role,
+        content: m.content,
+      })),
+    ];
+
+    let finalTextContent = '';
     let iterations = 0;
-    const maxIterations = 20; // Increased for complex operations
+    const maxIterations = 20;
 
     while (iterations < maxIterations) {
       iterations++;
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'openai/gpt-5',
           max_tokens,
           temperature,
-          system,
-          messages: claudeMessages,
-          tools: allTools.map(t => ({
-            name: t.name,
-            description: t.description,
-            input_schema: t.input_schema,
-          })),
+          messages: openaiMessages,
+          tools: allTools,
+          tool_choice: 'auto',
         }),
       });
 
       if (!response.ok) {
         const error = await response.text();
-        console.error('[Claude Manager] API error:', error);
-        throw new Error(`Claude API error: ${error}`);
+        console.error('[Claude Manager] Lovable AI error:', response.status, error);
+        if (response.status === 429) {
+          throw new Error('Rate limit exceeded. Please try again later.');
+        }
+        if (response.status === 402) {
+          throw new Error('API credits exhausted. Please add funds.');
+        }
+        throw new Error(`Lovable AI error: ${error}`);
       }
 
-      const claudeResponse: ClaudeResponse = await response.json();
-      console.log(`[Claude Manager] Iteration ${iterations}, stop_reason: ${claudeResponse.stop_reason}`);
+      const result = await response.json();
+      const choice = result.choices?.[0];
+      
+      if (!choice) {
+        throw new Error('No response from Lovable AI');
+      }
 
-      // Check if Claude wants to use tools
-      if (claudeResponse.stop_reason === 'tool_use') {
-        const toolUseBlocks = claudeResponse.content.filter(c => c.type === 'tool_use');
+      console.log(`[Claude Manager] Iteration ${iterations}, finish_reason: ${choice.finish_reason}`);
+
+      // Check if the model wants to use tools
+      if (choice.finish_reason === 'tool_calls' && choice.message?.tool_calls?.length > 0) {
+        // Add assistant message with tool calls
+        openaiMessages.push({
+          role: 'assistant',
+          content: choice.message.content || null,
+          tool_calls: choice.message.tool_calls,
+        });
 
         // Execute all tool calls
-        const toolResults = await Promise.all(
-          toolUseBlocks.map(async (toolBlock) => {
-            const result = await executeToolCall(
-              toolBlock.name!,
-              toolBlock.input as Record<string, any>,
-              supabase,
-              SUPABASE_URL
-            );
-            return {
-              type: 'tool_result' as const,
-              tool_use_id: toolBlock.id!,
-              content: result,
-            };
-          })
-        );
+        for (const toolCall of choice.message.tool_calls) {
+          const toolInput = JSON.parse(toolCall.function.arguments || '{}');
+          const result = await executeToolCall(
+            toolCall.function.name,
+            toolInput,
+            supabase,
+            SUPABASE_URL
+          );
 
-        // Add assistant message and tool results
-        claudeMessages = [
-          ...claudeMessages,
-          { role: 'assistant', content: claudeResponse.content },
-          { role: 'user', content: toolResults },
-        ];
+          // Add tool result
+          openaiMessages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: result,
+          });
+        }
 
         continue;
       }
 
-      // Claude finished
-      finalResponse = claudeResponse;
+      // Model finished - extract text content
+      finalTextContent = choice.message?.content || '';
       break;
     }
 
-    if (!finalResponse) {
+    if (!finalTextContent && iterations >= maxIterations) {
       throw new Error('Max iterations reached without final response');
     }
 
-    // Extract text content
-    const textContent = finalResponse.content
-      .filter(c => c.type === 'text')
-      .map(c => c.text)
-      .join('\n');
-
     return new Response(
       JSON.stringify({
-        content: textContent,
-        usage: finalResponse.usage,
-        stop_reason: finalResponse.stop_reason,
+        content: finalTextContent,
+        usage: { input_tokens: 0, output_tokens: 0 },
+        stop_reason: 'end_turn',
         iterations,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
