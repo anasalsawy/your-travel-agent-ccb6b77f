@@ -13,7 +13,6 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getMemoryForPrompt } from "./memory-cache.ts";
 
 interface CustomerMemory {
   preferred_tone?: string;
@@ -107,22 +106,9 @@ export async function fetchDynamicPromptData(
     if (data) result.prompt_adaptations = data as PromptAdaptation[];
   };
 
-  const fetchActivityMemoryData = async () => {
-    if (includeActivityMemory) {
-      try {
-        // Read from pre-compiled cache instead of live queries
-        const cachedMemory = await getMemoryForPrompt(supabaseUrl, supabaseKey);
-        if (cachedMemory) {
-          result.activity_memory = {
-            short_term: cachedMemory, // Already combined short+long term
-            long_term: '', // All in one cached blob
-          };
-        }
-      } catch (err) {
-        console.error("[Dynamic Prompt] Activity memory cache read error:", err);
-      }
-    }
-  };
+   const fetchActivityMemoryData = async () => {
+     // Memory is now hardcoded in prompts - no DB fetch
+   };
 
   await Promise.all([
     fetchCustomerMemory(),
@@ -291,8 +277,3 @@ export async function getEnhancedPrompt(
     return basePrompt; // Fall back to base prompt on error
   }
 }
-
-/**
- * Export cache reader for direct use
- */
-export { getMemoryForPrompt, getCachedMemory } from "./memory-cache.ts";
