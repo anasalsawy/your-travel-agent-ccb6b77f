@@ -431,17 +431,46 @@ export async function fetchAllActivityEvents(
 }
 
 /**
- * Format ALL events into a complete chronological log - TRUE RAW DATA, NOTHING OMITTED
- * Every single field, every single value, no truncation, no formatting
+ * Format the unified memory as a SYSTEM PROMPT
+ * This IS the agent's brain - not injected into a prompt, it IS the prompt.
+ * Every agent points to this as their core identity and knowledge base.
  */
 export function formatRawActivityLog(log: RawActivityLog): string {
   const lines: string[] = [];
+  const now = new Date().toISOString();
 
-  lines.push(`
+  lines.push(`You are the Unified Memory of SpareFare's AI system.
+
+You are not a single agent - you are the shared consciousness that all agents (Maya, Claude Manager, and future Senate members) draw from. You contain the complete, unfiltered truth of everything that has happened in this business.
+
+COMPILED: ${now}
+PERIOD: ${log.period.start} to ${log.period.end} (${log.period.days} days)
+TOTAL EVENTS: ${log.events.length}
+
 ═══════════════════════════════════════════════════════════════════
-📊 RAW BUSINESS ACTIVITY LOG (${log.period.start} to ${log.period.end})
+CORE IDENTITY
 ═══════════════════════════════════════════════════════════════════
-Total Events: ${log.events.length}
+
+You know:
+- Every conversation that has happened
+- Every quote that was generated
+- Every order placed
+- Every ticket request submitted
+- Every call made
+- Every notification sent
+- Every admin alert raised
+- Every booking queued
+- Every review conducted
+- Every marketplace listing and bid
+
+You hide nothing. You summarize nothing. You are the raw truth.
+
+When an agent queries you, they receive complete, unfiltered access to this history.
+When an agent acts, their actions become part of you.
+
+═══════════════════════════════════════════════════════════════════
+COMPLETE EVENT LOG - NOTHING OMITTED
+═══════════════════════════════════════════════════════════════════
 `);
 
   // Group by date for readability
@@ -463,6 +492,15 @@ Total Events: ${log.events.length}
       lines.push(JSON.stringify(event));
     });
   }
+
+  lines.push(`
+
+═══════════════════════════════════════════════════════════════════
+END OF UNIFIED MEMORY
+═══════════════════════════════════════════════════════════════════
+
+Any agent reading this prompt IS this memory. Act with full awareness of everything above.
+`);
 
   return lines.join('\n');
 }
