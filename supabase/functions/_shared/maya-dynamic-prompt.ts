@@ -6,11 +6,13 @@
  * 2. Customer-specific memory (if known customer)
  * 3. Active global learnings
  * 4. Prompt adaptations
+ * 5. UNIFIED ACTIVITY MEMORY (short-term: 2 weeks in prompt, long-term: all time for context)
  * 
  * This is the "brain enhancement" layer that makes Maya smarter over time.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { fetchActivitySummary, formatActivityMemoryPrompt, fetchDetailedActivityLog } from "./activity-memory.ts";
 
 interface CustomerMemory {
   preferred_tone?: string;
@@ -47,16 +49,21 @@ interface DynamicPromptData {
   customer_memory?: CustomerMemory;
   global_learnings: GlobalLearning[];
   prompt_adaptations: PromptAdaptation[];
+  activity_memory?: {
+    short_term: string; // Last 2 weeks - injected into system prompt
+    long_term: string;  // All time - available for deep context
+  };
 }
 
 /**
- * Fetch dynamic prompt data for a customer
+ * Fetch dynamic prompt data for a customer (including activity memory)
  */
 export async function fetchDynamicPromptData(
   supabaseUrl: string,
   supabaseKey: string,
   customerId?: string,
-  channel?: string
+  channel?: string,
+  includeActivityMemory: boolean = true
 ): Promise<DynamicPromptData> {
   const supabase = createClient(supabaseUrl, supabaseKey);
   
@@ -65,44 +72,63 @@ export async function fetchDynamicPromptData(
     prompt_adaptations: [],
   };
 
-  // 1. Fetch customer memory if we have a customer ID
-  if (customerId) {
-    const { data: memory } = await supabase
-      .from("maya_customer_memory")
-      .select("*")
-      .eq("customer_id", customerId)
-      .single();
-    
-    if (memory) {
-      result.customer_memory = memory as CustomerMemory;
+  // Parallel fetch all data sources using async wrappers
+  const fetchCustomerMemory = async () => {
+    if (customerId) {
+      const { data } = await supabase
+        .from("maya_customer_memory")
+        .select("*")
+        .eq("customer_id", customerId)
+        .single();
+      if (data) result.customer_memory = data as CustomerMemory;
     }
-  }
+  };
 
-  // 2. Fetch active global learnings (top performers only)
-  const { data: learnings } = await supabase
-    .from("maya_global_learnings")
-    .select("learning_type, title, description, example, success_rate, applies_to")
-    .eq("is_active", true)
-    .gte("confidence_score", 6) // Only high-confidence learnings
-    .order("success_rate", { ascending: false })
-    .limit(10);
-  
-  if (learnings) {
-    result.global_learnings = learnings as GlobalLearning[];
-  }
+  const fetchLearnings = async () => {
+    const { data } = await supabase
+      .from("maya_global_learnings")
+      .select("learning_type, title, description, example, success_rate, applies_to")
+      .eq("is_active", true)
+      .gte("confidence_score", 6)
+      .order("success_rate", { ascending: false })
+      .limit(10);
+    if (data) result.global_learnings = data as GlobalLearning[];
+  };
 
-  // 3. Fetch prompt adaptations
-  const { data: adaptations } = await supabase
-    .from("maya_prompt_adaptations")
-    .select("adaptation_type, content, priority")
-    .eq("is_active", true)
-    .or(`scope.eq.global,scope_id.eq.${customerId || 'none'},scope_id.eq.${channel || 'none'}`)
-    .order("priority", { ascending: false })
-    .limit(20);
-  
-  if (adaptations) {
-    result.prompt_adaptations = adaptations as PromptAdaptation[];
-  }
+  const fetchAdaptations = async () => {
+    const { data } = await supabase
+      .from("maya_prompt_adaptations")
+      .select("adaptation_type, content, priority")
+      .eq("is_active", true)
+      .or(`scope.eq.global,scope_id.eq.${customerId || 'none'},scope_id.eq.${channel || 'none'}`)
+      .order("priority", { ascending: false })
+      .limit(20);
+    if (data) result.prompt_adaptations = data as PromptAdaptation[];
+  };
+
+  const fetchActivityMemoryData = async () => {
+    if (includeActivityMemory) {
+      try {
+        const [summary, longTermLog] = await Promise.all([
+          fetchActivitySummary(supabaseUrl, supabaseKey, 14), // 2 weeks
+          fetchDetailedActivityLog(supabaseUrl, supabaseKey, 90), // 90 days for context
+        ]);
+        result.activity_memory = {
+          short_term: formatActivityMemoryPrompt(summary),
+          long_term: longTermLog,
+        };
+      } catch (err) {
+        console.error("[Dynamic Prompt] Activity memory fetch error:", err);
+      }
+    }
+  };
+
+  await Promise.all([
+    fetchCustomerMemory(),
+    fetchLearnings(),
+    fetchAdaptations(),
+    fetchActivityMemoryData(),
+  ]);
 
   return result;
 }
@@ -112,6 +138,11 @@ export async function fetchDynamicPromptData(
  */
 export function buildDynamicPromptSection(data: DynamicPromptData): string {
   const sections: string[] = [];
+
+  // ACTIVITY MEMORY SECTION (Short-term - last 2 weeks) - ADD FIRST for holistic awareness
+  if (data.activity_memory?.short_term) {
+    sections.push(data.activity_memory.short_term);
+  }
 
   // Customer Memory Section
   if (data.customer_memory) {
@@ -191,32 +222,52 @@ ${adaptText.trim()}
 }
 
 /**
- * Get the full enhanced prompt for Maya
+ * Get long-term memory context (available for deep context but not in every prompt)
+ */
+export function getLongTermMemory(data: DynamicPromptData): string | null {
+  return data.activity_memory?.long_term || null;
+}
+
+/**
+ * Get the full enhanced prompt for Maya with activity memory
  */
 export async function getEnhancedPrompt(
   basePrompt: string,
   supabaseUrl: string,
   supabaseKey: string,
   customerId?: string,
-  channel?: string
-): Promise<string> {
+  channel?: string,
+  includeActivityMemory: boolean = true
+): Promise<{ prompt: string; longTermMemory: string | null }> {
   try {
-    const data = await fetchDynamicPromptData(supabaseUrl, supabaseKey, customerId, channel);
+    const data = await fetchDynamicPromptData(supabaseUrl, supabaseKey, customerId, channel, includeActivityMemory);
     const dynamicSection = buildDynamicPromptSection(data);
+    const longTermMemory = getLongTermMemory(data);
+    
+    let enhancedPrompt = basePrompt;
     
     if (dynamicSection) {
       // Insert dynamic section before the first major section break
       const insertPoint = basePrompt.indexOf('═══════════════');
       if (insertPoint > 0) {
-        return basePrompt.slice(0, insertPoint) + dynamicSection + '\n\n' + basePrompt.slice(insertPoint);
+        enhancedPrompt = basePrompt.slice(0, insertPoint) + dynamicSection + '\n\n' + basePrompt.slice(insertPoint);
+      } else {
+        // If no section break found, append at the end
+        enhancedPrompt = basePrompt + '\n\n' + dynamicSection;
       }
-      // If no section break found, append at the end
-      return basePrompt + '\n\n' + dynamicSection;
     }
     
-    return basePrompt;
+    return {
+      prompt: enhancedPrompt,
+      longTermMemory,
+    };
   } catch (error) {
     console.error("[Dynamic Prompt] Error fetching learning data:", error);
-    return basePrompt; // Fall back to base prompt on error
+    return { prompt: basePrompt, longTermMemory: null }; // Fall back to base prompt on error
   }
 }
+
+/**
+ * Export activity memory functions for direct use
+ */
+export { fetchActivitySummary, formatActivityMemoryPrompt, fetchDetailedActivityLog } from "./activity-memory.ts";
