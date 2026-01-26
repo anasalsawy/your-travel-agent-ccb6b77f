@@ -1,70 +1,16 @@
 /**
- * UNIFIED ACTIVITY MEMORY SYSTEM
+ * UNIFIED ACTIVITY MEMORY SYSTEM - RAW EVENT LOG
  * 
- * Fetches all business activity logs and creates:
- * 1. SHORT-TERM MEMORY: Last 2 weeks of activity (injected into system prompts)
- * 2. LONG-TERM MEMORY: All historical data summary (available for context)
+ * Fetches ALL business activity events and creates a complete chronological log.
+ * NOTHING is summarized or omitted - every single event is captured.
  * 
- * This gives all agents holistic awareness of everything happening in the business.
+ * This gives all agents complete awareness of everything happening in the business.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-export interface ActivitySummary {
-  // Conversation activity
-  conversations: {
-    total: number;
-    web: number;
-    whatsapp: number;
-    voice: number;
-    recent_topics: string[];
-    active_customers: string[];
-  };
-  
-  // Quote activity
-  quotes: {
-    total: number;
-    pending: number;
-    accepted: number;
-    declined: number;
-    total_value: number;
-    avg_quote_value: number;
-    popular_routes: string[];
-  };
-  
-  // Order activity
-  orders: {
-    total: number;
-    pending_payment: number;
-    completed: number;
-    total_revenue: number;
-  };
-  
-  // Ticket requests
-  tickets: {
-    total: number;
-    by_status: Record<string, number>;
-    popular_destinations: string[];
-  };
-  
-  // Voice calls
-  calls: {
-    total: number;
-    completed: number;
-    avg_duration_seconds: number;
-    bookings_confirmed: number;
-  };
-  
-  // Notifications sent
-  notifications: {
-    total: number;
-    by_type: Record<string, number>;
-  };
-  
-  // Key events (notable happenings)
-  key_events: string[];
-  
-  // Time range
+export interface RawActivityLog {
+  events: RawEvent[];
   period: {
     start: string;
     end: string;
@@ -72,178 +18,410 @@ export interface ActivitySummary {
   };
 }
 
+export interface RawEvent {
+  timestamp: string;
+  type: string;
+  channel?: string;
+  data: Record<string, unknown>;
+}
+
 /**
- * Fetch comprehensive activity summary for a given time period
+ * Fetch ALL activity events for a given time period - NO AGGREGATION, NO OMISSIONS
  */
-export async function fetchActivitySummary(
+export async function fetchAllActivityEvents(
   supabaseUrl: string,
   supabaseKey: string,
   daysBack: number = 14
-): Promise<ActivitySummary> {
+): Promise<RawActivityLog> {
   const supabase = createClient(supabaseUrl, supabaseKey);
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - daysBack);
   const cutoffISO = cutoffDate.toISOString();
   const nowISO = new Date().toISOString();
 
-  // Parallel fetch all data sources
-  const [
-    conversationsResult,
-    messagesResult,
-    quotesResult,
-    ordersResult,
-    ticketsResult,
-    callsResult,
-    notificationsResult,
-  ] = await Promise.all([
-    // Conversations
-    supabase
-      .from("ai_conversations")
-      .select("id, session_id, customer_name, customer_email, status, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false }),
-    
-    // Recent messages for topic extraction
-    supabase
-      .from("ai_chat_messages")
-      .select("content, role, created_at, conversation_id")
-      .gte("created_at", cutoffISO)
-      .eq("role", "user")
-      .order("created_at", { ascending: false })
-      .limit(100),
-    
-    // Quotes
-    supabase
-      .from("quote_logs")
-      .select("id, route, quoted_price, market_price, status, customer_name, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false }),
-    
-    // Orders
-    supabase
-      .from("orders")
-      .select("id, amount_paid, payment_status, order_status, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false }),
-    
-    // Ticket requests
-    supabase
-      .from("ticket_requests")
-      .select("id, origin, destination, status, quoted_price, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false }),
-    
-    // Call logs
-    supabase
-      .from("call_logs")
-      .select("id, status, duration_seconds, confirmation_number, call_summary, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false }),
-    
-    // Notifications
-    supabase
-      .from("notification_log")
-      .select("id, event_type, status, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false }),
-  ]);
+  const allEvents: RawEvent[] = [];
 
-  // Process conversations
-  const conversations = conversationsResult.data || [];
-  const webConvos = conversations.filter(c => !c.session_id?.startsWith('whatsapp-') && !c.session_id?.startsWith('el-'));
-  const whatsappConvos = conversations.filter(c => c.session_id?.startsWith('whatsapp-'));
-  const voiceConvos = conversations.filter(c => c.session_id?.startsWith('el-') || c.session_id?.startsWith('elevenlabs-'));
-  const activeCustomers = [...new Set(conversations.map(c => c.customer_name || c.customer_email).filter(Boolean))].slice(0, 20);
+  // ═══════════════════════════════════════════════════════════════════
+  // FETCH ALL RAW DATA - NO LIMITS, NO AGGREGATION
+  // ═══════════════════════════════════════════════════════════════════
 
-  // Extract recent topics from messages
-  const messages = messagesResult.data || [];
-  const recentTopics = extractTopics(messages.map(m => m.content).slice(0, 50));
+  // 1. ALL Conversations
+  const { data: conversations } = await supabase
+    .from("ai_conversations")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
 
-  // Process quotes
-  const quotes = quotesResult.data || [];
-  const quotesByStatus = {
-    pending: quotes.filter(q => q.status === 'quoted' || q.status === 'pending').length,
-    accepted: quotes.filter(q => q.status === 'accepted' || q.status === 'paid').length,
-    declined: quotes.filter(q => q.status === 'declined' || q.status === 'expired').length,
-  };
-  const totalQuoteValue = quotes.reduce((sum, q) => sum + (q.quoted_price || 0), 0);
-  const popularRoutes = extractPopularItems(quotes.map(q => q.route).filter(Boolean));
-
-  // Process orders
-  const orders = ordersResult.data || [];
-  const pendingPayments = orders.filter(o => o.payment_status === 'pending' || o.payment_status === 'under_review').length;
-  const completedOrders = orders.filter(o => o.payment_status === 'completed').length;
-  const totalRevenue = orders
-    .filter(o => o.payment_status === 'completed')
-    .reduce((sum, o) => sum + (o.amount_paid || 0), 0);
-
-  // Process tickets
-  const tickets = ticketsResult.data || [];
-  const ticketsByStatus: Record<string, number> = {};
-  tickets.forEach(t => {
-    const status = t.status || 'unknown';
-    ticketsByStatus[status] = (ticketsByStatus[status] || 0) + 1;
-  });
-  const popularDestinations = extractPopularItems(tickets.map(t => t.destination).filter(Boolean));
-
-  // Process calls
-  const calls = callsResult.data || [];
-  const completedCalls = calls.filter(c => c.status === 'completed');
-  const avgDuration = completedCalls.length > 0 
-    ? completedCalls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0) / completedCalls.length 
-    : 0;
-  const bookingsConfirmed = calls.filter(c => c.confirmation_number).length;
-
-  // Process notifications
-  const notifications = notificationsResult.data || [];
-  const notifByType: Record<string, number> = {};
-  notifications.forEach(n => {
-    notifByType[n.event_type] = (notifByType[n.event_type] || 0) + 1;
+  (conversations || []).forEach(c => {
+    const channel = c.session_id?.startsWith('whatsapp-') ? 'whatsapp' 
+      : c.session_id?.startsWith('el-') || c.session_id?.startsWith('elevenlabs-') ? 'voice' 
+      : 'web';
+    allEvents.push({
+      timestamp: c.created_at,
+      type: 'conversation_started',
+      channel,
+      data: {
+        id: c.id,
+        session_id: c.session_id,
+        customer_name: c.customer_name,
+        customer_email: c.customer_email,
+        customer_phone: c.customer_phone,
+        status: c.status,
+        is_serious: c.is_serious,
+        needs_admin_attention: c.needs_admin_attention,
+        owner_verified: c.owner_verified,
+      }
+    });
   });
 
-  // Generate key events
-  const keyEvents = generateKeyEvents(quotes, orders, tickets, calls);
+  // 2. ALL Chat Messages
+  const { data: messages } = await supabase
+    .from("ai_chat_messages")
+    .select("*, ai_conversations(session_id)")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (messages || []).forEach(m => {
+    const sessionId = (m.ai_conversations as { session_id?: string })?.session_id || '';
+    const channel = sessionId.startsWith('whatsapp-') ? 'whatsapp' 
+      : sessionId.startsWith('el-') || sessionId.startsWith('elevenlabs-') ? 'voice' 
+      : 'web';
+    allEvents.push({
+      timestamp: m.created_at,
+      type: 'chat_message',
+      channel,
+      data: {
+        id: m.id,
+        conversation_id: m.conversation_id,
+        role: m.role,
+        content: m.content,
+        metadata: m.metadata,
+      }
+    });
+  });
+
+  // 3. ALL Quotes
+  const { data: quotes } = await supabase
+    .from("quote_logs")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (quotes || []).forEach(q => {
+    allEvents.push({
+      timestamp: q.created_at,
+      type: 'quote_generated',
+      data: {
+        id: q.id,
+        route: q.route,
+        travel_dates: q.travel_dates,
+        passengers: q.passengers,
+        market_price: q.market_price,
+        quoted_price: q.quoted_price,
+        discount_applied: q.discount_applied,
+        status: q.status,
+        customer_name: q.customer_name,
+        customer_email: q.customer_email,
+        customer_phone: q.customer_phone,
+        booking_method: q.booking_method,
+        inventory_type: q.inventory_type,
+        inventory_id: q.inventory_id,
+        alaska_available: q.alaska_available,
+        auto_approved: q.auto_approved,
+        payment_method: q.payment_method,
+        conversation_id: q.conversation_id,
+        admin_notes: q.admin_notes,
+      }
+    });
+  });
+
+  // 4. ALL Orders
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (orders || []).forEach(o => {
+    allEvents.push({
+      timestamp: o.created_at,
+      type: 'order_created',
+      data: {
+        id: o.id,
+        amount_paid: o.amount_paid,
+        payment_method: o.payment_method,
+        payment_status: o.payment_status,
+        order_status: o.order_status,
+        customer_email: o.customer_email,
+        voucher_id: o.voucher_id,
+        delivery_status: o.delivery_status,
+        delivery_info: o.delivery_info,
+        admin_notes: o.admin_notes,
+        btc_address: o.btc_address,
+        btc_amount: o.btc_amount,
+        proof_upload_url: o.proof_upload_url,
+      }
+    });
+  });
+
+  // 5. ALL Ticket Requests
+  const { data: tickets } = await supabase
+    .from("ticket_requests")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (tickets || []).forEach(t => {
+    allEvents.push({
+      timestamp: t.created_at,
+      type: 'ticket_request',
+      data: {
+        id: t.id,
+        origin: t.origin,
+        destination: t.destination,
+        departure_date: t.departure_date,
+        return_date: t.return_date,
+        trip_type: t.trip_type,
+        passengers: t.passengers,
+        cabin_class: t.cabin_class,
+        preferred_airline: t.preferred_airline,
+        budget: t.budget,
+        flexibility: t.flexibility,
+        status: t.status,
+        quoted_price: t.quoted_price,
+        payment_status: t.payment_status,
+        payment_method: t.payment_method,
+        payment_plan: t.payment_plan,
+        deposit_status: t.deposit_status,
+        balance_status: t.balance_status,
+        contact_email: t.contact_email,
+        contact_phone: t.contact_phone,
+        special_notes: t.special_notes,
+        admin_notes: t.admin_notes,
+        issued_ticket_info: t.issued_ticket_info,
+        is_public: t.is_public,
+      }
+    });
+  });
+
+  // 6. ALL Call Logs
+  const { data: calls } = await supabase
+    .from("call_logs")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (calls || []).forEach(c => {
+    allEvents.push({
+      timestamp: c.created_at,
+      type: 'call_log',
+      data: {
+        id: c.id,
+        airline: c.airline,
+        phone_number: c.phone_number,
+        call_type: c.call_type,
+        status: c.status,
+        call_sid: c.call_sid,
+        conversation_id: c.conversation_id,
+        started_at: c.started_at,
+        answered_at: c.answered_at,
+        ended_at: c.ended_at,
+        duration_seconds: c.duration_seconds,
+        confirmation_number: c.confirmation_number,
+        passenger_names: c.passenger_names,
+        booked_price: c.booked_price,
+        booked_flight_info: c.booked_flight_info,
+        transcript: c.transcript,
+        call_summary: c.call_summary,
+        customer_email: c.customer_email,
+        customer_phone: c.customer_phone,
+        admin_notes: c.admin_notes,
+        ticket_request_id: c.ticket_request_id,
+      }
+    });
+  });
+
+  // 7. ALL Notifications
+  const { data: notifications } = await supabase
+    .from("notification_log")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (notifications || []).forEach(n => {
+    allEvents.push({
+      timestamp: n.created_at,
+      type: 'notification_sent',
+      data: {
+        id: n.id,
+        event_type: n.event_type,
+        recipient: n.recipient,
+        status: n.status,
+        record_id: n.record_id,
+        payload: n.payload,
+        error: n.error,
+      }
+    });
+  });
+
+  // 8. ALL Admin Alerts
+  const { data: alerts } = await supabase
+    .from("admin_alerts")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (alerts || []).forEach(a => {
+    allEvents.push({
+      timestamp: a.created_at,
+      type: 'admin_alert',
+      data: {
+        id: a.id,
+        alert_type: a.alert_type,
+        message: a.message,
+        conversation_id: a.conversation_id,
+        customer_context: a.customer_context,
+        discount_requested: a.discount_requested,
+        is_read: a.is_read,
+        admin_response: a.admin_response,
+        responded_at: a.responded_at,
+      }
+    });
+  });
+
+  // 9. ALL Booking Queue entries
+  const { data: bookings } = await supabase
+    .from("booking_queue")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (bookings || []).forEach(b => {
+    allEvents.push({
+      timestamp: b.created_at,
+      type: 'booking_queued',
+      data: {
+        id: b.id,
+        status: b.status,
+        booking_method: b.booking_method,
+        inventory_type: b.inventory_type,
+        inventory_id: b.inventory_id,
+        quote_id: b.quote_id,
+        ticket_request_id: b.ticket_request_id,
+        priority: b.priority,
+        scheduled_at: b.scheduled_at,
+        started_at: b.started_at,
+        completed_at: b.completed_at,
+        call_log_id: b.call_log_id,
+        booking_result: b.booking_result,
+        retry_count: b.retry_count,
+        error_message: b.error_message,
+      }
+    });
+  });
+
+  // 10. ALL Maya Conversation Reviews
+  const { data: reviews } = await supabase
+    .from("maya_conversation_reviews")
+    .select("*")
+    .gte("reviewed_at", cutoffISO)
+    .order("reviewed_at", { ascending: true });
+
+  (reviews || []).forEach(r => {
+    allEvents.push({
+      timestamp: r.reviewed_at,
+      type: 'conversation_review',
+      data: {
+        id: r.id,
+        conversation_id: r.conversation_id,
+        call_log_id: r.call_log_id,
+        channel: r.channel,
+        outcome: r.outcome,
+        outcome_value: r.outcome_value,
+        overall_score: r.overall_score,
+        rapport_score: r.rapport_score,
+        objection_handling_score: r.objection_handling_score,
+        closing_score: r.closing_score,
+        product_knowledge_score: r.product_knowledge_score,
+        strengths: r.strengths,
+        weaknesses: r.weaknesses,
+        suggestions: r.suggestions,
+        best_moment: r.best_moment,
+        worst_moment: r.worst_moment,
+        missed_opportunity: r.missed_opportunity,
+        tags: r.tags,
+        transcript_snippet: r.transcript_snippet,
+        customer_id: r.customer_id,
+        customer_preferences_learned: r.customer_preferences_learned,
+      }
+    });
+  });
+
+  // 11. ALL Marketplace Listings
+  const { data: listings } = await supabase
+    .from("marketplace_listings")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (listings || []).forEach(l => {
+    allEvents.push({
+      timestamp: l.created_at,
+      type: 'marketplace_listing',
+      data: {
+        id: l.id,
+        title: l.title,
+        ticket_request_id: l.ticket_request_id,
+        user_id: l.user_id,
+        status: l.status,
+        deadline: l.deadline,
+        travel_date: l.travel_date,
+        min_bid: l.min_bid,
+        winning_bid_id: l.winning_bid_id,
+        escrow_status: l.escrow_status,
+        escrow_notes: l.escrow_notes,
+        sparefare_listing_url: l.sparefare_listing_url,
+        buyer_notified_at: l.buyer_notified_at,
+        seller_notified_at: l.seller_notified_at,
+        completed_at: l.completed_at,
+      }
+    });
+  });
+
+  // 12. ALL Bids
+  const { data: bids } = await supabase
+    .from("bids")
+    .select("*")
+    .gte("created_at", cutoffISO)
+    .order("created_at", { ascending: true });
+
+  (bids || []).forEach(b => {
+    allEvents.push({
+      timestamp: b.created_at,
+      type: 'bid_placed',
+      data: {
+        id: b.id,
+        listing_id: b.listing_id,
+        seller_id: b.seller_id,
+        amount: b.amount,
+        status: b.status,
+        message: b.message,
+        conditions: b.conditions,
+        estimated_delivery: b.estimated_delivery,
+        payment_method: b.payment_method,
+        payment_proof_url: b.payment_proof_url,
+        payment_verified_at: b.payment_verified_at,
+      }
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // SORT ALL EVENTS CHRONOLOGICALLY
+  // ═══════════════════════════════════════════════════════════════════
+  allEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   return {
-    conversations: {
-      total: conversations.length,
-      web: webConvos.length,
-      whatsapp: whatsappConvos.length,
-      voice: voiceConvos.length,
-      recent_topics: recentTopics,
-      active_customers: activeCustomers as string[],
-    },
-    quotes: {
-      total: quotes.length,
-      pending: quotesByStatus.pending,
-      accepted: quotesByStatus.accepted,
-      declined: quotesByStatus.declined,
-      total_value: totalQuoteValue,
-      avg_quote_value: quotes.length > 0 ? totalQuoteValue / quotes.length : 0,
-      popular_routes: popularRoutes,
-    },
-    orders: {
-      total: orders.length,
-      pending_payment: pendingPayments,
-      completed: completedOrders,
-      total_revenue: totalRevenue,
-    },
-    tickets: {
-      total: tickets.length,
-      by_status: ticketsByStatus,
-      popular_destinations: popularDestinations,
-    },
-    calls: {
-      total: calls.length,
-      completed: completedCalls.length,
-      avg_duration_seconds: Math.round(avgDuration),
-      bookings_confirmed: bookingsConfirmed,
-    },
-    notifications: {
-      total: notifications.length,
-      by_type: notifByType,
-    },
-    key_events: keyEvents,
+    events: allEvents,
     period: {
       start: cutoffISO.split('T')[0],
       end: nowISO.split('T')[0],
@@ -253,255 +431,196 @@ export async function fetchActivitySummary(
 }
 
 /**
- * Format activity summary into a prompt section
+ * Format ALL events into a complete chronological log - NOTHING OMITTED
  */
-export function formatActivityMemoryPrompt(summary: ActivitySummary): string {
-  const sections: string[] = [];
+export function formatRawActivityLog(log: RawActivityLog): string {
+  const lines: string[] = [];
 
-  sections.push(`
+  lines.push(`
 ═══════════════════════════════════════════════════════════════════
-📊 REAL-TIME BUSINESS AWARENESS (Last ${summary.period.days} days: ${summary.period.start} to ${summary.period.end})
+📊 COMPLETE BUSINESS ACTIVITY LOG (${log.period.start} to ${log.period.end})
 ═══════════════════════════════════════════════════════════════════
+Total Events: ${log.events.length}
+`);
 
-💬 CONVERSATIONS:
-  • Total: ${summary.conversations.total} (Web: ${summary.conversations.web} | WhatsApp: ${summary.conversations.whatsapp} | Voice: ${summary.conversations.voice})
-  ${summary.conversations.active_customers.length > 0 ? `• Active Customers: ${summary.conversations.active_customers.slice(0, 10).join(', ')}` : ''}
-  ${summary.conversations.recent_topics.length > 0 ? `• Recent Topics: ${summary.conversations.recent_topics.join(', ')}` : ''}
-
-💵 QUOTES:
-  • Total: ${summary.quotes.total} | Pending: ${summary.quotes.pending} | Accepted: ${summary.quotes.accepted} | Declined: ${summary.quotes.declined}
-  • Total Value: $${summary.quotes.total_value.toLocaleString()} | Avg: $${Math.round(summary.quotes.avg_quote_value).toLocaleString()}
-  ${summary.quotes.popular_routes.length > 0 ? `• Popular Routes: ${summary.quotes.popular_routes.join(', ')}` : ''}
-
-🛒 ORDERS:
-  • Total: ${summary.orders.total} | Pending Payment: ${summary.orders.pending_payment} | Completed: ${summary.orders.completed}
-  • Revenue: $${summary.orders.total_revenue.toLocaleString()}
-
-✈️ TICKET REQUESTS:
-  • Total: ${summary.tickets.total}
-  ${Object.keys(summary.tickets.by_status).length > 0 ? `• By Status: ${Object.entries(summary.tickets.by_status).map(([k, v]) => `${k}: ${v}`).join(' | ')}` : ''}
-  ${summary.tickets.popular_destinations.length > 0 ? `• Popular Destinations: ${summary.tickets.popular_destinations.join(', ')}` : ''}
-
-📞 VOICE CALLS:
-  • Total: ${summary.calls.total} | Completed: ${summary.calls.completed}
-  • Avg Duration: ${Math.round(summary.calls.avg_duration_seconds / 60)} min | Bookings Confirmed: ${summary.calls.bookings_confirmed}
-
-📧 NOTIFICATIONS SENT:
-  • Total: ${summary.notifications.total}
-  ${Object.keys(summary.notifications.by_type).length > 0 ? `• By Type: ${Object.entries(summary.notifications.by_type).slice(0, 5).map(([k, v]) => `${k}: ${v}`).join(' | ')}` : ''}
-`.trim());
-
-  if (summary.key_events.length > 0) {
-    sections.push(`
-⚡ KEY EVENTS:
-${summary.key_events.map(e => `  • ${e}`).join('\n')}
-`.trim());
-  }
-
-  return sections.join('\n\n');
-}
-
-/**
- * Get recent detailed activity log (for long-term context)
- */
-export async function fetchDetailedActivityLog(
-  supabaseUrl: string,
-  supabaseKey: string,
-  daysBack: number = 90
-): Promise<string> {
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - daysBack);
-  const cutoffISO = cutoffDate.toISOString();
-
-  // Fetch more detailed data for long-term memory
-  const [quotesResult, ordersResult, callsResult, reviewsResult] = await Promise.all([
-    supabase
-      .from("quote_logs")
-      .select("route, quoted_price, status, customer_name, customer_email, booking_method, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false })
-      .limit(200),
-    
-    supabase
-      .from("orders")
-      .select("amount_paid, payment_method, payment_status, order_status, customer_email, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false })
-      .limit(100),
-    
-    supabase
-      .from("call_logs")
-      .select("airline, status, confirmation_number, call_summary, booked_price, created_at")
-      .gte("created_at", cutoffISO)
-      .order("created_at", { ascending: false })
-      .limit(100),
-    
-    supabase
-      .from("maya_conversation_reviews")
-      .select("overall_score, outcome, strengths, weaknesses, suggestions, reviewed_at")
-      .gte("reviewed_at", cutoffISO)
-      .order("reviewed_at", { ascending: false })
-      .limit(50),
-  ]);
-
-  const quotes = quotesResult.data || [];
-  const orders = ordersResult.data || [];
-  const calls = callsResult.data || [];
-  const reviews = reviewsResult.data || [];
-
-  // Build detailed log
-  let log = `
-═══════════════════════════════════════════════════════════════════
-📚 LONG-TERM BUSINESS MEMORY (Last ${daysBack} days)
-═══════════════════════════════════════════════════════════════════
-
-`;
-
-  // Aggregate patterns
-  const routeFrequency: Record<string, number> = {};
-  const statusFrequency: Record<string, number> = {};
-  const bookingMethodFrequency: Record<string, number> = {};
-  
-  quotes.forEach(q => {
-    if (q.route) routeFrequency[q.route] = (routeFrequency[q.route] || 0) + 1;
-    if (q.status) statusFrequency[q.status] = (statusFrequency[q.status] || 0) + 1;
-    if (q.booking_method) bookingMethodFrequency[q.booking_method] = (bookingMethodFrequency[q.booking_method] || 0) + 1;
-  });
-
-  log += `📈 QUOTE PATTERNS:\n`;
-  log += `  • Total Quotes: ${quotes.length}\n`;
-  log += `  • Top Routes: ${Object.entries(routeFrequency).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([r, c]) => `${r} (${c})`).join(', ')}\n`;
-  log += `  • Conversion: ${Object.entries(statusFrequency).map(([s, c]) => `${s}: ${c}`).join(' | ')}\n`;
-  log += `  • Booking Methods: ${Object.entries(bookingMethodFrequency).map(([m, c]) => `${m}: ${c}`).join(' | ')}\n\n`;
-
-  log += `💰 ORDER HISTORY:\n`;
-  log += `  • Total Orders: ${orders.length}\n`;
-  log += `  • Completed: ${orders.filter(o => o.payment_status === 'completed').length}\n`;
-  log += `  • Total Revenue: $${orders.filter(o => o.payment_status === 'completed').reduce((s, o) => s + (o.amount_paid || 0), 0).toLocaleString()}\n\n`;
-
-  log += `📞 CALL PERFORMANCE:\n`;
-  log += `  • Total Calls: ${calls.length}\n`;
-  log += `  • Successful Bookings: ${calls.filter(c => c.confirmation_number).length}\n`;
-  const callSummaries = calls.filter(c => c.call_summary).slice(0, 5);
-  if (callSummaries.length > 0) {
-    log += `  • Recent Call Insights:\n`;
-    callSummaries.forEach(c => {
-      log += `    - [${c.airline}] ${c.call_summary?.substring(0, 100)}...\n`;
-    });
-  }
-  log += '\n';
-
-  // AI coaching insights
-  if (reviews.length > 0) {
-    const avgScore = reviews.reduce((s, r) => s + (r.overall_score || 0), 0) / reviews.length;
-    const allStrengths = reviews.flatMap(r => r.strengths as string[] || []);
-    const allWeaknesses = reviews.flatMap(r => r.weaknesses as string[] || []);
-    const allSuggestions = reviews.flatMap(r => r.suggestions as string[] || []);
-    
-    log += `🧠 AI COACHING INSIGHTS:\n`;
-    log += `  • Avg Performance Score: ${avgScore.toFixed(1)}/10\n`;
-    log += `  • Top Strengths: ${extractPopularItems(allStrengths).slice(0, 5).join(', ')}\n`;
-    log += `  • Areas to Improve: ${extractPopularItems(allWeaknesses).slice(0, 5).join(', ')}\n`;
-    log += `  • Key Suggestions: ${extractPopularItems(allSuggestions).slice(0, 3).join('; ')}\n`;
-  }
-
-  return log;
-}
-
-// Helper functions
-
-function extractTopics(messages: string[]): string[] {
-  const keywords = new Map<string, number>();
-  const importantPatterns = [
-    /flight/i, /booking/i, /ticket/i, /price/i, /quote/i,
-    /voucher/i, /refund/i, /cancel/i, /change/i, /payment/i,
-    /first class/i, /business class/i, /economy/i,
-    /international/i, /domestic/i, /miles/i, /points/i,
-  ];
-  
-  const destinations = new Set<string>();
-  const destinationPattern = /(?:to|from|→)\s+([A-Z]{3}|[A-Za-z]+(?:\s+[A-Za-z]+)?)/g;
-  
-  messages.forEach(msg => {
-    if (!msg) return;
-    
-    importantPatterns.forEach(pattern => {
-      if (pattern.test(msg)) {
-        const match = msg.match(pattern)?.[0]?.toLowerCase();
-        if (match) keywords.set(match, (keywords.get(match) || 0) + 1);
-      }
-    });
-    
-    let destMatch;
-    while ((destMatch = destinationPattern.exec(msg)) !== null) {
-      destinations.add(destMatch[1]);
+  // Group by date for readability
+  const eventsByDate = new Map<string, RawEvent[]>();
+  log.events.forEach(event => {
+    const date = event.timestamp.split('T')[0];
+    if (!eventsByDate.has(date)) {
+      eventsByDate.set(date, []);
     }
+    eventsByDate.get(date)!.push(event);
   });
 
-  const topKeywords = [...keywords.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([k]) => k);
-  
-  return [...topKeywords, ...[...destinations].slice(0, 3)];
-}
+  // Output each day's events
+  for (const [date, events] of eventsByDate) {
+    lines.push(`\n━━━ ${date} (${events.length} events) ━━━`);
+    
+    events.forEach(event => {
+      const time = event.timestamp.split('T')[1]?.substring(0, 8) || '';
+      const channel = event.channel ? `[${event.channel.toUpperCase()}]` : '';
+      
+      // Format based on event type
+      let eventLine = `${time} ${channel} ${event.type}:`;
+      
+      switch (event.type) {
+        case 'conversation_started':
+          eventLine += ` ${event.data.customer_name || event.data.customer_email || event.data.customer_phone || 'anonymous'} - status: ${event.data.status}`;
+          break;
+        case 'chat_message':
+          const content = String(event.data.content || '').substring(0, 100);
+          eventLine += ` [${event.data.role}] ${content}${String(event.data.content || '').length > 100 ? '...' : ''}`;
+          break;
+        case 'quote_generated':
+          eventLine += ` ${event.data.route} | $${event.data.quoted_price} (market: $${event.data.market_price || 'N/A'}) | ${event.data.status} | ${event.data.customer_name || event.data.customer_email || 'unknown'}`;
+          break;
+        case 'order_created':
+          eventLine += ` $${event.data.amount_paid} | ${event.data.payment_method} | ${event.data.payment_status} | ${event.data.customer_email || 'unknown'}`;
+          break;
+        case 'ticket_request':
+          eventLine += ` ${event.data.origin}→${event.data.destination} | ${event.data.departure_date} | ${event.data.passengers} pax | ${event.data.cabin_class} | ${event.data.status}`;
+          break;
+        case 'call_log':
+          eventLine += ` ${event.data.airline} | ${event.data.status} | ${event.data.duration_seconds || 0}s | conf: ${event.data.confirmation_number || 'none'}`;
+          break;
+        case 'notification_sent':
+          eventLine += ` ${event.data.event_type} → ${event.data.recipient} | ${event.data.status}`;
+          break;
+        case 'admin_alert':
+          eventLine += ` ${event.data.alert_type}: ${String(event.data.message || '').substring(0, 80)}`;
+          break;
+        case 'booking_queued':
+          eventLine += ` ${event.data.booking_method} | ${event.data.status} | ${event.data.inventory_type}`;
+          break;
+        case 'conversation_review':
+          eventLine += ` score: ${event.data.overall_score}/10 | ${event.data.outcome} | $${event.data.outcome_value || 0}`;
+          break;
+        case 'marketplace_listing':
+          eventLine += ` ${event.data.title} | ${event.data.status} | min: $${event.data.min_bid || 0}`;
+          break;
+        case 'bid_placed':
+          eventLine += ` $${event.data.amount} | ${event.data.status}`;
+          break;
+        default:
+          eventLine += ` ${JSON.stringify(event.data).substring(0, 100)}`;
+      }
+      
+      lines.push(eventLine);
+    });
+  }
 
-function extractPopularItems(items: string[]): string[] {
-  const frequency = new Map<string, number>();
-  items.forEach(item => {
-    if (item) frequency.set(item, (frequency.get(item) || 0) + 1);
-  });
-  return [...frequency.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([item]) => item);
-}
-
-function generateKeyEvents(quotes: any[], orders: any[], tickets: any[], calls: any[]): string[] {
-  const events: string[] = [];
-  
-  // High-value quotes
-  const highValueQuotes = quotes.filter(q => (q.quoted_price || 0) > 2000);
-  if (highValueQuotes.length > 0) {
-    events.push(`${highValueQuotes.length} high-value quotes (>$2k) generated`);
-  }
-  
-  // Large orders
-  const largeOrders = orders.filter(o => (o.amount_paid || 0) > 1000);
-  if (largeOrders.length > 0) {
-    events.push(`${largeOrders.length} orders over $1,000 processed`);
-  }
-  
-  // Successful bookings
-  const confirmedBookings = calls.filter(c => c.confirmation_number);
-  if (confirmedBookings.length > 0) {
-    events.push(`${confirmedBookings.length} airline bookings confirmed via phone`);
-  }
-  
-  // Pending attention
-  const needsAttention = tickets.filter(t => t.status === 'submitted' || t.status === 'quoted');
-  if (needsAttention.length > 0) {
-    events.push(`${needsAttention.length} ticket requests awaiting action`);
-  }
-  
-  return events;
+  return lines.join('\n');
 }
 
 /**
- * Get complete memory context for agent injection
+ * Get complete memory context for agent injection - ALL EVENTS, NOTHING OMITTED
  */
 export async function getAgentMemoryContext(
   supabaseUrl: string,
   supabaseKey: string
 ): Promise<{ shortTerm: string; longTerm: string }> {
-  const [summary, detailedLog] = await Promise.all([
-    fetchActivitySummary(supabaseUrl, supabaseKey, 14), // 2 weeks
-    fetchDetailedActivityLog(supabaseUrl, supabaseKey, 90), // 90 days
+  const [shortTermLog, longTermLog] = await Promise.all([
+    fetchAllActivityEvents(supabaseUrl, supabaseKey, 14), // 2 weeks
+    fetchAllActivityEvents(supabaseUrl, supabaseKey, 90), // 90 days
   ]);
 
   return {
-    shortTerm: formatActivityMemoryPrompt(summary),
-    longTerm: detailedLog,
+    shortTerm: formatRawActivityLog(shortTermLog),
+    longTerm: formatRawActivityLog(longTermLog),
   };
+}
+
+// Legacy exports for backward compatibility
+export interface ActivitySummary {
+  conversations: { total: number; web: number; whatsapp: number; voice: number; recent_topics: string[]; active_customers: string[] };
+  quotes: { total: number; pending: number; accepted: number; declined: number; total_value: number; avg_quote_value: number; popular_routes: string[] };
+  orders: { total: number; pending_payment: number; completed: number; total_revenue: number };
+  tickets: { total: number; by_status: Record<string, number>; popular_destinations: string[] };
+  calls: { total: number; completed: number; avg_duration_seconds: number; bookings_confirmed: number };
+  notifications: { total: number; by_type: Record<string, number> };
+  key_events: string[];
+  period: { start: string; end: string; days: number };
+}
+
+export async function fetchActivitySummary(
+  supabaseUrl: string,
+  supabaseKey: string,
+  daysBack: number = 14
+): Promise<ActivitySummary> {
+  // Use the new raw fetch and derive summary for backward compatibility
+  const log = await fetchAllActivityEvents(supabaseUrl, supabaseKey, daysBack);
+  
+  const conversations = log.events.filter(e => e.type === 'conversation_started');
+  const quotes = log.events.filter(e => e.type === 'quote_generated');
+  const orders = log.events.filter(e => e.type === 'order_created');
+  const tickets = log.events.filter(e => e.type === 'ticket_request');
+  const calls = log.events.filter(e => e.type === 'call_log');
+  const notifications = log.events.filter(e => e.type === 'notification_sent');
+
+  return {
+    conversations: {
+      total: conversations.length,
+      web: conversations.filter(c => c.channel === 'web').length,
+      whatsapp: conversations.filter(c => c.channel === 'whatsapp').length,
+      voice: conversations.filter(c => c.channel === 'voice').length,
+      recent_topics: [],
+      active_customers: [...new Set(conversations.map(c => String(c.data.customer_name || c.data.customer_email)).filter(Boolean))].slice(0, 20),
+    },
+    quotes: {
+      total: quotes.length,
+      pending: quotes.filter(q => q.data.status === 'quoted' || q.data.status === 'pending').length,
+      accepted: quotes.filter(q => q.data.status === 'accepted' || q.data.status === 'paid').length,
+      declined: quotes.filter(q => q.data.status === 'declined' || q.data.status === 'expired').length,
+      total_value: quotes.reduce((sum, q) => sum + (Number(q.data.quoted_price) || 0), 0),
+      avg_quote_value: quotes.length > 0 ? quotes.reduce((sum, q) => sum + (Number(q.data.quoted_price) || 0), 0) / quotes.length : 0,
+      popular_routes: [...new Set(quotes.map(q => String(q.data.route)).filter(Boolean))].slice(0, 10),
+    },
+    orders: {
+      total: orders.length,
+      pending_payment: orders.filter(o => o.data.payment_status === 'pending' || o.data.payment_status === 'under_review').length,
+      completed: orders.filter(o => o.data.payment_status === 'completed').length,
+      total_revenue: orders.filter(o => o.data.payment_status === 'completed').reduce((sum, o) => sum + (Number(o.data.amount_paid) || 0), 0),
+    },
+    tickets: {
+      total: tickets.length,
+      by_status: tickets.reduce((acc, t) => {
+        const status = String(t.data.status) || 'unknown';
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      popular_destinations: [...new Set(tickets.map(t => String(t.data.destination)).filter(Boolean))].slice(0, 10),
+    },
+    calls: {
+      total: calls.length,
+      completed: calls.filter(c => c.data.status === 'completed').length,
+      avg_duration_seconds: calls.length > 0 ? Math.round(calls.reduce((sum, c) => sum + (Number(c.data.duration_seconds) || 0), 0) / calls.length) : 0,
+      bookings_confirmed: calls.filter(c => c.data.confirmation_number).length,
+    },
+    notifications: {
+      total: notifications.length,
+      by_type: notifications.reduce((acc, n) => {
+        const type = String(n.data.event_type);
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+    },
+    key_events: [],
+    period: log.period,
+  };
+}
+
+export function formatActivityMemoryPrompt(summary: ActivitySummary): string {
+  // For backward compatibility, call the new raw format
+  return `[Legacy summary - use raw log for complete data]
+Conversations: ${summary.conversations.total} | Quotes: ${summary.quotes.total} ($${summary.quotes.total_value}) | Orders: ${summary.orders.total} ($${summary.orders.total_revenue})`;
+}
+
+export async function fetchDetailedActivityLog(
+  supabaseUrl: string,
+  supabaseKey: string,
+  daysBack: number = 90
+): Promise<string> {
+  const log = await fetchAllActivityEvents(supabaseUrl, supabaseKey, daysBack);
+  return formatRawActivityLog(log);
 }
