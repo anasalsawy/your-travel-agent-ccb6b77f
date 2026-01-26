@@ -2156,19 +2156,18 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body: ClaudeRequest = await req.json();
 
-    // Get enhanced prompt with activity memory for Claude Manager
+    // Get enhanced prompt with ALL memory directly injected (short-term + long-term)
     let enhancedSystem = CLAUDE_MANAGER_SYSTEM;
     try {
-      const enhancedResult = await getEnhancedPrompt(
+      enhancedSystem = await getEnhancedPrompt(
         CLAUDE_MANAGER_SYSTEM,
         SUPABASE_URL,
         SUPABASE_SERVICE_ROLE_KEY,
         undefined, // no specific customer for manager
         'manager',
-        true
+        true // include all memory
       );
-      enhancedSystem = enhancedResult.prompt;
-      console.log("[Claude Manager] Enhanced prompt with activity memory loaded");
+      console.log("[Claude Manager] Unified memory injected into prompt");
     } catch (err) {
       console.error("[Claude Manager] Failed to load enhanced prompt:", err);
     }
