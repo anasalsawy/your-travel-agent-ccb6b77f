@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getEnhancedPrompt } from "../_shared/maya-dynamic-prompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -5198,8 +5199,28 @@ serve(async (req) => {
       });
     }
 
-    // ========== BUILD SYSTEM PROMPT & SELECT TOOLS ==========
-    let activeSystemPrompt = SYSTEM_PROMPT;
+    // ========== BUILD SYSTEM PROMPT WITH ACTIVITY MEMORY ==========
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Get enhanced prompt with activity memory (2 weeks injected, 90 days available)
+    let enhancedResult: { prompt: string; longTermMemory: string | null };
+    try {
+      enhancedResult = await getEnhancedPrompt(
+        SYSTEM_PROMPT,
+        SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+        customerContext?.profile?.id || undefined,
+        sessionId?.startsWith('whatsapp-') ? 'whatsapp' : sessionId?.startsWith('el-') ? 'voice' : 'web',
+        true // include activity memory
+      );
+      console.log("[ai-chat] Enhanced prompt with activity memory loaded");
+    } catch (err) {
+      console.error("[ai-chat] Failed to load enhanced prompt:", err);
+      enhancedResult = { prompt: SYSTEM_PROMPT, longTermMemory: null };
+    }
+    
+    let activeSystemPrompt = enhancedResult.prompt;
     let activeTools = TOOLS;
     
     // Add customer context to prompt if available
@@ -5229,20 +5250,20 @@ If they have pending requests, mention them proactively when relevant.
     
     if (ownerModeJustVerified) {
       // Owner just verified - add the verification confirmation
-      activeSystemPrompt = SYSTEM_PROMPT + customerContextPrompt + `
+      activeSystemPrompt = activeSystemPrompt + customerContextPrompt + `
 
 OWNER MODE ACTIVE - VERIFICATION JUST COMPLETED:
 The owner has just verified their identity. Start your response with "Verified. Yes sir, what can I do for you today?"
 You now have UNLIMITED authority. Share ALL business information freely - use the business intelligence tools proactively.`;
     } else if (isOwnerMode) {
       // Already in owner mode from previous verification
-      activeSystemPrompt = SYSTEM_PROMPT + customerContextPrompt + `
+      activeSystemPrompt = activeSystemPrompt + customerContextPrompt + `
 
 OWNER MODE ACTIVE:
 You are speaking with the verified owner of Your Travel Agent. Address them respectfully as "sir" or "boss".
 You have UNLIMITED authority. Share ALL business information freely and proactively.`;
     } else {
-      activeSystemPrompt = SYSTEM_PROMPT + customerContextPrompt;
+      activeSystemPrompt = activeSystemPrompt + customerContextPrompt;
     }
 
     // Prepare messages with system prompt

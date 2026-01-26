@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { getEnhancedPrompt } from "../_shared/maya-dynamic-prompt.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -2155,9 +2156,26 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body: ClaudeRequest = await req.json();
 
+    // Get enhanced prompt with activity memory for Claude Manager
+    let enhancedSystem = CLAUDE_MANAGER_SYSTEM;
+    try {
+      const enhancedResult = await getEnhancedPrompt(
+        CLAUDE_MANAGER_SYSTEM,
+        SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+        undefined, // no specific customer for manager
+        'manager',
+        true
+      );
+      enhancedSystem = enhancedResult.prompt;
+      console.log("[Claude Manager] Enhanced prompt with activity memory loaded");
+    } catch (err) {
+      console.error("[Claude Manager] Failed to load enhanced prompt:", err);
+    }
+
     const {
       messages,
-      system = CLAUDE_MANAGER_SYSTEM,
+      system = enhancedSystem,
       tools = [],
       max_tokens = 8192,
       temperature = 0.7,
