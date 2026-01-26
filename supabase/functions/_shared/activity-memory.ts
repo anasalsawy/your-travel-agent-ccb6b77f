@@ -431,14 +431,15 @@ export async function fetchAllActivityEvents(
 }
 
 /**
- * Format ALL events into a complete chronological log - NOTHING OMITTED
+ * Format ALL events into a complete chronological log - TRUE RAW DATA, NOTHING OMITTED
+ * Every single field, every single value, no truncation, no formatting
  */
 export function formatRawActivityLog(log: RawActivityLog): string {
   const lines: string[] = [];
 
   lines.push(`
 ═══════════════════════════════════════════════════════════════════
-📊 COMPLETE BUSINESS ACTIVITY LOG (${log.period.start} to ${log.period.end})
+📊 RAW BUSINESS ACTIVITY LOG (${log.period.start} to ${log.period.end})
 ═══════════════════════════════════════════════════════════════════
 Total Events: ${log.events.length}
 `);
@@ -453,60 +454,13 @@ Total Events: ${log.events.length}
     eventsByDate.get(date)!.push(event);
   });
 
-  // Output each day's events
+  // Output each day's events - FULL RAW JSON, NO TRUNCATION
   for (const [date, events] of eventsByDate) {
     lines.push(`\n━━━ ${date} (${events.length} events) ━━━`);
     
     events.forEach(event => {
-      const time = event.timestamp.split('T')[1]?.substring(0, 8) || '';
-      const channel = event.channel ? `[${event.channel.toUpperCase()}]` : '';
-      
-      // Format based on event type
-      let eventLine = `${time} ${channel} ${event.type}:`;
-      
-      switch (event.type) {
-        case 'conversation_started':
-          eventLine += ` ${event.data.customer_name || event.data.customer_email || event.data.customer_phone || 'anonymous'} - status: ${event.data.status}`;
-          break;
-        case 'chat_message':
-          const content = String(event.data.content || '').substring(0, 100);
-          eventLine += ` [${event.data.role}] ${content}${String(event.data.content || '').length > 100 ? '...' : ''}`;
-          break;
-        case 'quote_generated':
-          eventLine += ` ${event.data.route} | $${event.data.quoted_price} (market: $${event.data.market_price || 'N/A'}) | ${event.data.status} | ${event.data.customer_name || event.data.customer_email || 'unknown'}`;
-          break;
-        case 'order_created':
-          eventLine += ` $${event.data.amount_paid} | ${event.data.payment_method} | ${event.data.payment_status} | ${event.data.customer_email || 'unknown'}`;
-          break;
-        case 'ticket_request':
-          eventLine += ` ${event.data.origin}→${event.data.destination} | ${event.data.departure_date} | ${event.data.passengers} pax | ${event.data.cabin_class} | ${event.data.status}`;
-          break;
-        case 'call_log':
-          eventLine += ` ${event.data.airline} | ${event.data.status} | ${event.data.duration_seconds || 0}s | conf: ${event.data.confirmation_number || 'none'}`;
-          break;
-        case 'notification_sent':
-          eventLine += ` ${event.data.event_type} → ${event.data.recipient} | ${event.data.status}`;
-          break;
-        case 'admin_alert':
-          eventLine += ` ${event.data.alert_type}: ${String(event.data.message || '').substring(0, 80)}`;
-          break;
-        case 'booking_queued':
-          eventLine += ` ${event.data.booking_method} | ${event.data.status} | ${event.data.inventory_type}`;
-          break;
-        case 'conversation_review':
-          eventLine += ` score: ${event.data.overall_score}/10 | ${event.data.outcome} | $${event.data.outcome_value || 0}`;
-          break;
-        case 'marketplace_listing':
-          eventLine += ` ${event.data.title} | ${event.data.status} | min: $${event.data.min_bid || 0}`;
-          break;
-        case 'bid_placed':
-          eventLine += ` $${event.data.amount} | ${event.data.status}`;
-          break;
-        default:
-          eventLine += ` ${JSON.stringify(event.data).substring(0, 100)}`;
-      }
-      
-      lines.push(eventLine);
+      // Output the COMPLETE event as raw JSON - every field, every value
+      lines.push(JSON.stringify(event));
     });
   }
 
