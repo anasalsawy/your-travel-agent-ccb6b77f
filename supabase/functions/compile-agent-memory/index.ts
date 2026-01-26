@@ -2,15 +2,15 @@
  * COMPILE AGENT MEMORY - Cron Job Function
  * 
  * HYBRID ARCHITECTURE:
- * 1. Compiles business activity from DB
- * 2. Stores in agent_memory_cache for conversation-start fetch
+ * 1. Fetches ALL business activity from DB - EVERY EVENT, NOTHING OMITTED
+ * 2. Stores complete raw log in agent_memory_cache
  * 3. Triggers Claude Manager to write memory into prompt files via GitHub
  * 
- * Result: Memory is BOTH cached in DB AND hardcoded in source files.
+ * Result: Complete event history is BOTH cached in DB AND hardcoded in source files.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { fetchActivitySummary, formatActivityMemoryPrompt, fetchDetailedActivityLog } from "../_shared/activity-memory.ts";
+import { fetchAllActivityEvents, formatRawActivityLog } from "../_shared/activity-memory.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,15 +26,22 @@ Deno.serve(async (req) => {
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  console.log('[compile-agent-memory] Starting memory compilation...');
+  console.log('[compile-agent-memory] Starting COMPLETE event log compilation (no omissions)...');
 
   try {
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 1: Compile memory from database
+    // STEP 1: Fetch ALL events from database - NOTHING OMITTED
     // ═══════════════════════════════════════════════════════════════════
-    const shortTermSummary = await fetchActivitySummary(supabaseUrl, supabaseKey, 14);
-    const shortTermContent = formatActivityMemoryPrompt(shortTermSummary);
-    const longTermContent = await fetchDetailedActivityLog(supabaseUrl, supabaseKey, 90);
+    const [shortTermLog, longTermLog] = await Promise.all([
+      fetchAllActivityEvents(supabaseUrl, supabaseKey, 14),  // 2 weeks
+      fetchAllActivityEvents(supabaseUrl, supabaseKey, 90),  // 90 days
+    ]);
+    
+    const shortTermContent = formatRawActivityLog(shortTermLog);
+    const longTermContent = formatRawActivityLog(longTermLog);
+    
+    console.log(`[compile-agent-memory] Short-term: ${shortTermLog.events.length} events`);
+    console.log(`[compile-agent-memory] Long-term: ${longTermLog.events.length} events`);
 
     // ═══════════════════════════════════════════════════════════════════
     // STEP 2: Store in cache table (for conversation-start fetch)
@@ -45,10 +52,7 @@ Deno.serve(async (req) => {
         memory_type: 'short_term',
         compiled_content: shortTermContent,
         stats: {
-          conversations: shortTermSummary.conversations.total,
-          quotes: shortTermSummary.quotes.total,
-          orders: shortTermSummary.orders.total,
-          revenue: shortTermSummary.orders.total_revenue,
+          total_events: shortTermLog.events.length,
           period_days: 14,
         },
         compiled_at: new Date().toISOString(),
@@ -64,7 +68,10 @@ Deno.serve(async (req) => {
       .upsert({
         memory_type: 'long_term',
         compiled_content: longTermContent,
-        stats: { period_days: 90 },
+        stats: { 
+          total_events: longTermLog.events.length,
+          period_days: 90 
+        },
         compiled_at: new Date().toISOString(),
       }, { onConflict: 'memory_type' });
 
