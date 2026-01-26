@@ -106,9 +106,30 @@ export async function fetchDynamicPromptData(
     if (data) result.prompt_adaptations = data as PromptAdaptation[];
   };
 
-   const fetchActivityMemoryData = async () => {
-     // Memory is now hardcoded in prompts - no DB fetch
-   };
+  const fetchActivityMemoryData = async () => {
+    if (!includeActivityMemory) return;
+    
+    try {
+      // Fetch pre-compiled memory from cache
+      const { data: cacheData } = await supabase
+        .from("agent_memory_cache")
+        .select("memory_type, compiled_content")
+        .in("memory_type", ["short_term", "long_term"]);
+      
+      if (cacheData && cacheData.length > 0) {
+        const shortTerm = cacheData.find(c => c.memory_type === "short_term");
+        const longTerm = cacheData.find(c => c.memory_type === "long_term");
+        
+        result.activity_memory = {
+          short_term: shortTerm?.compiled_content || "",
+          long_term: longTerm?.compiled_content || "",
+        };
+        console.log(`[Dynamic Prompt] Loaded cached memory: short=${shortTerm?.compiled_content?.length || 0} chars, long=${longTerm?.compiled_content?.length || 0} chars`);
+      }
+    } catch (error) {
+      console.error("[Dynamic Prompt] Error fetching cached memory:", error);
+    }
+  };
 
   await Promise.all([
     fetchCustomerMemory(),

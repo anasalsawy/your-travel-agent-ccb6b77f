@@ -1,8 +1,12 @@
 /**
  * COMPILE AGENT MEMORY - Cron Job Function
  * 
- * Runs on schedule to compile and cache business activity logs.
- * Agents read from this cache - memory is always available, pre-compiled.
+ * HYBRID ARCHITECTURE:
+ * 1. Compiles business activity from DB
+ * 2. Stores in agent_memory_cache for conversation-start fetch
+ * 3. Triggers Claude Manager to write memory into prompt files via GitHub
+ * 
+ * Result: Memory is BOTH cached in DB AND hardcoded in source files.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -25,14 +29,16 @@ Deno.serve(async (req) => {
   console.log('[compile-agent-memory] Starting memory compilation...');
 
   try {
-    // Compile short-term memory (2 weeks)
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 1: Compile memory from database
+    // ═══════════════════════════════════════════════════════════════════
     const shortTermSummary = await fetchActivitySummary(supabaseUrl, supabaseKey, 14);
     const shortTermContent = formatActivityMemoryPrompt(shortTermSummary);
-    
-    // Compile long-term memory (90 days)
     const longTermContent = await fetchDetailedActivityLog(supabaseUrl, supabaseKey, 90);
 
-    // Upsert short-term memory
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 2: Store in cache table (for conversation-start fetch)
+    // ═══════════════════════════════════════════════════════════════════
     const { error: shortTermError } = await supabase
       .from('agent_memory_cache')
       .upsert({
@@ -53,15 +59,12 @@ Deno.serve(async (req) => {
       throw shortTermError;
     }
 
-    // Upsert long-term memory
     const { error: longTermError } = await supabase
       .from('agent_memory_cache')
       .upsert({
         memory_type: 'long_term',
         compiled_content: longTermContent,
-        stats: {
-          period_days: 90,
-        },
+        stats: { period_days: 90 },
         compiled_at: new Date().toISOString(),
       }, { onConflict: 'memory_type' });
 
@@ -70,15 +73,58 @@ Deno.serve(async (req) => {
       throw longTermError;
     }
 
-    console.log('[compile-agent-memory] Memory compilation complete!');
+    console.log('[compile-agent-memory] Cache updated successfully');
     console.log(`  - Short-term: ${shortTermContent.length} chars`);
     console.log(`  - Long-term: ${longTermContent.length} chars`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 3: Trigger Claude to update prompt files via GitHub
+    // ═══════════════════════════════════════════════════════════════════
+    const updatePromptFilesMessage = `
+UPDATE AGENT MEMORY IN CODE FILES
+
+The memory cache has been refreshed. Update the hardcoded memory blocks in these files:
+
+1. src/lib/maya-voice-prompt.ts - Update the "BUSINESS ACTIVITY MEMORY" section
+2. src/lib/maya-customer-prompt.ts - Update the "BUSINESS ACTIVITY MEMORY" section  
+3. public/maya-voice-prompt.txt - Update the "BUSINESS ACTIVITY MEMORY" section
+
+NEW MEMORY CONTENT TO INSERT:
+\`\`\`
+${shortTermContent}
+\`\`\`
+
+Use your github_write_file tool to:
+1. Read each file
+2. Find the section between "BUSINESS ACTIVITY MEMORY" and the next major section
+3. Replace it with the new content above
+4. Commit with message: "chore: auto-update agent memory [${new Date().toISOString().split('T')[0]}]"
+
+This is an automated memory refresh - execute immediately.
+`;
+
+    // Call Claude Manager to update the files
+    const claudeResponse = await supabase.functions.invoke('claude-agent', {
+      body: {
+        message: updatePromptFilesMessage,
+        channel: 'system',
+        context: { type: 'memory_refresh', automated: true }
+      }
+    });
+
+    if (claudeResponse.error) {
+      console.error('[compile-agent-memory] Claude update error:', claudeResponse.error);
+      // Don't throw - cache was updated successfully, GitHub update is bonus
+    } else {
+      console.log('[compile-agent-memory] Claude triggered for GitHub update');
+    }
 
     return new Response(JSON.stringify({
       success: true,
       compiled_at: new Date().toISOString(),
       short_term_chars: shortTermContent.length,
       long_term_chars: longTermContent.length,
+      github_update_triggered: !claudeResponse.error,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
