@@ -222,14 +222,35 @@ ${adaptText.trim()}
 }
 
 /**
- * Get long-term memory context (available for deep context but not in every prompt)
+ * Build UNIFIED MEMORY section - BOTH short-term AND long-term directly injected
  */
-export function getLongTermMemory(data: DynamicPromptData): string | null {
-  return data.activity_memory?.long_term || null;
+function buildUnifiedMemorySection(data: DynamicPromptData): string {
+  const sections: string[] = [];
+
+  // SHORT-TERM MEMORY (Last 2 weeks) - Immediate awareness
+  if (data.activity_memory?.short_term) {
+    sections.push(data.activity_memory.short_term);
+  }
+
+  // LONG-TERM MEMORY (All time patterns) - Deep knowledge base
+  if (data.activity_memory?.long_term) {
+    sections.push(data.activity_memory.long_term);
+  }
+
+  return sections.join('\n\n');
 }
 
 /**
- * Get the full enhanced prompt for Maya with activity memory
+ * Get the full enhanced prompt with ALL memory directly injected
+ * 
+ * UNIFIED MEMORY SYSTEM:
+ * - Short-term (2 weeks): Real-time business awareness
+ * - Long-term (90 days): Historical patterns and coaching insights
+ * - Customer memory: Individual preferences and history
+ * - Global learnings: Proven tactics from past success
+ * 
+ * ALL of this is DIRECTLY INJECTED into the system prompt.
+ * There are NO separate query endpoints - it's all in the agent's mind.
  */
 export async function getEnhancedPrompt(
   basePrompt: string,
@@ -238,32 +259,35 @@ export async function getEnhancedPrompt(
   customerId?: string,
   channel?: string,
   includeActivityMemory: boolean = true
-): Promise<{ prompt: string; longTermMemory: string | null }> {
+): Promise<string> {
   try {
     const data = await fetchDynamicPromptData(supabaseUrl, supabaseKey, customerId, channel, includeActivityMemory);
-    const dynamicSection = buildDynamicPromptSection(data);
-    const longTermMemory = getLongTermMemory(data);
+    
+    // Build all memory sections
+    const unifiedMemory = buildUnifiedMemorySection(data);
+    const customerIntelligence = buildDynamicPromptSection(data); // Customer + learnings + adaptations
+    
+    // Combine all sections
+    const allMemorySections = [unifiedMemory, customerIntelligence].filter(Boolean).join('\n\n');
     
     let enhancedPrompt = basePrompt;
     
-    if (dynamicSection) {
-      // Insert dynamic section before the first major section break
+    if (allMemorySections) {
+      // Insert ALL memory before the first major section break
       const insertPoint = basePrompt.indexOf('═══════════════');
       if (insertPoint > 0) {
-        enhancedPrompt = basePrompt.slice(0, insertPoint) + dynamicSection + '\n\n' + basePrompt.slice(insertPoint);
+        enhancedPrompt = basePrompt.slice(0, insertPoint) + allMemorySections + '\n\n' + basePrompt.slice(insertPoint);
       } else {
         // If no section break found, append at the end
-        enhancedPrompt = basePrompt + '\n\n' + dynamicSection;
+        enhancedPrompt = basePrompt + '\n\n' + allMemorySections;
       }
     }
     
-    return {
-      prompt: enhancedPrompt,
-      longTermMemory,
-    };
+    console.log(`[Dynamic Prompt] Unified memory injected: ${allMemorySections.length} chars of context`);
+    return enhancedPrompt;
   } catch (error) {
-    console.error("[Dynamic Prompt] Error fetching learning data:", error);
-    return { prompt: basePrompt, longTermMemory: null }; // Fall back to base prompt on error
+    console.error("[Dynamic Prompt] Error fetching memory data:", error);
+    return basePrompt; // Fall back to base prompt on error
   }
 }
 

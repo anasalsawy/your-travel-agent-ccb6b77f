@@ -5199,28 +5199,28 @@ serve(async (req) => {
       });
     }
 
-    // ========== BUILD SYSTEM PROMPT WITH ACTIVITY MEMORY ==========
+    // ========== BUILD SYSTEM PROMPT WITH UNIFIED MEMORY ==========
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    // Get enhanced prompt with activity memory (2 weeks injected, 90 days available)
-    let enhancedResult: { prompt: string; longTermMemory: string | null };
+    // Get enhanced prompt with ALL memory directly injected (short-term + long-term)
+    let enhancedSystemPrompt: string;
     try {
-      enhancedResult = await getEnhancedPrompt(
+      enhancedSystemPrompt = await getEnhancedPrompt(
         SYSTEM_PROMPT,
         SUPABASE_URL,
         SUPABASE_SERVICE_ROLE_KEY,
         customerContext?.profile?.id || undefined,
         sessionId?.startsWith('whatsapp-') ? 'whatsapp' : sessionId?.startsWith('el-') ? 'voice' : 'web',
-        true // include activity memory
+        true // include all memory
       );
-      console.log("[ai-chat] Enhanced prompt with activity memory loaded");
+      console.log("[ai-chat] Unified memory injected into prompt");
     } catch (err) {
       console.error("[ai-chat] Failed to load enhanced prompt:", err);
-      enhancedResult = { prompt: SYSTEM_PROMPT, longTermMemory: null };
+      enhancedSystemPrompt = SYSTEM_PROMPT;
     }
     
-    let activeSystemPrompt = enhancedResult.prompt;
+    let activeSystemPrompt = enhancedSystemPrompt;
     let activeTools = TOOLS;
     
     // Add customer context to prompt if available
