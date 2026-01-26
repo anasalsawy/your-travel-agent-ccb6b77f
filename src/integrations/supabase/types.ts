@@ -68,6 +68,30 @@ export type Database = {
           },
         ]
       }
+      agent_memory_cache: {
+        Row: {
+          compiled_at: string
+          compiled_content: string
+          id: string
+          memory_type: string
+          stats: Json | null
+        }
+        Insert: {
+          compiled_at?: string
+          compiled_content: string
+          id?: string
+          memory_type: string
+          stats?: Json | null
+        }
+        Update: {
+          compiled_at?: string
+          compiled_content?: string
+          id?: string
+          memory_type?: string
+          stats?: Json | null
+        }
+        Relationships: []
+      }
       ai_chat_messages: {
         Row: {
           content: string

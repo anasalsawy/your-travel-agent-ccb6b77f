@@ -6,13 +6,14 @@
  * 2. Customer-specific memory (if known customer)
  * 3. Active global learnings
  * 4. Prompt adaptations
- * 5. UNIFIED ACTIVITY MEMORY (short-term: 2 weeks in prompt, long-term: all time for context)
+ * 5. PRE-COMPILED MEMORY CACHE (auto-updated by cron, always available)
  * 
- * This is the "brain enhancement" layer that makes Maya smarter over time.
+ * Memory is NOT fetched per-conversation. It's pre-compiled and cached.
+ * Agents read from cache - memory is "hard coded" into every prompt.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { fetchActivitySummary, formatActivityMemoryPrompt, fetchDetailedActivityLog } from "./activity-memory.ts";
+import { getMemoryForPrompt } from "./memory-cache.ts";
 
 interface CustomerMemory {
   preferred_tone?: string;
@@ -109,16 +110,16 @@ export async function fetchDynamicPromptData(
   const fetchActivityMemoryData = async () => {
     if (includeActivityMemory) {
       try {
-        const [summary, longTermLog] = await Promise.all([
-          fetchActivitySummary(supabaseUrl, supabaseKey, 14), // 2 weeks
-          fetchDetailedActivityLog(supabaseUrl, supabaseKey, 90), // 90 days for context
-        ]);
-        result.activity_memory = {
-          short_term: formatActivityMemoryPrompt(summary),
-          long_term: longTermLog,
-        };
+        // Read from pre-compiled cache instead of live queries
+        const cachedMemory = await getMemoryForPrompt(supabaseUrl, supabaseKey);
+        if (cachedMemory) {
+          result.activity_memory = {
+            short_term: cachedMemory, // Already combined short+long term
+            long_term: '', // All in one cached blob
+          };
+        }
       } catch (err) {
-        console.error("[Dynamic Prompt] Activity memory fetch error:", err);
+        console.error("[Dynamic Prompt] Activity memory cache read error:", err);
       }
     }
   };
@@ -292,6 +293,6 @@ export async function getEnhancedPrompt(
 }
 
 /**
- * Export activity memory functions for direct use
+ * Export cache reader for direct use
  */
-export { fetchActivitySummary, formatActivityMemoryPrompt, fetchDetailedActivityLog } from "./activity-memory.ts";
+export { getMemoryForPrompt, getCachedMemory } from "./memory-cache.ts";
