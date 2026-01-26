@@ -2464,7 +2464,6 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         }
       }
 
-
       case "apply_discount": {
         // Log the discount application
         await supabase.from("notification_log").insert({
@@ -3278,7 +3277,6 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           });
         }
       }
-
 
       case "do_anything": {
         // Log the request and flag for human review if needed
@@ -5253,39 +5251,46 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       ...messages,
     ];
 
-    // Use Claude 3.5 Sonnet for all channels - unified Maya experience
-    const modelToUse = "claude-sonnet-4-20250514";
+    // Use Lovable AI Gateway - unified Maya experience
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
-    // Convert tools to Anthropic format
-    const anthropicTools = activeTools.map((tool: any) => ({
-      name: tool.function.name,
-      description: tool.function.description,
-      input_schema: tool.function.parameters,
+    if (!LOVABLE_API_KEY) {
+      console.error("[ai-chat] LOVABLE_API_KEY not configured");
+      return new Response(JSON.stringify({ error: "AI service not configured. Please try again later." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    // Convert tools to OpenAI format for Lovable AI
+    const openaiTools = activeTools.map((tool: any) => ({
+      type: "function" as const,
+      function: {
+        name: tool.function.name,
+        description: tool.function.description,
+        parameters: tool.function.parameters,
+      },
     }));
     
-    // Convert messages to Anthropic format (separate system from messages)
-    const systemPrompt = apiMessages.find((m: any) => m.role === "system")?.content || "";
-    const anthropicMessages = apiMessages
-      .filter((m: any) => m.role !== "system")
-      .map((m: any) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content,
-      }));
+    // Build OpenAI-format messages
+    const openaiMessages = apiMessages.map((m: any) => ({
+      role: m.role,
+      content: m.content,
+    }));
     
     // First API call - may include tool calls
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: modelToUse,
+        model: "openai/gpt-5",
         max_tokens: 4096,
-        system: systemPrompt,
-        messages: anthropicMessages,
-        tools: anthropicTools,
+        messages: openaiMessages,
+        tools: openaiTools,
+        tool_choice: "auto",
       }),
     });
 
@@ -5303,7 +5308,7 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
         });
       }
       const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
+      console.error("Lovable AI gateway error:", response.status, t);
       return new Response(JSON.stringify({ error: "Something went wrong. Let me try that again!" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -5312,71 +5317,52 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
 
     let result = await response.json();
     
-    // Convert Anthropic response format to our internal format
-    // Anthropic returns: { content: [...], stop_reason, ... }
-    // We need to extract text and tool_use blocks
-    let textContent = "";
-    let toolCalls: any[] = [];
-    
-    for (const block of result.content || []) {
-      if (block.type === "text") {
-        textContent += block.text;
-      } else if (block.type === "tool_use") {
-        toolCalls.push({
-          id: block.id,
-          name: block.name,
-          input: block.input,
-        });
-      }
-    }
+    // Extract OpenAI-format response
+    let choice = result.choices?.[0];
+    let textContent = choice?.message?.content || "";
+    let toolCalls = choice?.message?.tool_calls || [];
 
     // Handle tool calls in a loop (up to 10 iterations for complex multi-tool chains)
     let iterations = 0;
     const maxIterations = 10;
-    let currentMessages = [...anthropicMessages];
+    let currentMessages: any[] = [...openaiMessages];
     
     while (toolCalls.length > 0 && iterations < maxIterations) {
       iterations++;
       console.log(`Processing tool calls (iteration ${iterations}):`, toolCalls.length);
 
-      // Add assistant message with tool use to conversation
+      // Add assistant message with tool calls to conversation
       currentMessages.push({
         role: "assistant",
-        content: result.content,
+        content: choice?.message?.content || null,
+        tool_calls: toolCalls,
       });
 
-      // Execute all tool calls and format results for Anthropic
-      const toolResultBlocks = [];
+      // Execute all tool calls and add results
       for (const toolCall of toolCalls) {
-        const toolResult = await executeTool(supabase, toolCall.name, toolCall.input, convId);
+        const toolInput = JSON.parse(toolCall.function?.arguments || "{}");
+        const toolResult = await executeTool(supabase, toolCall.function?.name, toolInput, convId);
         
-        toolResultBlocks.push({
-          type: "tool_result",
-          tool_use_id: toolCall.id,
+        currentMessages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
           content: toolResult,
         });
       }
 
-      // Add tool results as user message
-      currentMessages.push({
-        role: "user",
-        content: toolResultBlocks,
-      });
-
-      // Get follow-up response from Claude
-      const followUpResponse = await fetch("https://api.anthropic.com/v1/messages", {
+      // Get follow-up response from Lovable AI
+      const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: modelToUse,
+          model: "openai/gpt-5",
           max_tokens: 4096,
-          system: systemPrompt,
           messages: currentMessages,
-          tools: anthropicTools,
+          tools: openaiTools,
+          tool_choice: "auto",
         }),
       });
 
@@ -5388,19 +5374,9 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       result = await followUpResponse.json();
       
       // Extract new content and tool calls
-      textContent = "";
-      toolCalls = [];
-      for (const block of result.content || []) {
-        if (block.type === "text") {
-          textContent += block.text;
-        } else if (block.type === "tool_use") {
-          toolCalls.push({
-            id: block.id,
-            name: block.name,
-            input: block.input,
-          });
-        }
-      }
+      choice = result.choices?.[0];
+      textContent = choice?.message?.content || "";
+      toolCalls = choice?.message?.tool_calls || [];
     }
 
     // Extract final content
