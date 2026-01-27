@@ -86,3 +86,15 @@ verify_jwt = false
 
 [functions.claude-quote]
 verify_jwt = false
+
+[functions.memory-agent]
+verify_jwt = false
+
+[functions.model-consultation]
+verify_jwt = false
+
+[functions.compile-agent-memory]
+verify_jwt = false
+
+[functions.maya-coach]
+verify_jwt = false
