@@ -76,28 +76,106 @@ export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [thinkingPhase, setThinkingPhase] = useState<ThinkingPhase>(null);
   const [typingAgent, setTypingAgent] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const greeting = getTimeGreeting();
-    const returning = isReturningVisitor();
-    return [
-      {
-        role: "assistant",
-        content: returning 
-          ? `${greeting}! 👋 Welcome back! Great to see you again. How can I help you today?`
-          : `${greeting}! 👋 I'm Maya from Your Travel Agent. Looking for some travel deals today? I'd love to help you out!`,
-        agentName: "Maya",
-      },
-    ];
-  });
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   // CRITICAL: Persist sessionId to localStorage for cross-session memory
   const [sessionId] = useState(() => getOrCreateSessionId());
   const [streamingContent, setStreamingContent] = useState("");
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // CRITICAL: Load conversation history when chat opens
+  useEffect(() => {
+    if (!isOpen || historyLoaded) return;
+    
+    const loadHistory = async () => {
+      setIsInitializing(true);
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-init`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: JSON.stringify({ sessionId }),
+          }
+        );
+
+        if (!res.ok) {
+          console.error("[ChatWidget] Failed to load history:", res.status);
+          // Set default greeting if init fails
+          const greeting = getTimeGreeting();
+          setMessages([{
+            role: "assistant",
+            content: `${greeting}! 👋 I'm Maya from Your Travel Agent. How can I help you today?`,
+            agentName: "Maya",
+          }]);
+          setHistoryLoaded(true);
+          return;
+        }
+
+        const data = await res.json();
+        console.log("[ChatWidget] Init response:", data);
+
+        if (data.conversationId) {
+          setConversationId(data.conversationId);
+        }
+
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          // We have history - load it
+          setMessages(
+            data.messages.map((m: { role: string; content: string }) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+              agentName: m.role === "assistant" ? "Maya" : undefined,
+            }))
+          );
+          
+          // Add a contextual "welcome back" message if there's history
+          if (data.isReturning && data.lastMessageAge) {
+            const greeting = getTimeGreeting();
+            const welcomeBack: Message = {
+              role: "assistant",
+              content: `${greeting}! 👋 Welcome back${data.customerName ? `, ${data.customerName}` : ""}! We last chatted ${data.lastMessageAge}. How can I help you today?`,
+              agentName: "Maya",
+            };
+            setMessages(prev => [...prev, welcomeBack]);
+          }
+        } else {
+          // New user - show intro greeting
+          const greeting = getTimeGreeting();
+          setMessages([{
+            role: "assistant",
+            content: `${greeting}! 👋 I'm Maya from Your Travel Agent. Looking for some travel deals today? I'd love to help you out!`,
+            agentName: "Maya",
+          }]);
+        }
+        
+        setHistoryLoaded(true);
+      } catch (e) {
+        console.error("[ChatWidget] Init error:", e);
+        // Fallback greeting
+        const greeting = getTimeGreeting();
+        setMessages([{
+          role: "assistant",
+          content: `${greeting}! 👋 I'm Maya from Your Travel Agent. How can I help you today?`,
+          agentName: "Maya",
+        }]);
+        setHistoryLoaded(true);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    loadHistory();
+  }, [isOpen, sessionId, historyLoaded]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -106,10 +184,10 @@ export function ChatWidget() {
   }, [messages, thinkingPhase, streamingContent]);
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
+    if (isOpen && inputRef.current && !isInitializing) {
       inputRef.current.focus();
     }
-  }, [isOpen]);
+  }, [isOpen, isInitializing]);
 
   // Cleanup phase timer on unmount
   useEffect(() => {
@@ -168,10 +246,13 @@ export function ChatWidget() {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({
-            messages: [...messages, userMessage].map((m) => ({
-              role: m.role === "system" ? "user" : m.role,
-              content: m.content,
-            })),
+            // Only send user and assistant messages - filter out system/notification
+            messages: [...messages, userMessage]
+              .filter((m) => m.role === "user" || m.role === "assistant")
+              .map((m) => ({
+                role: m.role,
+                content: m.content,
+              })),
             sessionId,
             conversationId,
           }),
@@ -328,7 +409,17 @@ export function ChatWidget() {
         {/* Messages */}
         <ScrollArea className="flex-1 p-4" ref={scrollRef}>
           <div className="flex flex-col gap-3">
-            {messages.map((message, index) => (
+            {/* Loading state while initializing */}
+            {isInitializing && (
+              <div className="flex justify-center py-8">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Loading conversation...</span>
+                </div>
+              </div>
+            )}
+            
+            {!isInitializing && messages.map((message, index) => (
               <div key={index} className="flex flex-col gap-1">
                 {/* Notification messages (like "Maya has joined") */}
                 {message.isNotification ? (
