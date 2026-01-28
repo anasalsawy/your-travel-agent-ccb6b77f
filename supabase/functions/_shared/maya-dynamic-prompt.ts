@@ -143,14 +143,16 @@ export async function fetchDynamicPromptData(
 
 /**
  * Build a dynamic prompt section from the fetched data
+ * NOTE: Activity memory is handled separately by buildUnifiedMemorySection
+ * This only builds customer intelligence, learnings, and adaptations
  */
 export function buildDynamicPromptSection(data: DynamicPromptData): string {
   const sections: string[] = [];
 
-  // ACTIVITY MEMORY SECTION (Short-term - last 2 weeks) - ADD FIRST for holistic awareness
-  if (data.activity_memory?.short_term) {
-    sections.push(data.activity_memory.short_term);
-  }
+  // SKIP activity memory here - it's handled by buildUnifiedMemorySection with proper truncation
+  // Previously this was duplicating memory without truncation!
+  // REMOVED: Direct short_term injection here was causing 500K+ char prompts!
+  // Activity memory is now ONLY added via buildUnifiedMemorySection with truncation
 
   // Customer Memory Section
   if (data.customer_memory) {
@@ -240,34 +242,28 @@ function truncateToTokenLimit(text: string, maxTokens: number): string {
 }
 
 /**
- * Build UNIFIED MEMORY section - BOTH short-term AND long-term directly injected
- * Enforces STRICT token limits to prevent context overflow (272K model limit)
+ * Build UNIFIED MEMORY section - AGGRESSIVE token limits to prevent rate limits
  * 
- * CONSERVATIVE Budget allocation (leave room for conversation!):
- * - Base prompt + tools: ~30K tokens
- * - Conversation history: ~40K tokens (PRIORITY - recent messages matter most!)
- * - Short-term memory: 15K tokens max (reduced to prioritize conversation)
- * - Long-term memory: 10K tokens max (reduced to prioritize conversation)
- * - Buffer: ~10K tokens
+ * ULTRA-CONSERVATIVE Budget (GPT-4o has 128K context, but rate limits hit fast):
+ * - Base prompt + tools: ~20K tokens
+ * - Conversation history: ~50K tokens (PRIORITY - what user just said!)
+ * - Short-term memory: 5K tokens max (only most recent events)
+ * - Long-term memory: DISABLED to save tokens
+ * - Buffer: ~20K tokens
  * 
- * Total memory budget: ~25K tokens (100K chars)
+ * Total memory budget: ~5K tokens (20K chars) - MINIMAL to avoid rate limits
  */
 function buildUnifiedMemorySection(data: DynamicPromptData): string {
-  const sections: string[] = [];
-
-  // SHORT-TERM MEMORY (Last 2 weeks) - Immediate awareness - 15K token budget
+  // ONLY short-term memory, heavily truncated
+  // Long-term memory DISABLED to prevent rate limit issues
   if (data.activity_memory?.short_term) {
-    const truncatedShort = truncateToTokenLimit(data.activity_memory.short_term, 15000);
-    sections.push(truncatedShort);
+    // 5K tokens = ~20K chars - only the most recent activity
+    const truncatedShort = truncateToTokenLimit(data.activity_memory.short_term, 5000);
+    console.log(`[Dynamic Prompt] Memory after truncation: ${truncatedShort.length} chars`);
+    return truncatedShort;
   }
 
-  // LONG-TERM MEMORY (All time patterns) - Deep knowledge base - 10K token budget
-  if (data.activity_memory?.long_term) {
-    const truncatedLong = truncateToTokenLimit(data.activity_memory.long_term, 10000);
-    sections.push(truncatedLong);
-  }
-
-  return sections.join('\n\n');
+  return '';
 }
 
 /**
