@@ -230,19 +230,39 @@ ${adaptText.trim()}
 }
 
 /**
+ * Truncate text to approximate token limit
+ * ~4 chars per token, so 50K tokens ≈ 200K chars
+ */
+function truncateToTokenLimit(text: string, maxTokens: number): string {
+  const maxChars = maxTokens * 4;
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + '\n\n... [Memory truncated for context limit]';
+}
+
+/**
  * Build UNIFIED MEMORY section - BOTH short-term AND long-term directly injected
+ * Enforces token limits to prevent context overflow (272K model limit)
+ * 
+ * Budget allocation:
+ * - Base prompt + tools: ~30K tokens
+ * - Conversation history: ~20K tokens
+ * - Short-term memory: 40K tokens max
+ * - Long-term memory: 20K tokens max
+ * - Buffer: ~10K tokens
  */
 function buildUnifiedMemorySection(data: DynamicPromptData): string {
   const sections: string[] = [];
 
-  // SHORT-TERM MEMORY (Last 2 weeks) - Immediate awareness
+  // SHORT-TERM MEMORY (Last 2 weeks) - Immediate awareness - 40K token budget
   if (data.activity_memory?.short_term) {
-    sections.push(data.activity_memory.short_term);
+    const truncatedShort = truncateToTokenLimit(data.activity_memory.short_term, 40000);
+    sections.push(truncatedShort);
   }
 
-  // LONG-TERM MEMORY (All time patterns) - Deep knowledge base
+  // LONG-TERM MEMORY (All time patterns) - Deep knowledge base - 20K token budget
   if (data.activity_memory?.long_term) {
-    sections.push(data.activity_memory.long_term);
+    const truncatedLong = truncateToTokenLimit(data.activity_memory.long_term, 20000);
+    sections.push(truncatedLong);
   }
 
   return sections.join('\n\n');
