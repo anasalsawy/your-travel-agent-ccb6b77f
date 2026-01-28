@@ -44,14 +44,25 @@ async function queryModel(model: string, apiKey: string): Promise<{ model: strin
   try {
     console.log(`[Consultation] Querying ${model}...`);
     
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Map model names to OpenAI equivalents
+    const modelMapping: Record<string, string> = {
+      "openai/gpt-5": "gpt-4o",
+      "openai/gpt-5.2": "gpt-4o",
+      "openai/gpt-5-mini": "gpt-4o-mini",
+      "google/gemini-2.5-pro": "gpt-4o", // fallback to GPT-4o
+      "google/gemini-3-pro-preview": "gpt-4o", // fallback to GPT-4o
+    };
+    
+    const openaiModel = modelMapping[model] || "gpt-4o";
+    
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model,
+        model: openaiModel,
         messages: [
           { role: "system", content: "You are a senior AI systems architect providing technical consultation. Be direct, critical, and specific." },
           { role: "user", content: CONSULTATION_PROMPT }
@@ -83,12 +94,12 @@ serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY not configured");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY not configured");
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -96,7 +107,7 @@ serve(async (req) => {
 
     // If specific model requested, query just that one
     if (model) {
-      const result = await queryModel(model, LOVABLE_API_KEY);
+      const result = await queryModel(model, OPENAI_API_KEY);
       
       // Store in admin_alerts for easy viewing
       await supabase.from("admin_alerts").insert({
