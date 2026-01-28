@@ -22,24 +22,29 @@ export interface RAGContext {
 }
 
 /**
- * Generate embedding using hash-based approach
- * For production, integrate OpenAI or Voyage embeddings
+ * Generate embedding using OpenAI's text-embedding-3-small model
  */
-export async function getEmbedding(text: string): Promise<number[]> {
-  const embedding = new Array(1536).fill(0);
-  const words = text.toLowerCase().split(/\s+/);
-  
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    for (let j = 0; j < word.length; j++) {
-      const charCode = word.charCodeAt(j);
-      const idx = (i * 31 + j * 17 + charCode) % 1536;
-      embedding[idx] += 1 / (words.length + 1);
-    }
+export async function getEmbedding(text: string, apiKey: string): Promise<number[]> {
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text,
+      dimensions: 1536,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI embedding error: ${error}`);
   }
-  
-  const magnitude = Math.sqrt(embedding.reduce((sum, v) => sum + v * v, 0)) || 1;
-  return embedding.map(v => v / magnitude);
+
+  const data = await response.json();
+  return data.data[0].embedding;
 }
 
 /**
@@ -48,12 +53,13 @@ export async function getEmbedding(text: string): Promise<number[]> {
 export async function searchDocuments(
   supabase: SupabaseClient,
   query: string,
+  apiKey: string,
   options: {
     matchCount?: number;
     similarityThreshold?: number;
   } = {}
 ): Promise<RAGResult[]> {
-  const queryEmbedding = await getEmbedding(query);
+  const queryEmbedding = await getEmbedding(query, apiKey);
   const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
   const { data, error } = await supabase.rpc('search_documents', {
@@ -72,13 +78,14 @@ export async function searchDocuments(
 export async function getRAGContext(
   supabase: SupabaseClient,
   query: string,
+  apiKey: string,
   options: {
     matchCount?: number;
     similarityThreshold?: number;
     maxTokens?: number;
   } = {}
 ): Promise<RAGContext> {
-  const results = await searchDocuments(supabase, query, options);
+  const results = await searchDocuments(supabase, query, apiKey, options);
   
   const maxChars = (options.maxTokens || 4000) * 4;
   let context = '📚 RELEVANT KNOWLEDGE:\n\n';

@@ -21,23 +21,33 @@ interface SearchRequest {
   max_tokens?: number;
 }
 
-// Generate embedding using a simple hash-based approach
-// Matches the approach in rag-embed for consistency
+// Generate embedding using OpenAI's text-embedding-3-small model
 async function getEmbedding(text: string): Promise<number[]> {
-  const embedding = new Array(1536).fill(0);
-  const words = text.toLowerCase().split(/\s+/);
-  
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    for (let j = 0; j < word.length; j++) {
-      const charCode = word.charCodeAt(j);
-      const idx = (i * 31 + j * 17 + charCode) % 1536;
-      embedding[idx] += 1 / (words.length + 1);
-    }
+  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured');
   }
-  
-  const magnitude = Math.sqrt(embedding.reduce((sum, v) => sum + v * v, 0)) || 1;
-  return embedding.map(v => v / magnitude);
+
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text,
+      dimensions: 1536,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI embedding error: ${error}`);
+  }
+
+  const data = await response.json();
+  return data.data[0].embedding;
 }
 
 Deno.serve(async (req) => {
@@ -58,36 +68,28 @@ Deno.serve(async (req) => {
       return json({ error: 'query is required' }, 400);
     }
 
-    // Embed the query
+    // Embed the query using OpenAI
     const queryEmbedding = await getEmbedding(request.query);
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
-    const threshold = request.similarity_threshold || 0.1; // Lower threshold for hash-based embeddings
+    const threshold = request.similarity_threshold || 0.5;
     const matchCount = request.match_count || 5;
 
-    // Direct query using pgvector operators
-    const { data: results, error } = await supabase
-      .from('document_chunks')
-      .select(`
-        id,
-        document_id,
-        content,
-        documents!inner(metadata)
-      `)
-      .limit(matchCount);
+    // Use the search_documents RPC function with proper vector search
+    const { data: results, error } = await supabase.rpc('search_documents', {
+      query_embedding: embeddingStr,
+      match_count: matchCount,
+      similarity_threshold: threshold,
+    });
 
     if (error) throw error;
 
-    // Calculate similarity in JS since RPC has type issues
-    const scoredResults = (results || []).map((r: any) => {
-      // Get stored embedding for comparison
-      return {
-        id: r.id,
-        document_id: r.document_id,
-        content: r.content,
-        similarity: 0.5, // Placeholder - need to calculate cosine similarity
-        metadata: r.documents?.metadata || {},
-      };
-    });
+    const scoredResults = (results || []).map((r: any) => ({
+      id: r.id,
+      document_id: r.document_id,
+      content: r.content,
+      similarity: r.similarity,
+      metadata: r.metadata || {},
+    }));
 
     console.log(`[RAG Search] Found ${scoredResults.length} results`);
 
