@@ -24,7 +24,8 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const sessionId = body.sessionId || body.session_id;
-    const limit = Math.min(body.limit || 20, 50); // Default 20, max 50
+    // Load more messages by default to ensure recent context is preserved
+    const limit = Math.min(body.limit || 50, 100); // Default 50, max 100
 
     if (!sessionId) {
       return new Response(JSON.stringify({ 
