@@ -21,6 +21,14 @@ interface SearchRequest {
   max_tokens?: number;
 }
 
+interface SearchResult {
+  id: string;
+  document_id: string;
+  content: string;
+  similarity: number;
+  metadata: Record<string, unknown>;
+}
+
 // Generate embedding using OpenAI's text-embedding-3-small model
 async function getEmbedding(text: string): Promise<number[]> {
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
@@ -50,6 +58,27 @@ async function getEmbedding(text: string): Promise<number[]> {
   return data.data[0].embedding;
 }
 
+// Cosine similarity between two vectors
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// Parse vector string from postgres format "[0.1,0.2,...]" to number array
+function parseVector(vectorStr: string): number[] {
+  if (!vectorStr) return [];
+  const cleaned = vectorStr.replace(/[\[\]]/g, '');
+  return cleaned.split(',').map(Number);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -70,66 +99,87 @@ Deno.serve(async (req) => {
 
     // Embed the query using OpenAI
     const queryEmbedding = await getEmbedding(request.query);
-    const embeddingStr = `[${queryEmbedding.join(',')}]`;
-    const threshold = request.similarity_threshold ?? 0.3;  // Lower default for better recall
+    const threshold = request.similarity_threshold ?? 0.3;
     const matchCount = request.match_count || 5;
 
-    console.log(`[RAG Search] Threshold: ${threshold}, Match count: ${matchCount}`);
+    console.log(`[RAG Search] Embedding generated (${queryEmbedding.length} dims), threshold: ${threshold}`);
 
-    // Use raw SQL to properly cast the vector and perform similarity search
-    const { data: results, error } = await supabase.rpc('search_documents', {
-      query_embedding: queryEmbedding,  // Pass as array, not string
-      match_count: matchCount,
-      similarity_threshold: threshold,
-    });
+    // Fetch all chunks with their embeddings (for small datasets)
+    // For large datasets, this should use pgvector's native search
+    const { data: chunks, error } = await supabase
+      .from('document_chunks')
+      .select(`
+        id,
+        document_id,
+        content,
+        embedding,
+        documents(metadata)
+      `)
+      .not('embedding', 'is', null);
 
     if (error) {
-      console.error('[RAG Search] RPC error:', error);
+      console.error('[RAG Search] Query error:', error);
       throw error;
     }
 
-    const scoredResults = (results || []).map((r: any) => ({
-      id: r.id,
-      document_id: r.document_id,
-      content: r.content,
-      similarity: r.similarity,
-      metadata: r.metadata || {},
-    }));
+    console.log(`[RAG Search] Fetched ${chunks?.length || 0} chunks`);
 
-    console.log(`[RAG Search] Found ${scoredResults.length} results`);
+    // Calculate similarity for each chunk
+    const scoredResults: SearchResult[] = [];
+    
+    for (const chunk of (chunks || [])) {
+      const chunkEmbedding = parseVector(chunk.embedding);
+      if (chunkEmbedding.length !== 1536) continue;
+      
+      const similarity = cosineSimilarity(queryEmbedding, chunkEmbedding);
+      
+      if (similarity >= threshold) {
+        scoredResults.push({
+          id: chunk.id,
+          document_id: chunk.document_id,
+          content: chunk.content,
+          similarity,
+          metadata: (chunk.documents as any)?.metadata || {},
+        });
+      }
+    }
+
+    // Sort by similarity descending and take top N
+    scoredResults.sort((a, b) => b.similarity - a.similarity);
+    const topResults = scoredResults.slice(0, matchCount);
+
+    console.log(`[RAG Search] Found ${topResults.length} results above threshold ${threshold}`);
 
     switch (request.action) {
       case 'search': {
-        // Return raw search results
         return json({
           query: request.query,
-          results_count: scoredResults.length,
-          results: scoredResults,
+          results_count: topResults.length,
+          results: topResults,
         });
       }
 
       case 'get_context': {
-        // Format results as context for agent injection
         const maxTokens = request.max_tokens || 4000;
         const maxChars = maxTokens * 4;
         
         let context = '📚 RELEVANT KNOWLEDGE:\n\n';
         let charCount = context.length;
 
-        for (const result of scoredResults) {
+        for (const result of topResults) {
           const chunk = `[Similarity: ${(result.similarity * 100).toFixed(1)}%]\n${result.content}\n\n---\n\n`;
           if (charCount + chunk.length > maxChars) break;
           context += chunk;
           charCount += chunk.length;
         }
 
-        if (!scoredResults.length) {
+        if (!topResults.length) {
           context += '(No relevant documents found for this query)\n';
         }
 
         return json({
           query: request.query,
-          results_count: scoredResults.length,
+          results_count: topResults.length,
           context,
           token_estimate: Math.ceil(charCount / 4),
         });
