@@ -5272,11 +5272,11 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       ...messages,
     ];
 
-    // Use Lovable AI Gateway - unified Maya experience
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    // Use OpenAI API directly - faster, cost-controlled, no Lovable gateway dependency
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     
-    if (!LOVABLE_API_KEY) {
-      console.error("[ai-chat] LOVABLE_API_KEY not configured");
+    if (!OPENAI_API_KEY) {
+      console.error("[ai-chat] OPENAI_API_KEY not configured");
       return new Response(JSON.stringify({ error: "AI service not configured. Please try again later." }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -5299,15 +5299,15 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       content: m.content,
     }));
     
-    // First API call - may include tool calls
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // First API call - may include tool calls (direct OpenAI - faster)
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        model: "gpt-4o",
         max_completion_tokens: 4096,
         messages: openaiMessages,
         tools: openaiTools,
@@ -5317,19 +5317,28 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
 
     if (!response.ok) {
       if (response.status === 429) {
+        console.warn("[ai-chat] Rate limited by OpenAI");
         return new Response(JSON.stringify({ error: "We're a bit busy right now. Give me just a sec and try again!" }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Service temporarily unavailable. Please try again in a moment!" }), {
-          status: 402,
+      if (response.status === 401) {
+        console.error("[ai-chat] OpenAI API key invalid");
+        return new Response(JSON.stringify({ error: "Service configuration error. Please contact support." }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (response.status === 402 || response.status === 403) {
+        console.error("[ai-chat] OpenAI quota/billing issue");
+        return new Response(JSON.stringify({ error: "Maya is taking a short break. Please try again in a few minutes!" }), {
+          status: 503,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const t = await response.text();
-      console.error("Lovable AI gateway error:", response.status, t);
+      console.error("[ai-chat] OpenAI API error:", response.status, t);
       return new Response(JSON.stringify({ error: "Something went wrong. Let me try that again!" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -5371,15 +5380,15 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
         });
       }
 
-      // Get follow-up response from Lovable AI
-      const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      // Get follow-up response from OpenAI (direct API)
+      const followUpResponse = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "openai/gpt-5",
+          model: "gpt-4o",
           max_completion_tokens: 4096,
           messages: currentMessages,
           tools: openaiTools,
