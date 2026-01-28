@@ -18,13 +18,24 @@ type Message = {
 
 type ThinkingPhase = "thinking" | "researching" | "composing" | null;
 
+// Persist session ID so returning visitors keep the same conversation context.
+const getOrCreateSessionId = (): string => {
+  const STORAGE_KEY = "maya_session_id";
+  const existingId = localStorage.getItem(STORAGE_KEY);
+  if (existingId) return existingId;
+  const newId = crypto.randomUUID();
+  localStorage.setItem(STORAGE_KEY, newId);
+  return newId;
+};
+
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [thinkingPhase, setThinkingPhase] = useState<ThinkingPhase>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [sessionId] = useState(() => crypto.randomUUID());
+  // CRITICAL: Persist sessionId to localStorage for cross-visit memory
+  const [sessionId] = useState(() => getOrCreateSessionId());
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -32,6 +43,8 @@ const Index = () => {
   const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [voiceEnabled] = useState(true);
   const [hasStarted, setHasStarted] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   const voice = useVoiceChat({
     onError: (error) => console.error("Voice error:", error),
@@ -96,14 +109,70 @@ const Index = () => {
     setThinkingPhase(null);
   }, []);
 
-  const startConversation = (initialMessage?: string) => {
+  const startConversation = async (initialMessage?: string) => {
     setHasStarted(true);
-    setMessages([
-      {
-        role: "assistant",
-        content: "Hey! 👋 I'm Maya, your personal travel agent. I can find you discounted flights, book tickets, search for deals, and handle everything travel-related. What can I help you with today?",
-      },
-    ]);
+
+    // Load prior messages for this session if we haven't already.
+    if (!historyLoaded) {
+      setIsInitializing(true);
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-init`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: JSON.stringify({ sessionId }),
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.conversationId) setConversationId(data.conversationId);
+
+          if (Array.isArray(data?.messages) && data.messages.length > 0) {
+            setMessages(
+              data.messages.map((m: { role: string; content: string }) => ({
+                role: m.role as "user" | "assistant",
+                content: m.content,
+              }))
+            );
+          } else {
+            setMessages([
+              {
+                role: "assistant",
+                content:
+                  "Hey! 👋 I'm Maya, your personal travel agent. I can find you discounted flights, book tickets, search for deals, and handle everything travel-related. What can I help you with today?",
+              },
+            ]);
+          }
+        } else {
+          setMessages([
+            {
+              role: "assistant",
+              content:
+                "Hey! 👋 I'm Maya, your personal travel agent. I can find you discounted flights, book tickets, search for deals, and handle everything travel-related. What can I help you with today?",
+            },
+          ]);
+        }
+      } catch (e) {
+        console.error("[Index] Failed to init chat session:", e);
+        setMessages([
+          {
+            role: "assistant",
+            content:
+              "Hey! 👋 I'm Maya, your personal travel agent. I can find you discounted flights, book tickets, search for deals, and handle everything travel-related. What can I help you with today?",
+          },
+        ]);
+      } finally {
+        setHistoryLoaded(true);
+        setIsInitializing(false);
+      }
+    }
+
+    // Prefill optional quick action text
     if (initialMessage) {
       setTimeout(() => {
         setInput(initialMessage);
@@ -327,10 +396,20 @@ const Index = () => {
           <Button 
             size="lg" 
             onClick={() => startConversation()}
+            disabled={isInitializing}
             className="rounded-full px-8 py-6 text-lg shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-all mb-8"
           >
-            <MessageSquare className="w-5 h-5 mr-2" />
-            Start Chatting with Maya
+            {isInitializing ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Loading your chat…
+              </>
+            ) : (
+              <>
+                <MessageSquare className="w-5 h-5 mr-2" />
+                Start Chatting with Maya
+              </>
+            )}
           </Button>
 
           {/* Quick Start Options */}
@@ -341,6 +420,7 @@ const Index = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => startConversation(action.label)}
+                disabled={isInitializing}
                 className="rounded-full"
               >
                 <action.icon className="w-4 h-4 mr-2" />
