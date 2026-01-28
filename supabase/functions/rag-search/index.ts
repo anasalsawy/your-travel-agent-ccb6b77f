@@ -71,17 +71,22 @@ Deno.serve(async (req) => {
     // Embed the query using OpenAI
     const queryEmbedding = await getEmbedding(request.query);
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
-    const threshold = request.similarity_threshold || 0.5;
+    const threshold = request.similarity_threshold ?? 0.3;  // Lower default for better recall
     const matchCount = request.match_count || 5;
 
-    // Use the search_documents RPC function with proper vector search
+    console.log(`[RAG Search] Threshold: ${threshold}, Match count: ${matchCount}`);
+
+    // Use raw SQL to properly cast the vector and perform similarity search
     const { data: results, error } = await supabase.rpc('search_documents', {
-      query_embedding: embeddingStr,
+      query_embedding: queryEmbedding,  // Pass as array, not string
       match_count: matchCount,
       similarity_threshold: threshold,
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[RAG Search] RPC error:', error);
+      throw error;
+    }
 
     const scoredResults = (results || []).map((r: any) => ({
       id: r.id,
