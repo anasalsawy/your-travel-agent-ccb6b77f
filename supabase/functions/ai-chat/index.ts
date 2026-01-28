@@ -5308,7 +5308,7 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       },
       body: JSON.stringify({
         model: "openai/gpt-5",
-        max_tokens: 4096,
+        max_completion_tokens: 4096,
         messages: openaiMessages,
         tools: openaiTools,
         tool_choice: "auto",
@@ -5380,7 +5380,7 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
         },
         body: JSON.stringify({
           model: "openai/gpt-5",
-          max_tokens: 4096,
+          max_completion_tokens: 4096,
           messages: currentMessages,
           tools: openaiTools,
           tool_choice: "auto",
