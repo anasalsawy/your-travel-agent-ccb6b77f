@@ -38,26 +38,33 @@ function chunkText(text: string, maxTokens = 500, overlap = 50): string[] {
   return chunks.filter(c => c.trim().length > 0);
 }
 
-// Generate embedding using a simple hash-based approach for now
-// In production, you'd use OpenAI or Voyage embeddings
+// Generate embedding using OpenAI's text-embedding-3-small model
 async function getEmbedding(text: string): Promise<number[]> {
-  // Use a deterministic hash-based embedding for testing
-  // This creates consistent 1536-dim vectors based on text content
-  const embedding = new Array(1536).fill(0);
-  const words = text.toLowerCase().split(/\s+/);
-  
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    for (let j = 0; j < word.length; j++) {
-      const charCode = word.charCodeAt(j);
-      const idx = (i * 31 + j * 17 + charCode) % 1536;
-      embedding[idx] += 1 / (words.length + 1);
-    }
+  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured');
   }
-  
-  // Normalize the vector
-  const magnitude = Math.sqrt(embedding.reduce((sum, v) => sum + v * v, 0)) || 1;
-  return embedding.map(v => v / magnitude);
+
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text,
+      dimensions: 1536,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI embedding error: ${error}`);
+  }
+
+  const data = await response.json();
+  return data.data[0].embedding;
 }
 
 Deno.serve(async (req) => {
