@@ -125,14 +125,24 @@ export async function buildFullPrompt(options: BuildPromptOptions): Promise<Prom
       memory = await fetchUnifiedMemory(supabase, { days: 14 });
     }
 
-    // If userId or customerId provided, pre-filter memory events
+    // If userId or customerId provided, pre-filter memory events using structured matching
     if (userId || customerId) {
       const filteredEvents = memory.events.filter((e) => {
-        const raw = JSON.stringify(e.data);
-        if (userId && raw.includes(userId)) return true;
-        if (customerId && raw.includes(customerId)) return true;
-        // Also include global events (no user association)
-        if (!raw.includes('user_id') && !raw.includes('customer_id')) return true;
+        const d = e.data || {};
+        
+        // Match by explicit IDs (structured field matching, not string search)
+        if (userId && (d.user_id === userId || d.session_id === userId)) return true;
+        if (customerId && (d.customer_id === customerId)) return true;
+        
+        // Match by email if available in data
+        if (d.customer_email || d.contact_email) {
+          // If we have email-based matching in the future, add here
+        }
+        
+        // Include global/system events that aren't user-specific
+        // These are events like system alerts, general notifications, etc.
+        if (!d.user_id && !d.customer_id && !d.session_id) return true;
+        
         return false;
       });
       

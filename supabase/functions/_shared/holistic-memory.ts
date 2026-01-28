@@ -401,7 +401,7 @@ export async function saveGlobalBriefing(
   supabase: SupabaseClient,
   briefing: GlobalBriefing
 ): Promise<void> {
-  await supabase.from('agent_memory_cache').upsert({
+  const { error } = await supabase.from('agent_memory_cache').upsert({
     memory_type: 'global_briefing',
     compiled_content: briefing.narrative,
     compiled_at: briefing.generated_at,
@@ -412,16 +412,26 @@ export async function saveGlobalBriefing(
       issues_count: briefing.recent.active_issues.length,
     }
   }, { onConflict: 'memory_type' });
+
+  if (error) {
+    console.error('[Memory] saveGlobalBriefing failed:', error);
+    throw new Error(`Failed to save global briefing: ${error.message}`);
+  }
 }
 
 export async function loadGlobalBriefing(
   supabase: SupabaseClient
 ): Promise<string | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('agent_memory_cache')
     .select('compiled_content, compiled_at')
     .eq('memory_type', 'global_briefing')
     .maybeSingle();
+
+  if (error) {
+    console.error('[Memory] loadGlobalBriefing failed:', error);
+    return null;
+  }
 
   return data?.compiled_content || null;
 }
@@ -438,26 +448,23 @@ export async function loadGlobalBriefing(
  */
 export async function buildAgentContext(
   supabase: SupabaseClient,
-  options: {
-    includeHolistic?: boolean;
-    sliceHours?: number;
-    sliceMaxTokens?: number;
-  } = {}
+  options: { includeHolistic?: boolean } = {}
 ): Promise<string> {
-  const sections: string[] = [];
-  
-  // 1. HOLISTIC - Global Briefing
-  if (options.includeHolistic !== false) {
-    const briefing = await loadGlobalBriefing(supabase);
-    if (briefing) {
-      sections.push(briefing);
-    }
+  if (options.includeHolistic === false) {
+    return '';
   }
 
-  // 2. CONTEXT - Recent Slice
-  // This is handled separately via generateSlice() when needed
-  
-  // Note: PRECISE layer is accessed on-demand via memory_tool and rag-search
-  
-  return sections.join('\n\n');
+  try {
+    const briefing = await loadGlobalBriefing(supabase);
+    
+    if (!briefing) {
+      console.warn('[Memory] Global briefing not found - returning fallback');
+      return '⚠️ (Holistic memory unavailable – global briefing not generated yet. Run "refresh_holistic" action to populate.)';
+    }
+    
+    return briefing;
+  } catch (error) {
+    console.error('[Memory] buildAgentContext error:', error);
+    return '⚠️ (Holistic memory error – could not load global briefing)';
+  }
 }

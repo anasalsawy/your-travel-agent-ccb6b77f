@@ -161,7 +161,7 @@ export async function saveUnifiedMemoryToKB(
 ): Promise<void> {
   const content = JSON.stringify(memory, null, 2);
   
-  await supabase.from('agent_memory_cache').upsert({
+  const { error } = await supabase.from('agent_memory_cache').upsert({
     memory_type: 'unified_memory',
     compiled_content: content,
     compiled_at: memory.generated_at,
@@ -172,19 +172,35 @@ export async function saveUnifiedMemoryToKB(
       version: memory.version,
     }
   }, { onConflict: 'memory_type' });
+
+  if (error) {
+    console.error('[Memory] saveUnifiedMemoryToKB failed:', error);
+    throw new Error(`Failed to save unified memory: ${error.message}`);
+  }
 }
 
 export async function loadUnifiedMemoryFromKB(
   supabase: SupabaseClient
 ): Promise<UnifiedMemory | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('agent_memory_cache')
     .select('compiled_content')
     .eq('memory_type', 'unified_memory')
     .maybeSingle();
 
+  if (error) {
+    console.error('[Memory] loadUnifiedMemoryFromKB failed:', error);
+    return null;
+  }
+
   if (!data?.compiled_content) return null;
-  return JSON.parse(data.compiled_content);
+  
+  try {
+    return JSON.parse(data.compiled_content);
+  } catch (parseError) {
+    console.error('[Memory] Failed to parse unified memory:', parseError);
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
