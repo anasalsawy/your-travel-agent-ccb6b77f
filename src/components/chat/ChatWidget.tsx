@@ -22,12 +22,20 @@ const getTimeGreeting = () => {
   return "Good evening";
 };
 
-// Check if returning visitor
+// Get or create persistent session ID for cross-visit memory
+const getOrCreateSessionId = (): string => {
+  const STORAGE_KEY = "maya_session_id";
+  const existingId = localStorage.getItem(STORAGE_KEY);
+  if (existingId) return existingId;
+  
+  const newId = crypto.randomUUID();
+  localStorage.setItem(STORAGE_KEY, newId);
+  return newId;
+};
+
+// Check if returning visitor (has existing session)
 const isReturningVisitor = () => {
-  const visited = localStorage.getItem("sparefare_chat_visited");
-  if (visited) return true;
-  localStorage.setItem("sparefare_chat_visited", "true");
-  return false;
+  return !!localStorage.getItem("maya_session_id");
 };
 
 // Simulated typing delay - adds characters gradually
@@ -75,8 +83,8 @@ export function ChatWidget() {
       {
         role: "assistant",
         content: returning 
-          ? `${greeting}! 👋 Welcome back to SpareFare! Great to see you again. How can I help you today?`
-          : `${greeting}! 👋 I'm Maya from SpareFare. Looking for some travel deals today? I'd love to help you out!`,
+          ? `${greeting}! 👋 Welcome back! Great to see you again. How can I help you today?`
+          : `${greeting}! 👋 I'm Maya from Your Travel Agent. Looking for some travel deals today? I'd love to help you out!`,
         agentName: "Maya",
       },
     ];
@@ -84,7 +92,8 @@ export function ChatWidget() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [sessionId] = useState(() => crypto.randomUUID());
+  // CRITICAL: Persist sessionId to localStorage for cross-session memory
+  const [sessionId] = useState(() => getOrCreateSessionId());
   const [streamingContent, setStreamingContent] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
