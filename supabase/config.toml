@@ -24,6 +24,9 @@ verify_jwt = false
 [functions.ai-chat]
 verify_jwt = false
 
+[functions.ai-chat-init]
+verify_jwt = false
+
 [functions.seats-aero-test]
 verify_jwt = false
 
