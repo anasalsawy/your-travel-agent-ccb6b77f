@@ -4965,9 +4965,15 @@ serve(async (req) => {
       }
     }
 
-    // Load conversation history if this is an existing conversation
-    // This is CRITICAL for maintaining context across messages (especially WhatsApp)
-    if (existingConversation && messages.length <= 1) {
+    // Load conversation history if this is an existing conversation.
+    // IMPORTANT: Some clients (or reconnects/refreshes) may only send the latest user message,
+    // which makes Maya appear to "forget". If we receive only a small message window,
+    // rehydrate from DB/unified history.
+    //
+    // We intentionally keep this threshold small so we don't duplicate history when the
+    // web client already sends the full transcript.
+    const SHOULD_REHYDRATE_HISTORY_THRESHOLD = 6;
+    if (existingConversation && messages.length < SHOULD_REHYDRATE_HISTORY_THRESHOLD) {
       console.log(`[ai-chat] Loading conversation history for ${convId}`);
       
       // If we have full customer context, use messages from ALL their conversations
@@ -4987,7 +4993,7 @@ serve(async (req) => {
           ];
           console.log(`[ai-chat] Loaded ${historyMessages.length} messages from unified history`);
         }
-      } else {
+       } else {
         // Fallback: just this conversation's history
         const { data: history } = await supabase
           .from("ai_chat_messages")
