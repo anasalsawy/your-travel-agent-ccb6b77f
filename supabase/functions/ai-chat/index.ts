@@ -5403,7 +5403,15 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       });
 
       if (!followUpResponse.ok) {
-        console.error("Follow-up response error:", followUpResponse.status);
+        console.error("[ai-chat] Follow-up response error:", followUpResponse.status);
+        // CRITICAL: Don't go silent! If follow-up fails, provide a recovery message
+        // so the user doesn't see "One moment..." followed by nothing.
+        if (followUpResponse.status === 429) {
+          textContent = "I found some results but hit a small hiccup. Give me just a sec and ask again!";
+        } else {
+          textContent = "I looked into that but ran into a snag. Mind trying that again?";
+        }
+        console.log("[ai-chat] Recovery message set after tool failure");
         break;
       }
 
@@ -5411,12 +5419,21 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       
       // Extract new content and tool calls
       choice = result.choices?.[0];
-      textContent = choice?.message?.content || "";
+      const newContent = choice?.message?.content || "";
+      // Only update textContent if we got something meaningful
+      if (newContent && newContent.trim().length > 0) {
+        textContent = newContent;
+      }
       toolCalls = choice?.message?.tool_calls || [];
     }
 
-    // Extract final content
-    const finalContent = textContent || "I'm on it! Give me just a moment...";
+    // Extract final content - NEVER return a "waiting" message as final response
+    // If we got here with empty content, something failed silently - provide recovery
+    let finalContent = textContent;
+    if (!finalContent || finalContent.trim().length === 0) {
+      console.warn("[ai-chat] Empty response after processing - providing recovery message");
+      finalContent = "I tried looking into that but something didn't work right. Could you ask me again?";
+    }
 
     // Save assistant message
     await supabase.from("ai_chat_messages").insert({
