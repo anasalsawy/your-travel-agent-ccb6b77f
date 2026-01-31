@@ -223,6 +223,9 @@ export function ChatWidget() {
   }, []);
 
   const sendMessage = async () => {
+    // Prevent sending before session history is loaded; otherwise first message after refresh
+    // can go out without context and Maya will appear to "forget".
+    if (isInitializing || !historyLoaded) return;
     if (!input.trim() || isLoading) return;
 
     const userMessage: Message = { role: "user", content: input.trim() };
@@ -489,12 +492,12 @@ export function ChatWidget() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
-              disabled={isLoading}
+               disabled={isLoading || isInitializing || !historyLoaded}
               className="flex-1 rounded-full bg-muted/50 border-0 focus-visible:ring-1"
             />
             <Button
               onClick={sendMessage}
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || isInitializing || !historyLoaded}
               size="icon"
               className="rounded-full shrink-0"
             >
