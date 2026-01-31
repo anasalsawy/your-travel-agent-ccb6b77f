@@ -184,6 +184,10 @@ const Index = () => {
   };
 
   const sendMessage = async (textOverride?: string, speakResponse = false) => {
+    // Don't allow sending until we've finished loading prior session history.
+    // This prevents the first message after refresh from going out without context.
+    if (isInitializing || !historyLoaded) return;
+
     const messageText = textOverride || input.trim();
     if (!messageText || isLoading) return;
 
@@ -613,19 +617,19 @@ const Index = () => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Message Maya..."
-              disabled={isLoading}
+              disabled={isLoading || isInitializing || !historyLoaded}
               className="flex-1 rounded-full bg-muted border-0 focus-visible:ring-1 h-12 px-5"
             />
             <VoiceButton
               state={voice.state}
               onPress={handleVoicePress}
               onRelease={handleVoiceRelease}
-              disabled={isLoading}
+              disabled={isLoading || isInitializing || !historyLoaded}
               className="h-12 w-12 rounded-full"
             />
             <Button
               onClick={() => sendMessage()}
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || isInitializing || !historyLoaded}
               size="icon"
               className="rounded-full h-12 w-12"
             >
