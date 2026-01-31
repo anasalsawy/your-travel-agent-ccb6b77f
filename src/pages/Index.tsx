@@ -583,7 +583,7 @@ const Index = () => {
       </main>
 
       {/* Quick Actions (first message only) */}
-      {messages.length === 1 && (
+      {messages.length <= 3 && (
         <div className="fixed bottom-24 left-0 right-0 z-40">
           <div className="container max-w-3xl mx-auto px-4">
             <div className="flex flex-wrap gap-2 justify-center">

@@ -5013,17 +5013,17 @@ serve(async (req) => {
       }
     }
 
-    // Save user message
+    // Save user message with better duplicate prevention (check last 2 minutes)
     const lastUserMessage = messages[messages.length - 1];
     if (lastUserMessage?.role === "user") {
-      // Check if this message is already saved (avoid duplicates)
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
       const { data: existingMsg } = await supabase
         .from("ai_chat_messages")
         .select("id")
         .eq("conversation_id", convId)
         .eq("content", lastUserMessage.content)
         .eq("role", "user")
-        .order("created_at", { ascending: false })
+        .gte("created_at", twoMinutesAgo)
         .limit(1)
         .maybeSingle();
       
