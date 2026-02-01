@@ -5038,19 +5038,26 @@ serve(async (req) => {
 
     // ========== OWNER VERIFICATION FLOW ==========
     // CRITICAL: Load owner_verified from DATABASE, not in-memory (edge functions are stateless!)
-    const { data: convData } = await supabase
-      .from("ai_conversations")
-      .select("owner_verified, customer_phone")
-      .eq("id", convId)
-      .single();
+    // Use a separate variable name to avoid TDZ issues in compiled code
+    let conversationData: { owner_verified: boolean | null; customer_phone: string | null } | null = null;
+    try {
+      const { data } = await supabase
+        .from("ai_conversations")
+        .select("owner_verified, customer_phone")
+        .eq("id", convId)
+        .single();
+      conversationData = data;
+    } catch (fetchErr) {
+      console.error("[ai-chat] Failed to fetch conversation data:", fetchErr);
+    }
     
-    let isOwnerMode = convData?.owner_verified || false;
+    let isOwnerMode = conversationData?.owner_verified || false;
     const verificationState = ownerVerificationStates.get(convId) || { awaitingPin: false, attempts: 0 };
     let ownerModeJustVerified = false;
 
     // 🔓 AUTO-OWNER DETECTION BY PHONE NUMBER
     // If the request comes with is_owner: true OR the phone matches admin_phone, auto-enable boss mode
-    const phoneNumber = body.phone_number || convData?.customer_phone;
+    const phoneNumber = body.phone_number || conversationData?.customer_phone;
     console.log(`[ai-chat] Phone check: phone_number=${phoneNumber}, is_owner=${body.is_owner}`);
     if (!isOwnerMode && phoneNumber) {
       const { data: adminPhoneSetting } = await supabase
