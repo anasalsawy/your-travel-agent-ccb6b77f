@@ -5447,6 +5447,77 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       });
     }
     
+    // Helper function to call OpenAI with exponential backoff retry
+    async function callOpenAIWithRetry(
+      messages: any[],
+      tools: any[],
+      maxRetries = 3
+    ): Promise<{ ok: boolean; data?: any; error?: string; status?: number }> {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${OPENAI_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "gpt-4o",
+              max_completion_tokens: 4096,
+              messages,
+              tools,
+              tool_choice: "auto",
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            return { ok: true, data };
+          }
+
+          // Handle rate limiting with exponential backoff
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            // Exponential backoff: 1s, 2s, 4s + jitter
+            const waitMs = retryAfter
+              ? parseInt(retryAfter) * 1000
+              : Math.pow(2, attempt) * 1000 + Math.random() * 500;
+            
+            console.log(`[ai-chat] Rate limited, waiting ${Math.round(waitMs)}ms before retry ${attempt + 1}/${maxRetries}`);
+            
+            if (attempt < maxRetries - 1) {
+              await new Promise(resolve => setTimeout(resolve, waitMs));
+              continue;
+            }
+            // Last attempt failed
+            return { ok: false, error: "Rate limited after retries", status: 429 };
+          }
+
+          // Non-retryable errors
+          if (response.status === 401) {
+            console.error("[ai-chat] OpenAI API key invalid");
+            return { ok: false, error: "Service configuration error", status: 401 };
+          }
+          if (response.status === 402 || response.status === 403) {
+            console.error("[ai-chat] OpenAI quota/billing issue");
+            return { ok: false, error: "Quota exceeded", status: response.status };
+          }
+
+          const errorText = await response.text();
+          console.error("[ai-chat] OpenAI API error:", response.status, errorText);
+          return { ok: false, error: errorText, status: response.status };
+        } catch (e) {
+          console.error(`[ai-chat] Network error on attempt ${attempt + 1}:`, e);
+          if (attempt < maxRetries - 1) {
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+            continue;
+          }
+          return { ok: false, error: "Network error", status: 500 };
+        }
+      }
+      return { ok: false, error: "Max retries exceeded", status: 429 };
+    }
+    
     // Convert tools to OpenAI format for Lovable AI
     const openaiTools = activeTools.map((tool: any) => ({
       type: "function" as const,
@@ -5463,53 +5534,35 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
       content: m.content,
     }));
     
-    // First API call - may include tool calls (direct OpenAI - faster)
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        max_completion_tokens: 4096,
-        messages: openaiMessages,
-        tools: openaiTools,
-        tool_choice: "auto",
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        console.warn("[ai-chat] Rate limited by OpenAI");
-        return new Response(JSON.stringify({ error: "We're a bit busy right now. Give me just a sec and try again!" }), {
+    // First API call with retry logic
+    const initialResult = await callOpenAIWithRetry(openaiMessages, openaiTools);
+    
+    if (!initialResult.ok) {
+      if (initialResult.status === 429) {
+        return new Response(JSON.stringify({ error: "I'm handling a lot of requests right now. Give me just a moment!" }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 401) {
-        console.error("[ai-chat] OpenAI API key invalid");
+      if (initialResult.status === 401) {
         return new Response(JSON.stringify({ error: "Service configuration error. Please contact support." }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402 || response.status === 403) {
-        console.error("[ai-chat] OpenAI quota/billing issue");
+      if (initialResult.status === 402 || initialResult.status === 403) {
         return new Response(JSON.stringify({ error: "Maya is taking a short break. Please try again in a few minutes!" }), {
           status: 503,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const t = await response.text();
-      console.error("[ai-chat] OpenAI API error:", response.status, t);
       return new Response(JSON.stringify({ error: "Something went wrong. Let me try that again!" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    let result = await response.json();
+    let result = initialResult.data;
     
     // Extract OpenAI-format response
     let choice = result.choices?.[0];
@@ -5544,27 +5597,13 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
         });
       }
 
-      // Get follow-up response from OpenAI (direct API)
-      const followUpResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          max_completion_tokens: 4096,
-          messages: currentMessages,
-          tools: openaiTools,
-          tool_choice: "auto",
-        }),
-      });
+      // Get follow-up response from OpenAI with retry logic
+      const followUpResult = await callOpenAIWithRetry(currentMessages, openaiTools);
 
-      if (!followUpResponse.ok) {
-        console.error("[ai-chat] Follow-up response error:", followUpResponse.status);
+      if (!followUpResult.ok) {
+        console.error("[ai-chat] Follow-up response error:", followUpResult.status);
         // CRITICAL: Don't go silent! If follow-up fails, provide a recovery message
-        // so the user doesn't see "One moment..." followed by nothing.
-        if (followUpResponse.status === 429) {
+        if (followUpResult.status === 429) {
           textContent = "I found some results but hit a small hiccup. Give me just a sec and ask again!";
         } else {
           textContent = "I looked into that but ran into a snag. Mind trying that again?";
@@ -5573,7 +5612,7 @@ You have UNLIMITED authority. Share ALL business information freely and proactiv
         break;
       }
 
-      result = await followUpResponse.json();
+      result = followUpResult.data;
       
       // Extract new content and tool calls
       choice = result.choices?.[0];
