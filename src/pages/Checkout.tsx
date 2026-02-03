@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, ArrowLeft, Copy, Check, Upload, DollarSign, HelpCircle, Shield, ExternalLink } from "lucide-react";
+import { Loader2, ArrowLeft, Copy, Check, Upload, DollarSign, HelpCircle, Shield, ExternalLink, CreditCard } from "lucide-react";
 import { PayPalBuyerProtection, PayPalIcon, PayPalTrustBadge } from "@/components/payment/PayPalBuyerProtection";
 import { EscrowBuyerProtection, EscrowIcon, EscrowTrustBadge, EscrowHowItWorks } from "@/components/payment/EscrowBuyerProtection";
 import { useToast } from "@/hooks/use-toast";
@@ -15,7 +15,7 @@ import type { Tables } from "@/integrations/supabase/types";
 // Notifications are now handled by database triggers - no client-side calls needed
 
 type Voucher = Tables<"vouchers">;
-type PaymentMethod = "zelle" | "paypal" | "escrow";
+type PaymentMethod = "stripe" | "zelle" | "paypal" | "escrow";
 
 export default function CheckoutPage() {
   const { id } = useParams();
@@ -24,7 +24,7 @@ export default function CheckoutPage() {
   const [voucher, setVoucher] = useState<Voucher | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("zelle");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("stripe");
   const [user, setUser] = useState<any>(null);
   const [btcAddress, setBtcAddress] = useState("");
   const [btcRate, setBtcRate] = useState("43500");
@@ -104,35 +104,33 @@ export default function CheckoutPage() {
     setProcessing(true);
     
     try {
-      // Create order with customer email
-      const { data: order, error: orderError } = await supabase
-        .from("orders")
-        .insert({
-          user_id: user.id,
-          voucher_id: voucher.id,
-          amount_paid: Number(voucher.sale_price),
-          payment_method: "stripe",
-          payment_status: "pending",
-          customer_email: user.email,
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Notifications are handled by database triggers
-
-      // In a real app, you'd redirect to Stripe Checkout here
-      toast({
-        title: "Demo Mode",
-        description: "Stripe integration requires setup. Order created in pending state.",
+      const { data, error } = await supabase.functions.invoke("create-stripe-checkout", {
+        body: {
+          type: "voucher",
+          voucherId: voucher.id,
+          amount: Number(voucher.sale_price),
+          description: `${voucher.airline} Voucher - ${voucher.title}`,
+        },
       });
 
-      navigate(`/dashboard`);
-    } catch (error: any) {
+      if (error) throw error;
+
+      if (data?.url) {
+        // Open Stripe Checkout in a new tab
+        window.open(data.url, "_blank");
+        toast({
+          title: "Redirecting to Stripe",
+          description: "Complete your payment in the new tab.",
+        });
+      } else {
+        throw new Error("No checkout URL received");
+      }
+    } catch (error: unknown) {
+      console.error("Stripe checkout error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to start checkout";
       toast({
         title: "Error",
-        description: error.message || "Failed to process payment.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -449,6 +447,26 @@ export default function CheckoutPage() {
                   onValueChange={(v) => { setPaymentMethod(v as PaymentMethod); resetProof(); }}
                   className="space-y-4 mb-6"
                 >
+                  {/* Stripe - Credit/Debit Card */}
+                  <div className={`relative flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
+                    paymentMethod === "stripe" ? "border-[#635BFF] bg-[#635BFF]/5" : "border-border"
+                  }`}>
+                    <RadioGroupItem value="stripe" id="stripe" />
+                    <Label htmlFor="stripe" className="flex items-center gap-3 cursor-pointer flex-1">
+                      <CreditCard className="w-5 h-5 text-[#635BFF]" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">Credit / Debit Card</p>
+                          <span className="text-[10px] px-2 py-0.5 bg-[#635BFF]/10 text-[#635BFF] rounded-full font-medium">Instant</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Secure payment via Stripe</p>
+                      </div>
+                    </Label>
+                    {paymentMethod === "stripe" && (
+                      <Shield className="w-4 h-4 text-[#635BFF] absolute top-2 right-2" />
+                    )}
+                  </div>
+
                 <div className={`flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer ${
                     paymentMethod === "zelle" ? "border-primary bg-primary/5" : "border-border"
                   }`}>
@@ -501,6 +519,52 @@ export default function CheckoutPage() {
                     )}
                   </div>
                 </RadioGroup>
+
+                {/* Stripe Payment */}
+                {paymentMethod === "stripe" && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-xl bg-[#635BFF]/10 border border-[#635BFF]/30 space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Amount to Pay</span>
+                        <span className="font-bold text-lg">{formatCurrency(Number(voucher.sale_price), voucher.currency || "USD")}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-success/10 border border-success/20">
+                      <Shield className="w-4 h-4 text-success flex-shrink-0" />
+                      <p className="text-xs text-success">
+                        <strong>Secure Payment:</strong> Your card details are processed securely by Stripe.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+                      <p className="font-medium mb-2">What happens next:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-xs">
+                        <li>Click the button below to open Stripe Checkout</li>
+                        <li>Enter your card details securely</li>
+                        <li>Complete the payment</li>
+                        <li>Receive your voucher details via email</li>
+                      </ol>
+                    </div>
+
+                    <Button 
+                      size="lg" 
+                      className="w-full bg-[#635BFF] hover:bg-[#4B45C6] text-white gap-2" 
+                      onClick={handleStripeCheckout}
+                      disabled={processing}
+                    >
+                      {processing && <Loader2 className="w-4 h-4 animate-spin" />}
+                      <CreditCard className="w-4 h-4" />
+                      Pay {formatCurrency(Number(voucher.sale_price))} with Card
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                    
+                    <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
+                      <span>Powered by</span>
+                      <span className="font-semibold text-[#635BFF]">Stripe</span>
+                    </div>
+                  </div>
+                )}
 
                 {paymentMethod === "zelle" && (
                   <div className="space-y-4">
