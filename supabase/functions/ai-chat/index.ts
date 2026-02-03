@@ -225,19 +225,23 @@ Never cancel without explicit confirmation.
 CUSTOMER PAYMENT COLLECTION (CRITICAL - READ THIS!)
 ═══════════════════════════════════════════════════════════════════
 
-⚠️ NEVER ASK CUSTOMERS FOR CREDIT CARD DETAILS ⚠️
-We do NOT process credit cards directly. If a customer offers card info, STOP them:
-→ "Oh, no need for card details! We use secure payment methods."
+ACCEPTED PAYMENT METHODS (in order of preference):
+1. 💳 Credit/Debit Card - Use create_stripe_payment tool to send a secure payment link (easiest for customers!)
+2. Zelle - Send to: payments@yourtravelagent.com (fastest, no fees)
+3. PayPal - Send to: payments@yourtravelagent.com (Goods & Services for protection)
+4. Bitcoin/Crypto - Ask for wallet address if they prefer this
 
-ACCEPTED PAYMENT METHODS (provide these in chat):
-1. Zelle - Send to: payments@yourtravelagent.com (fastest, no fees)
-2. PayPal - Send to: payments@yourtravelagent.com (Goods & Services for protection)
-3. Bitcoin/Crypto - Ask for wallet address if they prefer this
-4. Escrow.com - For high-value bookings (extra protection)
+STRIPE PAYMENT CAPABILITY:
+When a customer wants to pay by card, use the create_stripe_payment tool!
+- For vouchers: create_stripe_payment with type="voucher" and voucher_id
+- For ticket deposits: create_stripe_payment with type="ticket_deposit" and ticket_request_id
+- For ticket balances: create_stripe_payment with type="ticket_balance" and ticket_request_id
+
+This sends them a secure Stripe payment link - they click, pay, done!
+Example: "Want me to send you a secure card payment link? Just takes a sec."
 
 PAYMENT SCRIPT EXAMPLE:
-"For payment, Zelle is fastest - just send to payments@yourtravelagent.com with your name.
-PayPal works too. Once confirmed, I'll book immediately!"
+"For payment, I can send you a secure card payment link, or if you prefer Zelle, send to payments@yourtravelagent.com. What works best?"
 
 FOR EXPENSIVE TICKETS ($2000+):
 Offer 50% deposit: "We can split it - 50% now locks the price, balance before ticketing."
@@ -245,13 +249,13 @@ Offer 50% deposit: "We can split it - 50% now locks the price, balance before ti
 📧 EMAIL CAPABILITY - USE IT!
 You CAN and SHOULD send emails to customers for:
 - Quote summaries with full details
-- Payment instructions (Zelle/PayPal details)
+- Payment links and instructions
 - Booking confirmations
 - Follow-ups after quotes
 
 USE THE send_email TOOL to email customers. Example:
 "I just sent you an email with all the details!"
-"Check your inbox - I've emailed you the payment instructions."
+"Check your inbox - I've emailed you the payment link."
 
 ═══════════════════════════════════════════════════════════════════
 INTERNAL PAYMENT & BOOKING (for airline calls - NOT customers)
@@ -1864,6 +1868,31 @@ const TOOLS: any[] = [
         additionalProperties: false
       }
     }
+  },
+  // ==================== STRIPE PAYMENT ====================
+  {
+    type: "function",
+    function: {
+      name: "create_stripe_payment",
+      description: "Create a secure Stripe payment link for vouchers or ticket request deposits. Use this when a customer wants to pay by credit/debit card. Returns a payment URL to send to the customer.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: { 
+            type: "string", 
+            enum: ["voucher", "ticket_deposit", "ticket_balance"], 
+            description: "Type of payment: voucher purchase, ticket deposit, or ticket balance" 
+          },
+          voucher_id: { type: "string", description: "Voucher ID (required for voucher payments)" },
+          ticket_request_id: { type: "string", description: "Ticket request ID (required for ticket payments)" },
+          amount: { type: "number", description: "Payment amount in USD (required for ticket payments)" },
+          customer_email: { type: "string", description: "Customer email for receipt" },
+          description: { type: "string", description: "Description of what they're paying for" }
+        },
+        required: ["type"],
+        additionalProperties: false
+      }
+    }
   }
 ];
 
@@ -3144,6 +3173,128 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             success: false,
             message: "Email service had an issue. I'll provide all the details directly."
           });
+        }
+      }
+
+      // ==================== STRIPE PAYMENT ====================
+      case "create_stripe_payment": {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        
+        if (!supabaseUrl || !supabaseServiceKey) {
+          return JSON.stringify({ success: false, message: "Payment service temporarily unavailable. Use Zelle or PayPal instead." });
+        }
+
+        try {
+          let amount = args.amount;
+          let description = args.description;
+          let metadata: any = {};
+
+          // Handle voucher payments
+          if (args.type === "voucher" && args.voucher_id) {
+            const { data: voucher, error } = await supabase
+              .from("vouchers")
+              .select("*")
+              .eq("id", args.voucher_id)
+              .eq("status", "available")
+              .single();
+            
+            if (error || !voucher) {
+              return JSON.stringify({ success: false, message: "That voucher isn't available anymore. Let me find you another one!" });
+            }
+            
+            amount = voucher.sale_price;
+            description = `${voucher.airline} Voucher - ${voucher.title} ($${voucher.face_value} value)`;
+            metadata = { voucher_id: voucher.id };
+          }
+
+          // Handle ticket payments
+          if ((args.type === "ticket_deposit" || args.type === "ticket_balance") && args.ticket_request_id) {
+            const { data: ticket, error } = await supabase
+              .from("ticket_requests")
+              .select("*")
+              .eq("id", args.ticket_request_id)
+              .single();
+            
+            if (error || !ticket) {
+              return JSON.stringify({ success: false, message: "Couldn't find that ticket request. Let me check the details." });
+            }
+
+            if (args.type === "ticket_deposit") {
+              amount = args.amount || Math.round((ticket.quoted_price || 0) * 0.5);
+              description = `Deposit: ${ticket.origin} → ${ticket.destination} flight`;
+            } else {
+              amount = args.amount || ticket.balance_amount || ((ticket.quoted_price || 0) * 0.5);
+              description = `Balance: ${ticket.origin} → ${ticket.destination} flight`;
+            }
+            metadata = { ticket_request_id: ticket.id, payment_type: args.type };
+          }
+
+          if (!amount || amount <= 0) {
+            return JSON.stringify({ success: false, message: "I need the payment amount. How much should I charge?" });
+          }
+
+          const response = await fetch(`${supabaseUrl}/functions/v1/create-stripe-checkout`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              type: args.type,
+              amount: Number(amount),
+              description: description || `Your Travel Agent - ${args.type}`,
+              voucherId: args.voucher_id,
+              ticketRequestId: args.ticket_request_id,
+              customerEmail: args.customer_email,
+              metadata
+            }),
+          });
+
+          const result = await response.json();
+          console.log("Stripe checkout response:", result);
+
+          if (result.url) {
+            await supabase.from("notification_log").insert({
+              event_type: "stripe_checkout_created",
+              record_id: args.voucher_id || args.ticket_request_id,
+              payload: { type: args.type, amount, description, checkout_url: result.url },
+              status: "success"
+            });
+
+            if (args.customer_email) {
+              const resendApiKey = Deno.env.get("RESEND_API_KEY");
+              if (resendApiKey) {
+                try {
+                  await fetch("https://api.resend.com/emails", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${resendApiKey}` },
+                    body: JSON.stringify({
+                      from: "Maya at Your Travel Agent <no-reply@your-travel-agent.net>",
+                      to: [args.customer_email],
+                      subject: `Complete Your Payment - $${amount}`,
+                      html: `<div style="font-family: Arial; max-width: 600px; margin: 0 auto;"><div style="background: #1e3a5f; padding: 20px; border-radius: 8px 8px 0 0;"><h1 style="color: white; margin: 0;">Your Travel Agent</h1></div><div style="background: #f8f9fa; padding: 20px;"><h2>Complete Your Payment</h2><p><strong>Amount:</strong> $${amount}</p><p><strong>For:</strong> ${description}</p><div style="text-align: center; margin: 30px 0;"><a href="${result.url}" style="background: #d4af37; color: #1e3a5f; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">Pay Now</a></div></div></div>`,
+                    }),
+                  });
+                } catch (e) { console.log("Email failed but link created:", e); }
+              }
+            }
+
+            return JSON.stringify({
+              success: true,
+              payment_url: result.url,
+              amount,
+              description,
+              message: args.customer_email 
+                ? `Sent a secure payment link to ${args.customer_email} for $${amount}!`
+                : `Here's the payment link for $${amount}: ${result.url}`
+            });
+          } else {
+            return JSON.stringify({ success: false, message: "Couldn't create payment link. Try Zelle or PayPal?" });
+          }
+        } catch (stripeError) {
+          console.error("Stripe error:", stripeError);
+          return JSON.stringify({ success: false, message: "Payment service hiccup. Let me give you alternatives." });
         }
       }
 
