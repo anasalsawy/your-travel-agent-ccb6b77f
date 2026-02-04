@@ -454,18 +454,18 @@ const Index = () => {
                 </div>
 
                 {/* Trust Badges */}
-                <div className="flex items-center justify-center gap-6 mt-10 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-green-500" />
-                    <span>Secure Payments</span>
+                <div className="flex flex-wrap items-center justify-center gap-4 mt-10 text-sm">
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20">
+                    <Shield className="w-4 h-4 text-success" />
+                    <span className="font-semibold text-success">50%+ Below Market</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
                     <CheckCircle className="w-4 h-4 text-primary" />
-                    <span>Verified Vouchers</span>
+                    <span className="font-semibold text-primary">Lowest Price Guaranteed</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20">
                     <Zap className="w-4 h-4 text-amber-500" />
-                    <span>Instant Quotes</span>
+                    <span className="font-semibold text-amber-600">We Beat Any Price</span>
                   </div>
                 </div>
               </div>
@@ -476,16 +476,20 @@ const Index = () => {
           <section className="py-16 bg-muted/30">
             <div className="container mx-auto px-4">
               <div className="text-center mb-10">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-4">
-                  <Ticket className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium text-primary">Featured Deals</span>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20 mb-4">
+                  <Ticket className="w-4 h-4 text-success" />
+                  <span className="text-sm font-bold text-success">LESS THAN 50% OF MARKET PRICES</span>
                 </div>
                 <h2 className="text-2xl md:text-3xl font-display font-bold mb-2">
-                  Save 60% on Airline Vouchers
+                  Airline Vouchers at Unbeatable Prices
                 </h2>
-                <p className="text-muted-foreground max-w-lg mx-auto">
+                <p className="text-muted-foreground max-w-lg mx-auto mb-4">
                   Verified travel credits at deep discounts. Use them for any flight booking.
                 </p>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <Shield className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-semibold text-primary">Lowest Price Guaranteed — Find a lower price? We'll beat it!</span>
+                </div>
               </div>
 
               {/* Voucher Cards */}
@@ -576,21 +580,38 @@ const Index = () => {
           <section className="py-16 bg-gradient-to-b from-muted/30 to-background">
             <div className="container mx-auto px-4">
               <div className="max-w-2xl mx-auto text-center">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20 mb-4">
+                  <CheckCircle className="w-4 h-4 text-success" />
+                  <span className="text-sm font-bold text-success">PRICE MATCH GUARANTEE</span>
+                </div>
                 <h2 className="text-2xl md:text-3xl font-display font-bold mb-4">
-                  Ready to Save on Your Next Trip?
+                  Find a Lower Price? We'll Beat It!
                 </h2>
                 <p className="text-muted-foreground mb-6">
-                  Start chatting with Maya and let her find the best deals for you.
+                  We offer the lowest prices on travel vouchers and tickets. If you find a better deal elsewhere, let us know and we'll match it or do better.
                 </p>
-                <Button 
-                  size="lg" 
-                  onClick={() => startConversation()}
-                  disabled={isInitializing}
-                  className="rounded-full"
-                >
-                  <MessageSquare className="w-5 h-5 mr-2" />
-                  Chat with Maya Now
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button 
+                    size="lg" 
+                    onClick={() => startConversation()}
+                    disabled={isInitializing}
+                    className="rounded-full"
+                  >
+                    <MessageSquare className="w-5 h-5 mr-2" />
+                    Chat with Maya
+                  </Button>
+                  <Button 
+                    size="lg" 
+                    variant="outline"
+                    asChild
+                    className="rounded-full"
+                  >
+                    <Link to="/request-ticket">
+                      <Plane className="w-5 h-5 mr-2" />
+                      Request a Quote
+                    </Link>
+                  </Button>
+                </div>
               </div>
             </div>
           </section>
