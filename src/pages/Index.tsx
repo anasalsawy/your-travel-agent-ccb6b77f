@@ -28,12 +28,15 @@ const getOrCreateSessionId = (): string => {
   return newId;
 };
 
-// Featured vouchers for the homepage
-const featuredVouchers = [
-  { airline: "Delta Airlines", faceValue: 500, salePrice: 200, discount: 60 },
-  { airline: "United Airlines", faceValue: 750, salePrice: 300, discount: 60 },
-  { airline: "American Airlines", faceValue: 1215, salePrice: 486, discount: 60 },
-];
+// Voucher type from database
+type Voucher = {
+  id: string;
+  airline: string;
+  title: string;
+  face_value: number;
+  sale_price: number;
+  discount_percent: number;
+};
 
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -51,6 +54,22 @@ const Index = () => {
   const [hasStarted, setHasStarted] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
+
+  // Fetch real vouchers from database
+  useEffect(() => {
+    const fetchVouchers = async () => {
+      const { data } = await supabase
+        .from("vouchers")
+        .select("id, airline, title, face_value, sale_price, discount_percent")
+        .eq("status", "available")
+        .order("face_value", { ascending: false })
+        .limit(4);
+      
+      if (data) setVouchers(data);
+    };
+    fetchVouchers();
+  }, []);
 
   const voice = useVoiceChat({
     onError: (error) => console.error("Voice error:", error),
@@ -470,32 +489,36 @@ const Index = () => {
               </div>
 
               {/* Voucher Cards */}
-              <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-8">
-                {featuredVouchers.map((voucher, idx) => (
-                  <div key={idx} className="glass-card p-6 hover-lift">
+              <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto mb-8">
+                {vouchers.length > 0 ? vouchers.map((voucher) => (
+                  <div key={voucher.id} className="glass-card p-6 hover-lift">
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-sm font-bold text-primary mb-2">
                           {voucher.airline.substring(0, 2).toUpperCase()}
                         </div>
                         <h3 className="font-semibold text-foreground">{voucher.airline}</h3>
-                        <p className="text-sm text-muted-foreground">Travel Credit</p>
+                        <p className="text-sm text-muted-foreground">{voucher.title}</p>
                       </div>
-                      <span className="discount-badge">-{voucher.discount}%</span>
+                      <span className="discount-badge">-{Math.round(voucher.discount_percent)}%</span>
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground line-through">
-                        ${voucher.faceValue.toLocaleString()}
+                        ${Number(voucher.face_value).toLocaleString()}
                       </p>
                       <p className="text-2xl font-bold text-foreground">
-                        ${voucher.salePrice.toLocaleString()}
+                        ${Number(voucher.sale_price).toLocaleString()}
                       </p>
                       <p className="text-sm text-green-500 font-medium">
-                        Save ${(voucher.faceValue - voucher.salePrice).toLocaleString()}
+                        Save ${(Number(voucher.face_value) - Number(voucher.sale_price)).toLocaleString()}
                       </p>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="col-span-2 text-center py-8 text-muted-foreground">
+                    <p>No vouchers available at the moment. Chat with Maya for flight deals!</p>
+                  </div>
+                )}
               </div>
 
               <div className="text-center">

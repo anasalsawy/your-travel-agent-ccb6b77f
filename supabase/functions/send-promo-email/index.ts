@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +13,7 @@ const corsHeaders = {
 
 interface Voucher {
   airline: string;
+  title: string;
   faceValue: number;
   salePrice: number;
   discount: number;
@@ -18,16 +22,32 @@ interface Voucher {
 interface PromoEmailRequest {
   emails: string[];
   subject?: string;
-  vouchers?: Voucher[];
   customMessage?: string;
 }
 
-const defaultVouchers: Voucher[] = [
-  { airline: "Delta Airlines", faceValue: 500, salePrice: 200, discount: 60 },
-  { airline: "United Airlines", faceValue: 750, salePrice: 300, discount: 60 },
-  { airline: "American Airlines", faceValue: 1215, salePrice: 486, discount: 60 },
-  { airline: "Southwest Airlines", faceValue: 1000, salePrice: 400, discount: 60 },
-];
+async function fetchVouchersFromDB(): Promise<Voucher[]> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  
+  const { data, error } = await supabase
+    .from("vouchers")
+    .select("airline, title, face_value, sale_price, discount_percent")
+    .eq("status", "available")
+    .order("face_value", { ascending: false })
+    .limit(4);
+
+  if (error || !data || data.length === 0) {
+    console.error("Failed to fetch vouchers:", error);
+    return [];
+  }
+
+  return data.map((v: any) => ({
+    airline: v.airline,
+    title: v.title,
+    faceValue: Number(v.face_value),
+    salePrice: Number(v.sale_price),
+    discount: Math.round(Number(v.discount_percent)),
+  }));
+}
 
 function generateVoucherHTML(voucher: Voucher): string {
   return `
@@ -40,7 +60,7 @@ function generateVoucherHTML(voucher: Voucher): string {
                 <tr>
                   <td>
                     <h3 style="color: #f8b500; margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">${voucher.airline}</h3>
-                    <p style="color: #a0aec0; margin: 0; font-size: 14px;">Travel Credit Voucher</p>
+                    <p style="color: #a0aec0; margin: 0; font-size: 14px;">${voucher.title}</p>
                   </td>
                   <td align="right">
                     <span style="background: linear-gradient(135deg, #f8b500, #ffa500); color: #000; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 14px; display: inline-block;">
@@ -208,7 +228,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const { emails, subject, vouchers, customMessage }: PromoEmailRequest = await req.json();
+    const { emails, subject, customMessage }: PromoEmailRequest = await req.json();
 
     if (!emails || !Array.isArray(emails) || emails.length === 0) {
       return new Response(
@@ -217,8 +237,17 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const voucherList = vouchers || defaultVouchers;
-    const emailSubject = subject || "✈️ Exclusive: Save 60% on Airline Vouchers!";
+    // Fetch real vouchers from database
+    const voucherList = await fetchVouchersFromDB();
+    
+    if (voucherList.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "No available vouchers found in database" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const emailSubject = subject || "✈️ Exclusive: Save Big on Alaska Airlines Vouchers!";
     const htmlContent = generateEmailHTML(voucherList, customMessage);
 
     const results: { email: string; success: boolean; error?: string }[] = [];
