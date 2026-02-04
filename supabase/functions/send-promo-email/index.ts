@@ -197,7 +197,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<{ s
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Your Travel Agent <deals@yourtravelagent.net>",
+        from: "Maya <maya@yourtravelagent.net>",
         to: [to],
         subject,
         html,
