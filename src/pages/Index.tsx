@@ -395,78 +395,56 @@ const Index = () => {
         </header>
 
         <main className="pt-16">
-          {/* Hero Section - Chat with Maya */}
-          <section className="py-16 md:py-24 bg-gradient-to-b from-background to-muted/30">
+          {/* Hero Section - Promotional */}
+          <section className="py-12 md:py-16 bg-gradient-to-b from-background to-muted/30">
             <div className="container mx-auto px-4">
-              <div className="max-w-3xl mx-auto text-center">
-                {/* Maya Avatar */}
-                <div className="relative inline-flex mb-6">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center text-primary-foreground text-3xl font-bold shadow-2xl shadow-primary/30">
-                    M
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-green-500 rounded-full border-4 border-background flex items-center justify-center">
-                    <Zap className="w-3.5 h-3.5 text-white" />
-                  </div>
-                </div>
-
+              <div className="max-w-4xl mx-auto text-center">
                 <h1 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold text-foreground mb-4">
-                  Chat with Maya
+                  Save <span className="text-success">50%+ Off</span> Market Prices
                 </h1>
-                <p className="text-lg text-muted-foreground mb-6 max-w-xl mx-auto">
-                  Your AI travel agent. Find discounted flights, get instant quotes, and book tickets — all through a simple conversation.
+                <p className="text-lg text-muted-foreground mb-6 max-w-2xl mx-auto">
+                  Verified airline vouchers and discounted flight tickets. Lowest prices guaranteed — find a better deal anywhere and we'll beat it.
                 </p>
 
-                {/* Start Chat Button */}
-                <Button 
-                  size="lg" 
-                  onClick={() => startConversation()}
-                  disabled={isInitializing}
-                  className="rounded-full px-8 py-6 text-lg shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-all mb-6"
-                >
-                  {isInitializing ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Loading…
-                    </>
-                  ) : (
-                    <>
-                      <MessageSquare className="w-5 h-5 mr-2" />
-                      Start Chatting
-                    </>
-                  )}
-                </Button>
-
-                {/* Quick Start Options */}
-                <div className="flex flex-wrap gap-3 justify-center">
-                  {quickActions.map((action) => (
-                    <Button
-                      key={action.label}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => startConversation(action.label)}
-                      disabled={isInitializing}
-                      className="rounded-full"
-                    >
-                      <action.icon className="w-4 h-4 mr-2" />
-                      {action.label}
-                    </Button>
-                  ))}
-                </div>
-
                 {/* Trust Badges */}
-                <div className="flex flex-wrap items-center justify-center gap-4 mt-10 text-sm">
+                <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
                   <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20">
                     <Shield className="w-4 h-4 text-success" />
-                    <span className="font-semibold text-success">50%+ Below Market</span>
+                    <span className="font-bold text-success">50%+ Below Market</span>
                   </div>
                   <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
                     <CheckCircle className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-primary">Lowest Price Guaranteed</span>
+                    <span className="font-bold text-primary">Lowest Price Guaranteed</span>
                   </div>
                   <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20">
                     <Zap className="w-4 h-4 text-amber-500" />
-                    <span className="font-semibold text-amber-600">We Beat Any Price</span>
+                    <span className="font-bold text-amber-600">We Beat Any Price</span>
                   </div>
+                </div>
+
+                {/* CTA Buttons */}
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button 
+                    size="lg" 
+                    asChild
+                    className="rounded-full px-8 shadow-xl shadow-primary/20"
+                  >
+                    <Link to="/vouchers">
+                      <Ticket className="w-5 h-5 mr-2" />
+                      Browse Vouchers
+                    </Link>
+                  </Button>
+                  <Button 
+                    size="lg" 
+                    variant="outline"
+                    asChild
+                    className="rounded-full px-8"
+                  >
+                    <Link to="/request-ticket">
+                      <Plane className="w-5 h-5 mr-2" />
+                      Request a Quote
+                    </Link>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -536,82 +514,94 @@ const Index = () => {
             </div>
           </section>
 
-          {/* How It Works - Simple */}
+          {/* Request a Ticket Section */}
           <section className="py-16">
             <div className="container mx-auto px-4">
-              <div className="max-w-3xl mx-auto">
-                <h2 className="text-2xl md:text-3xl font-display font-bold text-center mb-10">
-                  How It Works
+              <div className="max-w-3xl mx-auto text-center">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-4">
+                  <Plane className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-bold text-primary">CUSTOM FLIGHT QUOTES</span>
+                </div>
+                <h2 className="text-2xl md:text-3xl font-display font-bold mb-4">
+                  Need a Specific Flight?
                 </h2>
-                <div className="grid md:grid-cols-3 gap-8">
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                      <MessageSquare className="w-6 h-6 text-primary" />
+                <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
+                  Tell us where you want to go and we'll find you the best deal. We guarantee the lowest price — if you find cheaper, we'll beat it.
+                </p>
+                
+                <div className="grid md:grid-cols-3 gap-6 mb-8">
+                  <div className="text-center p-4">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                      <span className="font-bold text-primary">1</span>
                     </div>
-                    <h3 className="font-semibold mb-2">1. Tell Maya What You Need</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Chat with our AI agent about your travel plans and budget
-                    </p>
+                    <h3 className="font-semibold mb-1">Submit Your Request</h3>
+                    <p className="text-sm text-muted-foreground">Tell us your destination and dates</p>
                   </div>
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                      <Search className="w-6 h-6 text-primary" />
+                  <div className="text-center p-4">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                      <span className="font-bold text-primary">2</span>
                     </div>
-                    <h3 className="font-semibold mb-2">2. Get Instant Quotes</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Maya searches for the best deals and vouchers for your trip
-                    </p>
+                    <h3 className="font-semibold mb-1">Get Your Quote</h3>
+                    <p className="text-sm text-muted-foreground">We find the best discounted price</p>
                   </div>
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                      <Plane className="w-6 h-6 text-primary" />
+                  <div className="text-center p-4">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                      <span className="font-bold text-primary">3</span>
                     </div>
-                    <h3 className="font-semibold mb-2">3. Book & Save</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Secure your tickets at discounted prices with our help
-                    </p>
+                    <h3 className="font-semibold mb-1">Book & Save</h3>
+                    <p className="text-sm text-muted-foreground">Pay less than market price</p>
                   </div>
                 </div>
+
+                <Button size="lg" asChild className="rounded-full px-8">
+                  <Link to="/request-ticket">
+                    <Plane className="w-5 h-5 mr-2" />
+                    Request a Quote Now
+                  </Link>
+                </Button>
               </div>
             </div>
           </section>
 
-          {/* CTA Section */}
+          {/* Chat with Maya Section - Bottom */}
           <section className="py-16 bg-gradient-to-b from-muted/30 to-background">
             <div className="container mx-auto px-4">
               <div className="max-w-2xl mx-auto text-center">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20 mb-4">
-                  <CheckCircle className="w-4 h-4 text-success" />
-                  <span className="text-sm font-bold text-success">PRICE MATCH GUARANTEE</span>
+                {/* Maya Avatar */}
+                <div className="relative inline-flex mb-4">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center text-primary-foreground text-2xl font-bold shadow-xl shadow-primary/30">
+                    M
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-3 border-background flex items-center justify-center">
+                    <Zap className="w-3 h-3 text-white" />
+                  </div>
                 </div>
-                <h2 className="text-2xl md:text-3xl font-display font-bold mb-4">
-                  Find a Lower Price? We'll Beat It!
+
+                <h2 className="text-2xl md:text-3xl font-display font-bold mb-3">
+                  Chat with Maya
                 </h2>
-                <p className="text-muted-foreground mb-6">
-                  We offer the lowest prices on travel vouchers and tickets. If you find a better deal elsewhere, let us know and we'll match it or do better.
+                <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
+                  Have questions? Our AI travel agent can help you find deals, get quotes, and answer any questions.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Button 
-                    size="lg" 
-                    onClick={() => startConversation()}
-                    disabled={isInitializing}
-                    className="rounded-full"
-                  >
-                    <MessageSquare className="w-5 h-5 mr-2" />
-                    Chat with Maya
-                  </Button>
-                  <Button 
-                    size="lg" 
-                    variant="outline"
-                    asChild
-                    className="rounded-full"
-                  >
-                    <Link to="/request-ticket">
-                      <Plane className="w-5 h-5 mr-2" />
-                      Request a Quote
-                    </Link>
-                  </Button>
-                </div>
+
+                <Button 
+                  size="lg" 
+                  onClick={() => startConversation()}
+                  disabled={isInitializing}
+                  className="rounded-full px-8"
+                >
+                  {isInitializing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Loading…
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="w-5 h-5 mr-2" />
+                      Start Chatting
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </section>
