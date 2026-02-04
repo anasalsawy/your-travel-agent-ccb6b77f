@@ -14,11 +14,11 @@ import {
   Clock,
   ArrowRight,
   Eye,
-  Store
+  MessageSquare
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import { TicketRequestDetail } from "@/components/dashboard/TicketRequestDetail";
-import { MarketplaceOrders } from "@/components/dashboard/MarketplaceOrders";
+
 
 type Order = Tables<"orders"> & { vouchers: Tables<"vouchers"> | null };
 type TicketRequest = Tables<"ticket_requests">;
@@ -199,10 +199,10 @@ export default function DashboardPage() {
               <h3 className="font-semibold mb-1">Request Ticket</h3>
               <p className="text-sm text-muted-foreground">Get a personalized quote</p>
             </div>
-            <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/marketplace")}>
-              <Store className="w-8 h-8 text-success mb-3" />
-              <h3 className="font-semibold mb-1">Marketplace</h3>
-              <p className="text-sm text-muted-foreground">Bid on travel requests</p>
+            <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/")}>
+              <MessageSquare className="w-8 h-8 text-success mb-3" />
+              <h3 className="font-semibold mb-1">Chat with Maya</h3>
+              <p className="text-sm text-muted-foreground">AI-powered travel deals</p>
             </div>
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/faq")}>
               <User className="w-8 h-8 text-warning mb-3" />
@@ -211,8 +211,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Marketplace Orders Section */}
-          {user && <MarketplaceOrders userId={user.id} />}
 
           {/* Tabs */}
           <Tabs defaultValue="orders" className="space-y-6 mt-8">

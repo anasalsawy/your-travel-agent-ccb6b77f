@@ -18,6 +18,7 @@ import Terms from "./pages/Terms";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import RefundPolicy from "./pages/RefundPolicy";
+import RequestTicket from "./pages/RequestTicket";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/checkout/voucher/:id" element={<Checkout />} />
           <Route path="/faq" element={<FAQ />} />
+          <Route path="/request-ticket" element={<RequestTicket />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/diagnostics" element={<AdminDiagnostics />} />
           <Route path="/privacy" element={<Privacy />} />
