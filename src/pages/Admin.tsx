@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall, CreditCard, TrendingUp, Play, MessagesSquare } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall, CreditCard, TrendingUp, Play, MessagesSquare, Mail } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
@@ -20,6 +20,7 @@ import { AdminInventory } from "@/components/admin/AdminInventory";
 import { AdminQuoteLogs } from "@/components/admin/AdminQuoteLogs";
 import { AdminBookingQueue } from "@/components/admin/AdminBookingQueue";
 import { AdminConversations } from "@/components/admin/AdminConversations";
+import { AdminPromoEmails } from "@/components/admin/AdminPromoEmails";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -166,6 +167,10 @@ export default function AdminPage() {
                     <Users className="w-4 h-4" />
                     Users
                   </TabsTrigger>
+                  <TabsTrigger value="promo-emails" className="gap-2">
+                    <Mail className="w-4 h-4" />
+                    Promo Emails
+                  </TabsTrigger>
                   <TabsTrigger value="settings" className="gap-2">
                     <Settings className="w-4 h-4" />
                     Settings
@@ -234,6 +239,10 @@ export default function AdminPage() {
 
                 <TabsContent value="users">
                   <AdminUsers />
+                </TabsContent>
+
+                <TabsContent value="promo-emails">
+                  <AdminPromoEmails />
                 </TabsContent>
 
                 <TabsContent value="settings">
