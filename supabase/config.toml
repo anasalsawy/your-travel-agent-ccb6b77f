@@ -107,3 +107,6 @@ verify_jwt = false
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+[functions.send-promo-email]
+verify_jwt = false

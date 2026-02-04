@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, Plane, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User } from "lucide-react";
+import { Send, Loader2, Plane, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User, ArrowRight, Ticket, CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,13 +28,19 @@ const getOrCreateSessionId = (): string => {
   return newId;
 };
 
+// Featured vouchers for the homepage
+const featuredVouchers = [
+  { airline: "Delta Airlines", faceValue: 500, salePrice: 200, discount: 60 },
+  { airline: "United Airlines", faceValue: 750, salePrice: 300, discount: 60 },
+  { airline: "American Airlines", faceValue: 1215, salePrice: 486, discount: 60 },
+];
+
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [thinkingPhase, setThinkingPhase] = useState<ThinkingPhase>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  // CRITICAL: Persist sessionId to localStorage for cross-visit memory
   const [sessionId] = useState(() => getOrCreateSessionId());
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
@@ -50,7 +56,6 @@ const Index = () => {
     onError: (error) => console.error("Voice error:", error),
   });
 
-  // Auth state
   useEffect(() => {
     supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
@@ -112,7 +117,6 @@ const Index = () => {
   const startConversation = async (initialMessage?: string) => {
     setHasStarted(true);
 
-    // Load prior messages for this session if we haven't already.
     if (!historyLoaded) {
       setIsInitializing(true);
       try {
@@ -172,7 +176,6 @@ const Index = () => {
       }
     }
 
-    // Prefill optional quick action text
     if (initialMessage) {
       setTimeout(() => {
         setInput(initialMessage);
@@ -184,8 +187,6 @@ const Index = () => {
   };
 
   const sendMessage = async (textOverride?: string, speakResponse = false) => {
-    // Don't allow sending until we've finished loading prior session history.
-    // This prevents the first message after refresh from going out without context.
     if (isInitializing || !historyLoaded) return;
 
     const messageText = textOverride || input.trim();
@@ -337,8 +338,8 @@ const Index = () => {
   // Welcome screen before chat starts
   if (!hasStarted) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 flex flex-col">
-        {/* Simple Header */}
+      <div className="min-h-screen bg-background">
+        {/* Header */}
         <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
           <div className="container mx-auto px-4">
             <div className="flex items-center justify-between h-16">
@@ -347,6 +348,9 @@ const Index = () => {
                 <span className="font-display font-bold text-lg hidden sm:block">Your Travel Agent</span>
               </div>
               <div className="flex items-center gap-3">
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/vouchers">Vouchers</Link>
+                </Button>
                 {user ? (
                   <>
                     {isStaffOrAdmin && (
@@ -371,90 +375,210 @@ const Index = () => {
           </div>
         </header>
 
-        {/* Hero Section */}
-        <main className="flex-1 flex flex-col items-center justify-center px-4 pt-20">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            {/* Maya Avatar */}
-            <div className="relative inline-flex mb-6">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center text-primary-foreground text-4xl font-bold shadow-2xl shadow-primary/30">
-                M
+        <main className="pt-16">
+          {/* Hero Section - Chat with Maya */}
+          <section className="py-16 md:py-24 bg-gradient-to-b from-background to-muted/30">
+            <div className="container mx-auto px-4">
+              <div className="max-w-3xl mx-auto text-center">
+                {/* Maya Avatar */}
+                <div className="relative inline-flex mb-6">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center text-primary-foreground text-3xl font-bold shadow-2xl shadow-primary/30">
+                    M
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-green-500 rounded-full border-4 border-background flex items-center justify-center">
+                    <Zap className="w-3.5 h-3.5 text-white" />
+                  </div>
+                </div>
+
+                <h1 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold text-foreground mb-4">
+                  Chat with Maya
+                </h1>
+                <p className="text-lg text-muted-foreground mb-6 max-w-xl mx-auto">
+                  Your AI travel agent. Find discounted flights, get instant quotes, and book tickets — all through a simple conversation.
+                </p>
+
+                {/* Start Chat Button */}
+                <Button 
+                  size="lg" 
+                  onClick={() => startConversation()}
+                  disabled={isInitializing}
+                  className="rounded-full px-8 py-6 text-lg shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-all mb-6"
+                >
+                  {isInitializing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Loading…
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="w-5 h-5 mr-2" />
+                      Start Chatting
+                    </>
+                  )}
+                </Button>
+
+                {/* Quick Start Options */}
+                <div className="flex flex-wrap gap-3 justify-center">
+                  {quickActions.map((action) => (
+                    <Button
+                      key={action.label}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => startConversation(action.label)}
+                      disabled={isInitializing}
+                      className="rounded-full"
+                    >
+                      <action.icon className="w-4 h-4 mr-2" />
+                      {action.label}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Trust Badges */}
+                <div className="flex items-center justify-center gap-6 mt-10 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-green-500" />
+                    <span>Secure Payments</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-primary" />
+                    <span>Verified Vouchers</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <span>Instant Quotes</span>
+                  </div>
+                </div>
               </div>
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-green-500 rounded-full border-4 border-background flex items-center justify-center">
-                <Zap className="w-4 h-4 text-white" />
+            </div>
+          </section>
+
+          {/* Featured Vouchers Section */}
+          <section className="py-16 bg-muted/30">
+            <div className="container mx-auto px-4">
+              <div className="text-center mb-10">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-4">
+                  <Ticket className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium text-primary">Featured Deals</span>
+                </div>
+                <h2 className="text-2xl md:text-3xl font-display font-bold mb-2">
+                  Save 60% on Airline Vouchers
+                </h2>
+                <p className="text-muted-foreground max-w-lg mx-auto">
+                  Verified travel credits at deep discounts. Use them for any flight booking.
+                </p>
+              </div>
+
+              {/* Voucher Cards */}
+              <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-8">
+                {featuredVouchers.map((voucher, idx) => (
+                  <div key={idx} className="glass-card p-6 hover-lift">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-sm font-bold text-primary mb-2">
+                          {voucher.airline.substring(0, 2).toUpperCase()}
+                        </div>
+                        <h3 className="font-semibold text-foreground">{voucher.airline}</h3>
+                        <p className="text-sm text-muted-foreground">Travel Credit</p>
+                      </div>
+                      <span className="discount-badge">-{voucher.discount}%</span>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground line-through">
+                        ${voucher.faceValue.toLocaleString()}
+                      </p>
+                      <p className="text-2xl font-bold text-foreground">
+                        ${voucher.salePrice.toLocaleString()}
+                      </p>
+                      <p className="text-sm text-green-500 font-medium">
+                        Save ${(voucher.faceValue - voucher.salePrice).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-center">
+                <Button variant="outline" size="lg" asChild>
+                  <Link to="/vouchers">
+                    Browse All Vouchers
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Link>
+                </Button>
               </div>
             </div>
+          </section>
 
-            <h1 className="text-4xl md:text-5xl font-display font-bold text-foreground mb-4">
-              Meet Maya
-            </h1>
-            <p className="text-xl text-muted-foreground mb-2">
-              Your AI-powered travel agent
-            </p>
-            <p className="text-muted-foreground max-w-lg mx-auto">
-              I find discounted flights, book tickets, track deals, and handle all your travel needs. 
-              Just chat with me like you would a friend.
-            </p>
-          </div>
-
-          {/* Start Chat Button */}
-          <Button 
-            size="lg" 
-            onClick={() => startConversation()}
-            disabled={isInitializing}
-            className="rounded-full px-8 py-6 text-lg shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-all mb-8"
-          >
-            {isInitializing ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Loading your chat…
-              </>
-            ) : (
-              <>
-                <MessageSquare className="w-5 h-5 mr-2" />
-                Start Chatting with Maya
-              </>
-            )}
-          </Button>
-
-          {/* Quick Start Options */}
-          <div className="flex flex-wrap gap-3 justify-center max-w-lg">
-            {quickActions.map((action) => (
-              <Button
-                key={action.label}
-                variant="outline"
-                size="sm"
-                onClick={() => startConversation(action.label)}
-                disabled={isInitializing}
-                className="rounded-full"
-              >
-                <action.icon className="w-4 h-4 mr-2" />
-                {action.label}
-              </Button>
-            ))}
-          </div>
-
-          {/* Trust Badges */}
-          <div className="flex items-center gap-6 mt-16 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-green-500" />
-              <span>Secure Payments</span>
+          {/* How It Works - Simple */}
+          <section className="py-16">
+            <div className="container mx-auto px-4">
+              <div className="max-w-3xl mx-auto">
+                <h2 className="text-2xl md:text-3xl font-display font-bold text-center mb-10">
+                  How It Works
+                </h2>
+                <div className="grid md:grid-cols-3 gap-8">
+                  <div className="text-center">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                      <MessageSquare className="w-6 h-6 text-primary" />
+                    </div>
+                    <h3 className="font-semibold mb-2">1. Tell Maya What You Need</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Chat with our AI agent about your travel plans and budget
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                      <Search className="w-6 h-6 text-primary" />
+                    </div>
+                    <h3 className="font-semibold mb-2">2. Get Instant Quotes</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Maya searches for the best deals and vouchers for your trip
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                      <Plane className="w-6 h-6 text-primary" />
+                    </div>
+                    <h3 className="font-semibold mb-2">3. Book & Save</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Secure your tickets at discounted prices with our help
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Plane className="w-4 h-4 text-primary" />
-              <span>50%+ Off Flights</span>
+          </section>
+
+          {/* CTA Section */}
+          <section className="py-16 bg-gradient-to-b from-muted/30 to-background">
+            <div className="container mx-auto px-4">
+              <div className="max-w-2xl mx-auto text-center">
+                <h2 className="text-2xl md:text-3xl font-display font-bold mb-4">
+                  Ready to Save on Your Next Trip?
+                </h2>
+                <p className="text-muted-foreground mb-6">
+                  Start chatting with Maya and let her find the best deals for you.
+                </p>
+                <Button 
+                  size="lg" 
+                  onClick={() => startConversation()}
+                  disabled={isInitializing}
+                  className="rounded-full"
+                >
+                  <MessageSquare className="w-5 h-5 mr-2" />
+                  Chat with Maya Now
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-500" />
-              <span>Instant Quotes</span>
-            </div>
-          </div>
+          </section>
         </main>
 
-        {/* Simple Footer */}
+        {/* Footer */}
         <footer className="py-6 border-t border-border/50">
           <div className="container mx-auto px-4 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
             <Link to="/faq" className="hover:text-foreground transition-colors">FAQ</Link>
             <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
+            <Link to="/vouchers" className="hover:text-foreground transition-colors">Vouchers</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
             <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
             <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
