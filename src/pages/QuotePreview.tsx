@@ -1,11 +1,9 @@
 import { useSearchParams } from "react-router-dom";
-import { Plane, Clock, MapPin, Calendar, DollarSign, Shield, Phone, Globe, Mail } from "lucide-react";
 import logoImg from "@/assets/logo-dark-blue-badge.png";
 
 export default function QuotePreview() {
   const [searchParams] = useSearchParams();
 
-  // Flight data from URL params or defaults
   const origin = searchParams.get("origin") || "Manila (MNL)";
   const destination = searchParams.get("destination") || "Los Angeles (LAX)";
   const airline = searchParams.get("airline") || "Philippine Airlines";
@@ -20,270 +18,176 @@ export default function QuotePreview() {
   const economyPrice = searchParams.get("economy") || "350";
   const businessPrice = searchParams.get("business") || "1,050";
   const passengerName = searchParams.get("name") || "";
+  const quoteRef = searchParams.get("ref") || `YTA-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+
   const quoteDate = new Date().toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
-  const quoteRef = searchParams.get("ref") || `YTA-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+
+  const originCode = origin.match(/\(([^)]+)\)/)?.[1] || origin;
+  const destCode = destination.match(/\(([^)]+)\)/)?.[1] || destination;
+  const originCity = origin.replace(/\s*\([^)]+\)/, "");
+  const destCity = destination.replace(/\s*\([^)]+\)/, "");
 
   return (
-    <div className="min-h-screen bg-white print:bg-white" id="quote-page">
-      {/* Print button - hidden when printing */}
+    <div className="min-h-screen bg-[#f5f5f5] print:bg-white" id="quote-page">
+      {/* Print button */}
       <div className="print:hidden fixed top-6 right-6 z-50 flex gap-3">
         <button
           onClick={() => window.print()}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold shadow-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          className="bg-[#1a2332] text-white px-6 py-3 rounded font-medium shadow-lg hover:bg-[#2a3a4e] transition-colors text-sm tracking-wide"
         >
-          📄 Save as PDF / Print
+          ↓ SAVE AS PDF
         </button>
         <button
           onClick={() => window.history.back()}
-          className="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold shadow-lg hover:bg-gray-300 transition-colors"
+          className="bg-white text-[#1a2332] px-6 py-3 rounded font-medium shadow-lg hover:bg-gray-100 transition-colors text-sm border border-gray-300"
         >
-          ← Back
+          ← BACK
         </button>
       </div>
 
-      <div className="max-w-[800px] mx-auto bg-white text-gray-900 print:shadow-none shadow-2xl">
+      <div className="max-w-[780px] mx-auto bg-white print:shadow-none shadow-xl my-8 print:my-0">
+
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#0a1628] to-[#162544] text-white px-10 py-8">
-          <div className="flex items-center justify-between">
+        <div className="px-12 pt-10 pb-8 border-b border-gray-200">
+          <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
-              <img src={logoImg} alt="Your Travel Agent" className="w-14 h-14 rounded-lg" />
+              <img src={logoImg} alt="Your Travel Agent" className="w-12 h-12" />
               <div>
-                <h1 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "'Syne', sans-serif" }}>
+                <h1 className="text-xl font-semibold text-[#1a2332] tracking-tight">
                   Your Travel Agent
                 </h1>
-                <p className="text-blue-300 text-sm font-medium">Premium Flight Deals • Save 50%+</p>
+                <p className="text-[11px] text-gray-400 tracking-widest uppercase mt-0.5">
+                  Flight Quote
+                </p>
               </div>
             </div>
             <div className="text-right text-sm">
-              <p className="text-blue-200">Quote Reference</p>
-              <p className="text-xl font-bold font-mono tracking-wider">{quoteRef}</p>
-              <p className="text-blue-300 mt-1">{quoteDate}</p>
+              <p className="text-[11px] text-gray-400 tracking-widest uppercase">Reference</p>
+              <p className="font-mono font-semibold text-[#1a2332] mt-0.5">{quoteRef}</p>
+              <p className="text-gray-400 text-xs mt-1">{quoteDate}</p>
             </div>
           </div>
+
+          {passengerName && (
+            <div className="mt-6 pt-4 border-t border-gray-100">
+              <p className="text-[11px] text-gray-400 tracking-widest uppercase">Prepared For</p>
+              <p className="text-[#1a2332] font-medium mt-0.5">{passengerName}</p>
+            </div>
+          )}
         </div>
 
-        {/* Blue accent bar */}
-        <div className="h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500" />
-
-        {/* Recipient */}
-        {passengerName && (
-          <div className="px-10 pt-6 pb-2">
-            <p className="text-gray-500 text-sm">Prepared for</p>
-            <p className="text-xl font-semibold text-gray-900">{passengerName}</p>
-          </div>
-        )}
-
-        {/* Route Hero */}
-        <div className="px-10 py-8">
-          <div className="bg-gradient-to-br from-slate-50 to-blue-50 border border-blue-100 rounded-2xl p-8">
-            <div className="flex items-center justify-between">
-              {/* Origin */}
-              <div className="text-center flex-1">
-                <p className="text-4xl font-extrabold text-gray-900" style={{ fontFamily: "'Syne', sans-serif" }}>
-                  {origin.match(/\(([^)]+)\)/)?.[1] || origin}
-                </p>
-                <p className="text-gray-600 mt-1 text-sm font-medium">{origin.replace(/\s*\([^)]+\)/, "")}</p>
-              </div>
-
-              {/* Flight path */}
-              <div className="flex-1 flex flex-col items-center px-4">
-                <p className="text-sm font-semibold text-blue-600 mb-2">{flightType}</p>
-                <div className="relative w-full flex items-center justify-center">
-                  <div className="w-full h-[2px] bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200" />
-                  <Plane className="absolute w-6 h-6 text-blue-600 bg-blue-50 rounded-full p-0.5" />
+        {/* Route */}
+        <div className="px-12 py-10">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-5xl font-bold text-[#1a2332] tracking-tight">{originCode}</p>
+              <p className="text-sm text-gray-500 mt-1">{originCity}</p>
+            </div>
+            <div className="flex-1 mx-8">
+              <div className="flex items-center justify-center">
+                <div className="h-px flex-1 bg-gray-300" />
+                <div className="px-4 text-center">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider">{flightType}</p>
+                  <p className="text-xs text-gray-400 mt-1">{duration}</p>
                 </div>
-                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {duration}
-                </p>
+                <div className="h-px flex-1 bg-gray-300" />
               </div>
-
-              {/* Destination */}
-              <div className="text-center flex-1">
-                <p className="text-4xl font-extrabold text-gray-900" style={{ fontFamily: "'Syne', sans-serif" }}>
-                  {destination.match(/\(([^)]+)\)/)?.[1] || destination}
-                </p>
-                <p className="text-gray-600 mt-1 text-sm font-medium">{destination.replace(/\s*\([^)]+\)/, "")}</p>
-              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-5xl font-bold text-[#1a2332] tracking-tight">{destCode}</p>
+              <p className="text-sm text-gray-500 mt-1">{destCity}</p>
             </div>
           </div>
         </div>
 
-        {/* Flight Details Grid */}
-        <div className="px-10 pb-6">
+        {/* Divider */}
+        <div className="mx-12 h-px bg-gray-200" />
+
+        {/* Flight Details */}
+        <div className="px-12 py-8">
+          <p className="text-[11px] text-gray-400 tracking-widest uppercase mb-5">Flight Details</p>
+
+          <table className="w-full text-sm">
+            <tbody>
+              <tr className="border-b border-gray-100">
+                <td className="py-3 text-gray-500 w-40">Airline</td>
+                <td className="py-3 text-[#1a2332] font-medium">{airline}</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-3 text-gray-500">Flight</td>
+                <td className="py-3 text-[#1a2332] font-medium">{flightNumber}</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-3 text-gray-500">Aircraft</td>
+                <td className="py-3 text-[#1a2332] font-medium">{aircraft}</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-3 text-gray-500">Departure</td>
+                <td className="py-3 text-[#1a2332] font-medium">{departureDate} at {departureTime}</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-3 text-gray-500">Arrival</td>
+                <td className="py-3 text-[#1a2332] font-medium">{arrivalDate} at {arrivalTime}</td>
+              </tr>
+              <tr>
+                <td className="py-3 text-gray-500">Duration</td>
+                <td className="py-3 text-[#1a2332] font-medium">{duration} · Direct Flight</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Divider */}
+        <div className="mx-12 h-px bg-gray-200" />
+
+        {/* Pricing */}
+        <div className="px-12 py-8">
+          <p className="text-[11px] text-gray-400 tracking-widest uppercase mb-5">Pricing (Per Passenger)</p>
+
           <div className="grid grid-cols-2 gap-6">
-            {/* Departure */}
-            <div className="border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                  <span className="text-lg">🛫</span>
-                </div>
-                <h3 className="font-bold text-gray-900 text-sm uppercase tracking-wider">Departure</h3>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">City</span>
-                  <span className="font-semibold text-gray-900">{origin}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Date</span>
-                  <span className="font-semibold text-gray-900">{departureDate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Time</span>
-                  <span className="font-semibold text-gray-900">{departureTime}</span>
-                </div>
-              </div>
+            <div className="border border-gray-200 rounded-lg p-6">
+              <p className="text-[11px] text-gray-400 tracking-widest uppercase">Economy Class</p>
+              <p className="text-3xl font-bold text-[#1a2332] mt-2">${economyPrice}</p>
+              <p className="text-xs text-gray-400 mt-1">USD per passenger</p>
             </div>
-
-            {/* Arrival */}
-            <div className="border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <span className="text-lg">🛬</span>
-                </div>
-                <h3 className="font-bold text-gray-900 text-sm uppercase tracking-wider">Arrival</h3>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">City</span>
-                  <span className="font-semibold text-gray-900">{destination}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Date</span>
-                  <span className="font-semibold text-gray-900">{arrivalDate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Time</span>
-                  <span className="font-semibold text-gray-900">{arrivalTime}</span>
-                </div>
-              </div>
+            <div className="border border-gray-200 rounded-lg p-6">
+              <p className="text-[11px] text-gray-400 tracking-widest uppercase">Business Class</p>
+              <p className="text-3xl font-bold text-[#1a2332] mt-2">${businessPrice}</p>
+              <p className="text-xs text-gray-400 mt-1">USD per passenger</p>
             </div>
           </div>
         </div>
 
-        {/* Flight Info Bar */}
-        <div className="px-10 pb-6">
-          <div className="bg-slate-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500">Airline:</span>
-              <span className="font-bold text-gray-900">{airline}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500">Flight:</span>
-              <span className="font-bold text-gray-900">{flightNumber}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500">Aircraft:</span>
-              <span className="font-bold text-gray-900">{aircraft}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Pricing Section */}
-        <div className="px-10 pb-8">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-green-600" />
-            Price Quote (Per Passenger)
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
-            {/* Economy */}
-            <div className="relative overflow-hidden border-2 border-blue-200 rounded-2xl p-6 bg-gradient-to-br from-white to-blue-50">
-              <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">
-                Best Value
-              </div>
-              <p className="text-sm font-semibold text-blue-600 uppercase tracking-wider">Economy Class</p>
-              <p className="text-4xl font-extrabold text-gray-900 mt-2" style={{ fontFamily: "'Syne', sans-serif" }}>
-                ${economyPrice}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">USD per passenger</p>
-            </div>
-
-            {/* Business */}
-            <div className="relative overflow-hidden border-2 border-amber-200 rounded-2xl p-6 bg-gradient-to-br from-white to-amber-50">
-              <div className="absolute top-0 right-0 bg-amber-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">
-                Premium
-              </div>
-              <p className="text-sm font-semibold text-amber-600 uppercase tracking-wider">Business Class</p>
-              <p className="text-4xl font-extrabold text-gray-900 mt-2" style={{ fontFamily: "'Syne', sans-serif" }}>
-                ${businessPrice}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">USD per passenger</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Trust / Guarantee Section */}
-        <div className="px-10 pb-8">
-          <div className="bg-green-50 border border-green-200 rounded-xl p-5">
-            <div className="flex items-start gap-3">
-              <Shield className="w-6 h-6 text-green-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <h3 className="font-bold text-green-800 text-sm">Our Guarantee</h3>
-                <ul className="text-sm text-green-700 mt-2 space-y-1">
-                  <li>✓ Lowest price guaranteed — save 50%+ off retail</li>
-                  <li>✓ Confirmed e-ticket sent within 24–48 hours</li>
-                  <li>✓ Full refund if we can't fulfill your booking</li>
-                  <li>✓ 24/7 support via chat, WhatsApp, or phone</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Validity Notice */}
-        <div className="px-10 pb-6">
-          <p className="text-xs text-gray-400 italic text-center">
-            This quote is valid for 48 hours from the date of issue. Prices are subject to availability and may change.
-            Seats are not held until booking is confirmed with payment.
+        {/* Terms */}
+        <div className="px-12 py-6 border-t border-gray-200">
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            This quote is valid for 48 hours from the date of issue. Prices are subject to availability 
+            and may change. Seats are not held until booking is confirmed with payment. 
+            E-ticket will be issued within 24–48 hours of confirmed payment.
           </p>
         </div>
 
         {/* Footer */}
-        <div className="bg-gradient-to-r from-[#0a1628] to-[#162544] text-white px-10 py-6">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-blue-300" />
-                <span>your-travel-agent.net</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-blue-300" />
-                <span>deals@your-travel-agent.net</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-blue-300" />
-              <span>Chat with Maya 24/7</span>
-            </div>
+        <div className="px-12 py-6 bg-[#1a2332] text-white">
+          <div className="flex items-center justify-between text-xs">
+            <span>your-travel-agent.net</span>
+            <span>deals@your-travel-agent.net</span>
           </div>
-          <div className="mt-3 pt-3 border-t border-white/10 text-center text-xs text-blue-300">
-            © {new Date().getFullYear()} Your Travel Agent — Premium Flight Deals at Unbeatable Prices
+          <div className="mt-2 text-center text-[10px] text-gray-400">
+            © {new Date().getFullYear()} Your Travel Agent
           </div>
         </div>
       </div>
 
-      {/* Print Styles */}
       <style>{`
         @media print {
-          @page {
-            size: A4;
-            margin: 0;
-          }
-          body {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          #quote-page {
-            width: 100%;
-          }
-          .print\\:hidden {
-            display: none !important;
-          }
+          @page { size: A4; margin: 0; }
+          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .print\\:hidden { display: none !important; }
         }
       `}</style>
     </div>
