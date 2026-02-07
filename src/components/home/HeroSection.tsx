@@ -20,14 +20,14 @@ export function HeroSection() {
 
           {/* Main heading */}
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 animate-slide-up">
-            You Post.{" "}
-            <span className="text-gradient">Sellers Compete.</span>
+            Your Travel.{" "}
+            <span className="text-gradient">Our Expertise.</span>
           </h1>
 
           {/* Subheading */}
           <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            Reverse auctions for travel — post your trip, watch sellers bid, pick the best deal. 
-            Plus, shop verified vouchers and book any ticket you want.
+            We help you save on flights with verified travel credits and expert ticket booking. 
+            Tell us where you want to go — we handle the rest.
           </p>
 
           {/* CTA Buttons */}
@@ -55,7 +55,7 @@ export function HeroSection() {
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-display font-bold text-gradient">70%</div>
-              <div className="text-sm text-muted-foreground">Avg. Savings</div>
+              <div className="text-sm text-muted-foreground">Up to Savings</div>
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-display font-bold text-gradient">24h</div>
