@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,12 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Users, CheckCircle, XCircle, Upload } from "lucide-react";
+import { Loader2, Mail, Send, CheckCircle, XCircle } from "lucide-react";
+import { EmailListUploader } from "./promo/EmailListUploader";
+import { TemplateSelector } from "./promo/TemplateSelector";
+import { EmailTemplatePreview } from "./promo/EmailTemplatePreview";
 
 export function AdminPromoEmails() {
   const [emails, setEmails] = useState<string[]>([]);
-  const [subject, setSubject] = useState("✈️ Exclusive: Save 50%+ on Alaska Airlines Vouchers!");
+  const [subject, setSubject] = useState("✈️ Exclusive: Save Big on Airline Vouchers!");
   const [customMessage, setCustomMessage] = useState("");
+  const [template, setTemplate] = useState("voucher_deals");
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState<{ sent: number; failed: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,11 +29,13 @@ export function AdminPromoEmails() {
     try {
       const response = await fetch("/data/promo-emails.txt");
       const text = await response.text();
-      const emailList = text.split(";").map(e => e.trim()).filter(e => e && e.includes("@"));
+      const emailList = text
+        .split(/[;,\n\r\s]+/)
+        .map((e) => e.trim())
+        .filter((e) => e && e.includes("@"));
       setEmails(emailList);
     } catch (error) {
       console.error("Failed to load emails:", error);
-      toast.error("Failed to load email list");
     } finally {
       setLoading(false);
     }
@@ -50,13 +56,14 @@ export function AdminPromoEmails() {
           emails,
           subject,
           customMessage: customMessage || undefined,
+          template,
         },
       });
 
       if (error) throw error;
 
       setResults({ sent: data.sent, failed: data.failed });
-      
+
       if (data.sent > 0) {
         toast.success(`Successfully sent ${data.sent} promotional emails!`);
       }
@@ -81,6 +88,7 @@ export function AdminPromoEmails() {
 
   return (
     <div className="space-y-6">
+      {/* Header card */}
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -88,19 +96,10 @@ export function AdminPromoEmails() {
             Promotional Email Campaign
           </CardTitle>
           <CardDescription>
-            Send promotional emails featuring your discounted Alaska Airlines vouchers
+            Send promotional emails featuring your discounted airline vouchers
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Email Stats */}
-          <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50 border border-border">
-            <Users className="w-8 h-8 text-primary" />
-            <div>
-              <p className="text-2xl font-bold">{emails.length.toLocaleString()}</p>
-              <p className="text-sm text-muted-foreground">Email addresses loaded</p>
-            </div>
-          </div>
-
           {/* Subject Line */}
           <div className="space-y-2">
             <Label htmlFor="subject">Email Subject</Label>
@@ -127,17 +126,6 @@ export function AdminPromoEmails() {
             </p>
           </div>
 
-          {/* Preview Info */}
-          <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/10">
-            <h4 className="font-semibold text-amber-600 mb-2">Email Preview</h4>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Features top 4 available Alaska Airlines vouchers from your inventory</li>
-              <li>• Shows 50%+ discount off market prices</li>
-              <li>• Includes "Lowest Price Guaranteed" messaging</li>
-              <li>• Links to your vouchers page and Chat with Maya</li>
-            </ul>
-          </div>
-
           {/* Results */}
           {results && (
             <div className="flex gap-4">
@@ -155,8 +143,8 @@ export function AdminPromoEmails() {
           )}
 
           {/* Send Button */}
-          <Button 
-            onClick={sendPromoEmails} 
+          <Button
+            onClick={sendPromoEmails}
             disabled={sending || emails.length === 0}
             className="w-full"
             size="lg"
@@ -175,32 +163,23 @@ export function AdminPromoEmails() {
           </Button>
 
           <p className="text-xs text-muted-foreground text-center">
-            Emails will be sent from deals@yourtravelagent.net via Resend API
+            Emails will be sent from Maya via Resend API
           </p>
         </CardContent>
       </Card>
 
-      {/* Email Preview List */}
-      <Card className="glass-card">
-        <CardHeader>
-          <CardTitle className="text-lg">Recipient List Preview</CardTitle>
-          <CardDescription>First 20 email addresses</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {emails.slice(0, 20).map((email, i) => (
-              <Badge key={i} variant="secondary" className="text-xs">
-                {email}
-              </Badge>
-            ))}
-            {emails.length > 20 && (
-              <Badge variant="outline" className="text-xs">
-                +{emails.length - 20} more
-              </Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Template + Upload + Preview in grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <TemplateSelector selected={template} onSelect={setTemplate} />
+          <EmailListUploader emails={emails} onEmailsChange={setEmails} />
+        </div>
+        <EmailTemplatePreview
+          template={template}
+          subject={subject}
+          customMessage={customMessage}
+        />
+      </div>
     </div>
   );
 }
