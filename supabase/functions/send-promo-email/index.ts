@@ -262,6 +262,103 @@ function generateMayaPersonalTemplate(vouchers: Voucher[], customMessage?: strin
 </td></tr></table></body></html>`;
 }
 
+// ——— Template: Lowest Price Ad ———
+function generateLowestPriceAdTemplate(_vouchers: Voucher[], customMessage?: string): string {
+  const routes = [
+    { route: "Manila → Los Angeles (MNL–LAX)", market: 1200, ours: 480 },
+    { route: "Seattle → Phoenix (SEA–PHX)", market: 380, ours: 152 },
+    { route: "New York → London (JFK–LHR)", market: 950, ours: 380 },
+    { route: "Los Angeles → Tokyo (LAX–NRT)", market: 1400, ours: 560 },
+    { route: "Chicago → Miami (ORD–MIA)", market: 320, ours: 128 },
+    { route: "San Francisco → Honolulu (SFO–HNL)", market: 580, ours: 232 },
+  ];
+
+  const routesHTML = routes.map(r => `
+    <tr>
+      <td style="padding: 8px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 10px; border: 1px solid #2d3748;">
+          <tr>
+            <td style="padding: 16px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td><h3 style="color: #fff; margin: 0; font-size: 15px; font-weight: 600;">✈️ ${r.route}</h3></td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 10px;">
+                    <span style="color: #718096; text-decoration: line-through; font-size: 16px;">$${r.market.toLocaleString()}</span>
+                    <span style="color: #48bb78; font-size: 24px; font-weight: bold; margin-left: 12px;">$${r.ours.toLocaleString()}</span>
+                    <span style="color: #48bb78; font-size: 13px; float: right; margin-top: 8px;">Save $${(r.market - r.ours).toLocaleString()}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  `).join("");
+
+  return `
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#0a0a0f;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0f;padding:40px 20px;"><tr><td align="center">
+<table width="100%" style="max-width:600px;background:linear-gradient(180deg,#0a0a14,#0f1628);border-radius:16px;overflow:hidden;border:1px solid #1f2937;">
+  <tr><td style="padding:40px 30px 20px;text-align:center;background:linear-gradient(135deg,#0f1628,#0a0a14);">
+    <div style="font-size:48px;margin-bottom:12px;">✈️</div>
+    <h1 style="color:#fff;margin:0 0 8px;font-size:28px;font-weight:800;">Your Travel Agent</h1>
+    <p style="color:#48bb78;margin:0;font-size:13px;letter-spacing:1px;font-weight:600;">VERIFIED & TRUSTED SINCE 2020</p>
+  </td></tr>
+
+  <tr><td style="padding:30px 30px 10px;text-align:center;">
+    <h2 style="color:#fff;margin:0 0 8px;font-size:26px;font-weight:800;">Lowest Flight Prices Guaranteed</h2>
+    <p style="color:#ffa500;font-size:18px;font-weight:600;margin:0 0 12px;">Tell us the lowest offer you found — we will beat it.</p>
+    <p style="color:#a0aec0;margin:0;font-size:15px;line-height:1.6;">${customMessage || "We work directly with airlines and use exclusive deals to get you flights at prices you won't find anywhere else."}</p>
+  </td></tr>
+
+  <tr><td style="padding:20px 30px 10px;text-align:center;">
+    <p style="color:#a0aec0;font-size:12px;letter-spacing:2px;margin:0;">POPULAR ROUTES — REAL SAVINGS</p>
+  </td></tr>
+
+  <tr><td style="padding:0 30px;">
+    <table width="100%" cellpadding="0" cellspacing="0">${routesHTML}</table>
+  </td></tr>
+
+  <tr><td style="padding:10px 30px;text-align:center;">
+    <p style="color:#a0aec0;margin:0;font-size:14px;">Don't see your route? We cover <span style="color:#fff;font-weight:600;">every airline and destination worldwide.</span></p>
+  </td></tr>
+
+  <tr><td style="text-align:center;padding:24px 30px;">
+    <a href="https://your-travel-agent.lovable.app/request-ticket" style="display:inline-block;background:linear-gradient(135deg,#48bb78,#38a169);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;">Submit Travel Request →</a>
+  </td></tr>
+
+  <tr><td style="padding:0 30px 20px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:12px;border:1px solid #2d3748;">
+      <tr><td style="padding:20px;text-align:center;">
+        <p style="color:#a0aec0;font-size:12px;letter-spacing:1px;margin:0 0 12px;">ACCEPTED PAYMENT METHODS</p>
+        <p style="color:#fff;font-size:15px;margin:0;">💳 Card &nbsp;&nbsp;·&nbsp;&nbsp; 🏦 Zelle &nbsp;&nbsp;·&nbsp;&nbsp; 🅿️ PayPal &nbsp;&nbsp;·&nbsp;&nbsp; ₿ Crypto</p>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <tr><td style="padding:0 30px 30px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#2d1f4e,#1a1a2e);border-radius:12px;border:1px solid #4c3a70;">
+      <tr><td style="padding:20px;text-align:center;">
+        <div style="width:50px;height:50px;background:linear-gradient(135deg,#8b5cf6,#a855f7);border-radius:50%;margin:0 auto 12px;text-align:center;line-height:50px;"><span style="font-size:24px;font-weight:bold;color:#fff;">M</span></div>
+        <h3 style="color:#fff;margin:0 0 8px;font-size:16px;">Questions? Chat with Maya</h3>
+        <p style="color:#a0aec0;margin:0 0 12px;font-size:13px;">Our AI travel agent finds the best deals for you</p>
+        <a href="https://your-travel-agent.lovable.app" style="display:inline-block;background:rgba(139,92,246,0.2);color:#a855f7;padding:10px 24px;border-radius:20px;text-decoration:none;font-weight:500;font-size:13px;border:1px solid #8b5cf6;">Chat with Maya →</a>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <tr><td style="padding:24px 30px;text-align:center;border-top:1px solid #1f2937;">
+    <p style="color:#4a5568;margin:0 0 8px;font-size:12px;">© 2025 Your Travel Agent. All rights reserved.</p>
+    <p style="color:#4a5568;margin:0;font-size:11px;"><a href="https://your-travel-agent.lovable.app/privacy" style="color:#718096;text-decoration:none;">Privacy Policy</a> · <a href="https://your-travel-agent.lovable.app/terms" style="color:#718096;text-decoration:none;">Terms of Service</a></p>
+  </td></tr>
+</table>
+</td></tr></table></body></html>`;
+}
+
 function generateEmailHTML(vouchers: Voucher[], template: string, customMessage?: string): string {
   switch (template) {
     case "flash_sale":
@@ -270,6 +367,8 @@ function generateEmailHTML(vouchers: Voucher[], template: string, customMessage?
       return generateSimpleCleanTemplate(vouchers, customMessage);
     case "maya_personal":
       return generateMayaPersonalTemplate(vouchers, customMessage);
+    case "lowest_price_ad":
+      return generateLowestPriceAdTemplate(vouchers, customMessage);
     case "voucher_deals":
     default:
       return generateVoucherDealsTemplate(vouchers, customMessage);

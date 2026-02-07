@@ -114,19 +114,55 @@ const TEMPLATE_PREVIEWS: Record<string, { name: string; preview: string }> = {
         </div>
         <div style="background: rgba(139, 92, 246, 0.1); border: 1px solid #4c3a70; border-radius: 12px; padding: 20px; margin: 16px 0;">
           <p style="color: #e2d9f3; font-size: 14px; line-height: 1.7; margin: 0; font-style: italic;">
-            "Hey! 👋 I found some amazing deals I think you'd love. These vouchers are verified and ready to use — and I can help you book the perfect flight with them!"
+            "Hey! 👋 I found some amazing deals I think you'd love. I can help you book the perfect flight!"
           </p>
           <p style="color: #a0aec0; font-size: 13px; margin: 12px 0 0;">{{customMessage}}</p>
         </div>
-        <div style="background: #1a1a2e; border-radius: 10px; padding: 16px; margin: 8px 0; border: 1px solid #2d3748;">
-          <p style="color: #f8b500; font-weight: 600; margin: 0 0 4px; font-size: 14px;">Alaska Airlines Voucher</p>
-          <div style="margin-top: 8px;">
-            <span style="color: #718096; text-decoration: line-through; font-size: 14px;">$500</span>
-            <span style="color: #48bb78; font-size: 20px; font-weight: bold; margin-left: 8px;">$200</span>
-          </div>
-        </div>
         <div style="text-align: center; padding: 20px 0;">
           <span style="background: linear-gradient(135deg, #8b5cf6, #a855f7); color: #fff; padding: 14px 36px; border-radius: 24px; font-weight: 600; font-size: 14px; display: inline-block;">Chat with Maya →</span>
+        </div>
+      </div>
+    `,
+  },
+  lowest_price_ad: {
+    name: "Lowest Price Ad",
+    preview: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #0a0a14, #0f1628); color: #fff; padding: 24px; border-radius: 12px; max-height: 500px; overflow-y: auto;">
+        <div style="text-align: center; padding: 20px 0;">
+          <div style="font-size: 36px; margin-bottom: 8px;">✈️</div>
+          <h2 style="margin: 0 0 4px; color: #fff; font-size: 22px; font-weight: 800;">Your Travel Agent</h2>
+          <p style="color: #48bb78; font-size: 12px; letter-spacing: 1px; margin: 4px 0 0;">VERIFIED & TRUSTED SINCE 2020</p>
+        </div>
+        <div style="text-align: center; padding: 16px 0;">
+          <h3 style="color: #fff; margin: 0 0 6px; font-size: 20px; font-weight: 800;">Lowest Flight Prices Guaranteed</h3>
+          <p style="color: #ffa500; font-size: 14px; font-weight: 600; margin: 0;">Tell us the lowest offer you found — we will beat it.</p>
+          <p style="color: #a0aec0; font-size: 13px; margin: 8px 0 0;">{{customMessage}}</p>
+        </div>
+        <p style="color: #a0aec0; font-size: 11px; text-align: center; margin: 8px 0 12px; letter-spacing: 1px;">POPULAR ROUTES</p>
+        <div style="background: #1a1a2e; border-radius: 10px; padding: 12px 16px; margin: 6px 0; border: 1px solid #2d3748;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #fff; font-size: 13px; font-weight: 600;">Manila → LAX</span>
+            <div><span style="color: #718096; text-decoration: line-through; font-size: 12px;">$1,200</span> <span style="color: #48bb78; font-size: 16px; font-weight: bold; margin-left: 6px;">$480</span></div>
+          </div>
+        </div>
+        <div style="background: #1a1a2e; border-radius: 10px; padding: 12px 16px; margin: 6px 0; border: 1px solid #2d3748;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #fff; font-size: 13px; font-weight: 600;">SEA → PHX</span>
+            <div><span style="color: #718096; text-decoration: line-through; font-size: 12px;">$380</span> <span style="color: #48bb78; font-size: 16px; font-weight: bold; margin-left: 6px;">$152</span></div>
+          </div>
+        </div>
+        <div style="background: #1a1a2e; border-radius: 10px; padding: 12px 16px; margin: 6px 0; border: 1px solid #2d3748;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #fff; font-size: 13px; font-weight: 600;">JFK → London</span>
+            <div><span style="color: #718096; text-decoration: line-through; font-size: 12px;">$950</span> <span style="color: #48bb78; font-size: 16px; font-weight: bold; margin-left: 6px;">$380</span></div>
+          </div>
+        </div>
+        <div style="text-align: center; padding: 20px 0 8px;">
+          <span style="background: linear-gradient(135deg, #48bb78, #38a169); color: #fff; padding: 12px 32px; border-radius: 24px; font-weight: 700; font-size: 14px; display: inline-block;">Submit Travel Request →</span>
+        </div>
+        <div style="text-align: center; padding: 12px 0;">
+          <p style="color: #a0aec0; font-size: 11px; margin: 0 0 8px;">ACCEPTED PAYMENT METHODS</p>
+          <p style="color: #718096; font-size: 12px; margin: 0;">💳 Card &nbsp;·&nbsp; 🏦 Zelle &nbsp;·&nbsp; 🅿️ PayPal &nbsp;·&nbsp; ₿ Crypto</p>
         </div>
       </div>
     `,
@@ -137,7 +173,7 @@ export function EmailTemplatePreview({ template, subject, customMessage }: Email
   const templateData = TEMPLATE_PREVIEWS[template] || TEMPLATE_PREVIEWS.voucher_deals;
   const previewHtml = templateData.preview.replace(
     /\{\{customMessage\}\}/g,
-    customMessage || "Don't miss these incredible deals on verified airline vouchers!"
+    customMessage || "Don't miss these incredible deals — we guarantee to beat any price you find!"
   );
 
   return (
