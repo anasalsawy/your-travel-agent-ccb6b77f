@@ -20,6 +20,7 @@ import Contact from "./pages/Contact";
 import RefundPolicy from "./pages/RefundPolicy";
 import RequestTicket from "./pages/RequestTicket";
 import QuotePreview from "./pages/QuotePreview";
+import Promo from "./pages/Promo";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const App = () => (
           <Route path="/contact" element={<Contact />} />
           <Route path="/refund-policy" element={<RefundPolicy />} />
           <Route path="/quote-preview" element={<QuotePreview />} />
+          <Route path="/promo" element={<Promo />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
