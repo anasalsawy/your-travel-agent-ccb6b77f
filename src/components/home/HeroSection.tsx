@@ -54,8 +54,8 @@ export function HeroSection() {
               <div className="text-sm text-muted-foreground">Vouchers Sold</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-display font-bold text-gradient">70%</div>
-              <div className="text-sm text-muted-foreground">Up to Savings</div>
+              <div className="text-3xl md:text-4xl font-display font-bold text-gradient">Big</div>
+              <div className="text-sm text-muted-foreground">Savings</div>
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-display font-bold text-gradient">24h</div>
