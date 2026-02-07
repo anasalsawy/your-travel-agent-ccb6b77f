@@ -424,9 +424,11 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    const selectedTemplate = template || "voucher_deals";
     const voucherList = await fetchVouchersFromDB();
 
-    if (voucherList.length === 0) {
+    // Only require vouchers for templates that use them
+    if (voucherList.length === 0 && selectedTemplate !== "lowest_price_ad") {
       return new Response(
         JSON.stringify({ error: "No available vouchers found in database" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -434,7 +436,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const emailSubject = subject || "✈️ Exclusive: Save Big on Airline Vouchers!";
-    const htmlContent = generateEmailHTML(voucherList, template || "voucher_deals", customMessage);
+    const htmlContent = generateEmailHTML(voucherList, selectedTemplate, customMessage);
 
     console.log(`📧 Starting promo campaign: template=${template || "voucher_deals"}, recipients=${emails.length}`);
 
