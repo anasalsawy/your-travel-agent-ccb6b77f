@@ -29,22 +29,39 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
-    // Authenticate user
+    // Parse request body first
+    const body = await req.json();
+    const { type, voucherId, ticketRequestId, amount, description, customerEmail } = body;
+    logStep("Request body", { type, voucherId, ticketRequestId, amount });
+
+    // Authenticate: support both user JWT and service-role key (for Maya/internal calls)
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header provided");
     logStep("Authorization header found");
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    const user = userData.user;
-    if (!user?.email) throw new Error("User not authenticated or email not available");
-    logStep("User authenticated", { userId: user.id, email: user.email });
+    let userEmail: string | undefined;
+    let userId: string | undefined;
 
-    // Parse request body
-    const body = await req.json();
-    const { type, voucherId, ticketRequestId, amount, description } = body;
-    logStep("Request body", { type, voucherId, ticketRequestId, amount });
+    // Try user JWT auth first
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    
+    if (!userError && userData?.user?.email) {
+      // Authenticated user flow
+      userEmail = userData.user.email;
+      userId = userData.user.id;
+      logStep("User authenticated", { userId, email: userEmail });
+    } else {
+      // Service-role / internal call flow (e.g., Maya creating a link for a customer)
+      // The customerEmail must be provided in the body
+      if (customerEmail) {
+        userEmail = customerEmail;
+        userId = undefined; // No user ID for service-role calls
+        logStep("Service-role call with customer email", { email: userEmail });
+      } else {
+        throw new Error("Authentication failed and no customerEmail provided");
+      }
+    }
 
     if (!type || !amount) {
       throw new Error("Missing required fields: type and amount");
@@ -54,7 +71,7 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
     // Check if customer exists in Stripe
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+    const customers = await stripe.customers.list({ email: userEmail!, limit: 1 });
     let customerId: string | undefined;
     if (customers.data.length > 0) {
       customerId = customers.data[0].id;
@@ -66,7 +83,7 @@ serve(async (req) => {
       price_data: {
         currency: "usd",
         product_data: {
-          name: description || (type === "voucher" ? "Airline Voucher" : "Flight Ticket Deposit"),
+          name: description || (type === "voucher" ? "Airline Voucher" : type === "custom" ? "Your Travel Agent Payment" : "Flight Ticket Deposit"),
         },
         unit_amount: Math.round(amount * 100), // Convert to cents
       },
@@ -76,10 +93,10 @@ serve(async (req) => {
     // Build metadata for tracking
     const metadata: Record<string, string> = {
       type,
-      user_id: user.id,
-      user_email: user.email,
+      user_email: userEmail!,
     };
 
+    if (userId) metadata.user_id = userId;
     if (voucherId) metadata.voucher_id = voucherId;
     if (ticketRequestId) metadata.ticket_request_id = ticketRequestId;
 
@@ -88,11 +105,11 @@ serve(async (req) => {
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      customer_email: customerId ? undefined : user.email,
+      customer_email: customerId ? undefined : userEmail,
       line_items: [lineItem],
       mode: "payment",
       success_url: `${origin}/dashboard?stripe_success=true&type=${type}`,
-      cancel_url: `${origin}/checkout/voucher/${voucherId || ""}?stripe_canceled=true`,
+      cancel_url: `${origin}/dashboard?stripe_canceled=true`,
       metadata,
       payment_intent_data: {
         metadata,

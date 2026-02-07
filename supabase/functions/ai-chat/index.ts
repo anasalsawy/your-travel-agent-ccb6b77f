@@ -236,9 +236,11 @@ When a customer wants to pay by card, use the create_stripe_payment tool!
 - For vouchers: create_stripe_payment with type="voucher" and voucher_id
 - For ticket deposits: create_stripe_payment with type="ticket_deposit" and ticket_request_id
 - For ticket balances: create_stripe_payment with type="ticket_balance" and ticket_request_id
+- For ANY custom amount: create_stripe_payment with type="custom", amount, description, and customer_email
+  Example: Boss says "send a $750 link to john@email.com for his LAX-JFK deposit"
+  → create_stripe_payment(type="custom", amount=750, description="LAX to JFK Flight Deposit", customer_email="john@email.com")
 
-This sends them a secure Stripe payment link - they click, pay, done!
-Example: "Want me to send you a secure card payment link? Just takes a sec."
+This sends them a secure Stripe payment link AND emails it to them - they click, pay, done!
 
 PAYMENT SCRIPT EXAMPLE:
 "For payment, I can send you a secure card payment link, or if you prefer Zelle, send to payments@yourtravelagent.com. What works best?"
@@ -1874,20 +1876,20 @@ const TOOLS: any[] = [
     type: "function",
     function: {
       name: "create_stripe_payment",
-      description: "Create a secure Stripe payment link for vouchers or ticket request deposits. Use this when a customer wants to pay by credit/debit card. Returns a payment URL to send to the customer.",
+      description: "Create a secure Stripe payment link. Use for vouchers, ticket deposits, ticket balances, or ANY custom payment. Returns a payment URL to send to the customer. When the boss asks 'send a payment link for $X', use type='custom'.",
       parameters: {
         type: "object",
         properties: {
           type: { 
             type: "string", 
-            enum: ["voucher", "ticket_deposit", "ticket_balance"], 
-            description: "Type of payment: voucher purchase, ticket deposit, or ticket balance" 
+            enum: ["voucher", "ticket_deposit", "ticket_balance", "custom"], 
+            description: "Type of payment: voucher purchase, ticket deposit, ticket balance, or custom (any arbitrary amount/reason)" 
           },
           voucher_id: { type: "string", description: "Voucher ID (required for voucher payments)" },
           ticket_request_id: { type: "string", description: "Ticket request ID (required for ticket payments)" },
-          amount: { type: "number", description: "Payment amount in USD (required for ticket payments)" },
-          customer_email: { type: "string", description: "Customer email for receipt" },
-          description: { type: "string", description: "Description of what they're paying for" }
+          amount: { type: "number", description: "Payment amount in USD (required for ticket and custom payments)" },
+          customer_email: { type: "string", description: "Customer email for receipt and payment link delivery" },
+          description: { type: "string", description: "Description of what they're paying for (e.g., 'NYC to Miami First Class Deposit')" }
         },
         required: ["type"],
         additionalProperties: false
@@ -3222,12 +3224,21 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
 
             if (args.type === "ticket_deposit") {
               amount = args.amount || Math.round((ticket.quoted_price || 0) * 0.5);
-              description = `Deposit: ${ticket.origin} → ${ticket.destination} flight`;
+              description = description || `Deposit: ${ticket.origin} → ${ticket.destination} flight`;
             } else {
               amount = args.amount || ticket.balance_amount || ((ticket.quoted_price || 0) * 0.5);
-              description = `Balance: ${ticket.origin} → ${ticket.destination} flight`;
+              description = description || `Balance: ${ticket.origin} → ${ticket.destination} flight`;
             }
             metadata = { ticket_request_id: ticket.id, payment_type: args.type };
+          }
+
+          // Handle custom payments (any arbitrary amount + description)
+          if (args.type === "custom") {
+            if (!amount || amount <= 0) {
+              return JSON.stringify({ success: false, message: "I need the payment amount. How much should I charge?" });
+            }
+            description = description || "Your Travel Agent Payment";
+            metadata = { payment_type: "custom" };
           }
 
           if (!amount || amount <= 0) {
@@ -3257,11 +3268,12 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           if (result.url) {
             await supabase.from("notification_log").insert({
               event_type: "stripe_checkout_created",
-              record_id: args.voucher_id || args.ticket_request_id,
-              payload: { type: args.type, amount, description, checkout_url: result.url },
+              record_id: args.voucher_id || args.ticket_request_id || "custom",
+              payload: { type: args.type, amount, description, checkout_url: result.url, customer_email: args.customer_email },
               status: "success"
             });
 
+            // Send payment link via email if customer email is provided
             if (args.customer_email) {
               const resendApiKey = Deno.env.get("RESEND_API_KEY");
               if (resendApiKey) {
@@ -3273,12 +3285,29 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
                       from: "Maya at Your Travel Agent <no-reply@your-travel-agent.net>",
                       to: [args.customer_email],
                       subject: `Complete Your Payment - $${amount}`,
-                      html: `<div style="font-family: Arial; max-width: 600px; margin: 0 auto;"><div style="background: #1e3a5f; padding: 20px; border-radius: 8px 8px 0 0;"><h1 style="color: white; margin: 0;">Your Travel Agent</h1></div><div style="background: #f8f9fa; padding: 20px;"><h2>Complete Your Payment</h2><p><strong>Amount:</strong> $${amount}</p><p><strong>For:</strong> ${description}</p><div style="text-align: center; margin: 30px 0;"><a href="${result.url}" style="background: #d4af37; color: #1e3a5f; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">Pay Now</a></div></div></div>`,
+                      html: `<div style="font-family: Arial; max-width: 600px; margin: 0 auto;">
+                        <div style="background: #1e3a5f; padding: 20px; border-radius: 8px 8px 0 0;">
+                          <h1 style="color: white; margin: 0;">Your Travel Agent</h1>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 20px;">
+                          <h2>Complete Your Payment</h2>
+                          <p><strong>Amount:</strong> $${amount}</p>
+                          <p><strong>For:</strong> ${description}</p>
+                          <div style="text-align: center; margin: 30px 0;">
+                            <a href="${result.url}" style="background: #d4af37; color: #1e3a5f; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">Pay Now - $${amount}</a>
+                          </div>
+                          <p style="text-align: center; color: #666; font-size: 12px;">This link is valid for 24 hours. Secure payment powered by Stripe.</p>
+                        </div>
+                      </div>`,
                     }),
                   });
+                  console.log("Payment email sent to:", args.customer_email);
                 } catch (e) { console.log("Email failed but link created:", e); }
               }
             }
+
+            // Notify boss via WhatsApp
+            await notifyBoss("payment", `💳 Payment link created: $${amount} for "${description}"${args.customer_email ? ` → sent to ${args.customer_email}` : ''}\n\nLink: ${result.url}`);
 
             return JSON.stringify({
               success: true,
@@ -3286,10 +3315,11 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
               amount,
               description,
               message: args.customer_email 
-                ? `Sent a secure payment link to ${args.customer_email} for $${amount}!`
+                ? `Payment link for $${amount} sent to ${args.customer_email}! They'll get an email with a secure pay button.`
                 : `Here's the payment link for $${amount}: ${result.url}`
             });
           } else {
+            console.error("Stripe checkout failed:", result);
             return JSON.stringify({ success: false, message: "Couldn't create payment link. Try Zelle or PayPal?" });
           }
         } catch (stripeError) {
