@@ -68,7 +68,7 @@ export default function Promo() {
           </p>
 
           <p className="text-base text-muted-foreground mb-10 max-w-2xl mx-auto animate-slide-up" style={{ animationDelay: "0.3s" }}>
-            We leverage exclusive travel credits and wholesale inventory to get you flights at prices you won't find anywhere else.
+            We work directly with airlines and use exclusive deals to get you flights at prices you won't find anywhere else.
           </p>
 
           {/* CTA */}
