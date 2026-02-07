@@ -400,7 +400,7 @@ const Index = () => {
             <div className="container mx-auto px-4">
               <div className="max-w-4xl mx-auto text-center">
                 <h1 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold text-foreground mb-4">
-                  Save <span className="text-success">50%+ Off</span> Market Prices
+                  Fly for Less with <span className="text-success">Verified Vouchers</span>
                 </h1>
                 <p className="text-lg text-muted-foreground mb-6 max-w-2xl mx-auto">
                   Verified airline vouchers and discounted flight tickets. Lowest prices guaranteed — find a better deal anywhere and we'll beat it.
@@ -410,7 +410,7 @@ const Index = () => {
                 <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
                   <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20">
                     <Shield className="w-4 h-4 text-success" />
-                    <span className="font-bold text-success">50%+ Below Market</span>
+                    <span className="font-bold text-success">Verified & Trusted</span>
                   </div>
                   <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
                     <CheckCircle className="w-4 h-4 text-primary" />
@@ -456,7 +456,7 @@ const Index = () => {
               <div className="text-center mb-10">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20 mb-4">
                   <Ticket className="w-4 h-4 text-success" />
-                  <span className="text-sm font-bold text-success">LESS THAN 50% OF MARKET PRICES</span>
+                  <span className="text-sm font-bold text-success">DEEPLY DISCOUNTED TRAVEL CREDITS</span>
                 </div>
                 <h2 className="text-2xl md:text-3xl font-display font-bold mb-2">
                   Airline Vouchers at Unbeatable Prices
