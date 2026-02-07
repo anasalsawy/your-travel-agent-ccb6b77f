@@ -245,7 +245,7 @@ export default function VoucherDetailPage() {
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <CreditCard className="w-4 h-4 text-accent" />
-                    <span>Card or Bitcoin Payment</span>
+                    <span>Multiple Payment Options</span>
                   </div>
                 </div>
 
