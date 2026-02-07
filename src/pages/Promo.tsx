@@ -31,9 +31,6 @@ export default function Promo() {
               <span className="font-display font-bold text-lg">Your Travel Agent</span>
             </Link>
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/vouchers">Vouchers</Link>
-              </Button>
               <Button variant="outline" size="sm" asChild>
                 <Link to="/request-ticket">Request a Quote</Link>
               </Button>
@@ -84,8 +81,8 @@ export default function Promo() {
               </Link>
             </Button>
             <Button variant="heroOutline" size="xl" asChild>
-              <Link to="/vouchers">
-                Browse Vouchers
+              <Link to="/">
+                Chat with Maya
               </Link>
             </Button>
           </div>
