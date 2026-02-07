@@ -32,6 +32,12 @@ const TEMPLATES = [
     description: "Personal note from Maya with purple AI branding",
     icon: "💜",
   },
+  {
+    id: "lowest_price_ad",
+    name: "Lowest Price Ad",
+    description: "Price-beat guarantee with popular routes, slashed prices & payment methods",
+    icon: "🏷️",
+  },
 ];
 
 export function TemplateSelector({ selected, onSelect }: TemplateSelectorProps) {
