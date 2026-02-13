@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, Plane, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User, ArrowRight, Ticket, CheckCircle } from "lucide-react";
+import { Send, Loader2, Plane, Car, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User, ArrowRight, Ticket, CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -423,7 +423,7 @@ const Index = () => {
                 </div>
 
                 {/* CTA Buttons */}
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
                   <Button 
                     size="lg" 
                     asChild
@@ -442,7 +442,18 @@ const Index = () => {
                   >
                     <Link to="/request-ticket">
                       <Plane className="w-5 h-5 mr-2" />
-                      Request a Quote
+                      Request a Flight
+                    </Link>
+                  </Button>
+                  <Button 
+                    size="lg" 
+                    variant="outline"
+                    asChild
+                    className="rounded-full px-8"
+                  >
+                    <Link to="/car-rental">
+                      <Car className="w-5 h-5 mr-2" />
+                      Rent a Car
                     </Link>
                   </Button>
                 </div>
