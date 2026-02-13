@@ -434,6 +434,90 @@ export type Database = {
           },
         ]
       }
+      car_rental_requests: {
+        Row: {
+          admin_notes: string | null
+          budget: number | null
+          car_type: string | null
+          contact_email: string
+          contact_phone: string | null
+          created_at: string | null
+          drivers_age: number | null
+          dropoff_date: string
+          dropoff_location: string | null
+          dropoff_time: string | null
+          id: string
+          needs_child_seat: boolean | null
+          needs_gps: boolean | null
+          needs_insurance: boolean | null
+          num_drivers: number | null
+          pickup_date: string
+          pickup_location: string
+          pickup_time: string | null
+          quoted_price: number | null
+          rental_company: string | null
+          special_notes: string | null
+          status: string
+          transmission: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          admin_notes?: string | null
+          budget?: number | null
+          car_type?: string | null
+          contact_email: string
+          contact_phone?: string | null
+          created_at?: string | null
+          drivers_age?: number | null
+          dropoff_date: string
+          dropoff_location?: string | null
+          dropoff_time?: string | null
+          id?: string
+          needs_child_seat?: boolean | null
+          needs_gps?: boolean | null
+          needs_insurance?: boolean | null
+          num_drivers?: number | null
+          pickup_date: string
+          pickup_location: string
+          pickup_time?: string | null
+          quoted_price?: number | null
+          rental_company?: string | null
+          special_notes?: string | null
+          status?: string
+          transmission?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          admin_notes?: string | null
+          budget?: number | null
+          car_type?: string | null
+          contact_email?: string
+          contact_phone?: string | null
+          created_at?: string | null
+          drivers_age?: number | null
+          dropoff_date?: string
+          dropoff_location?: string | null
+          dropoff_time?: string | null
+          id?: string
+          needs_child_seat?: boolean | null
+          needs_gps?: boolean | null
+          needs_insurance?: boolean | null
+          num_drivers?: number | null
+          pickup_date?: string
+          pickup_location?: string
+          pickup_time?: string | null
+          quoted_price?: number | null
+          rental_company?: string | null
+          special_notes?: string | null
+          status?: string
+          transmission?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       document_chunks: {
         Row: {
           chunk_index: number
