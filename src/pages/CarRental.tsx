@@ -14,7 +14,7 @@ import { format } from "date-fns";
 import {
   CalendarIcon, Car, Loader2, Check, HelpCircle, MapPin, Clock,
   Shield, DollarSign, Zap, Search, FileText, CreditCard,
-  Fuel, Award, Baby, Navigation, ShieldCheck, Users
+  Baby, Navigation, ShieldCheck, Users
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -36,16 +36,13 @@ export default function CarRentalPage() {
   const [dropoffDate, setDropoffDate] = useState<Date>();
   const [pickupTime, setPickupTime] = useState("10:00");
   const [dropoffTime, setDropoffTime] = useState("10:00");
-  const [carType, setCarType] = useState("economy");
-  const [transmission, setTransmission] = useState("automatic");
-  const [rentalCompany, setRentalCompany] = useState("");
+  const [carClass, setCarClass] = useState("economy");
+  const [carSize, setCarSize] = useState("midsize");
   const [driversAge, setDriversAge] = useState("25");
   const [numDrivers, setNumDrivers] = useState("1");
   const [needsInsurance, setNeedsInsurance] = useState(false);
   const [needsGps, setNeedsGps] = useState(false);
   const [needsChildSeat, setNeedsChildSeat] = useState(false);
-  const [fuelPolicy, setFuelPolicy] = useState("full-to-full");
-  const [loyaltyProgram, setLoyaltyProgram] = useState("");
   const [budget, setBudget] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -76,12 +73,6 @@ export default function CarRentalPage() {
     setLoading(true);
 
     try {
-      const notesWithExtras = [
-        specialNotes,
-        fuelPolicy !== "full-to-full" ? `Fuel policy: ${fuelPolicy}` : "",
-        loyaltyProgram ? `Loyalty program: ${loyaltyProgram}` : "",
-      ].filter(Boolean).join("\n");
-
       const { error } = await supabase.from("car_rental_requests").insert({
         user_id: user.id,
         pickup_location: pickupLocation,
@@ -90,9 +81,7 @@ export default function CarRentalPage() {
         dropoff_date: format(dropoffDate, "yyyy-MM-dd"),
         pickup_time: pickupTime,
         dropoff_time: dropoffTime,
-        car_type: carType,
-        transmission,
-        rental_company: rentalCompany || null,
+        car_type: `${carClass} / ${carSize}`,
         drivers_age: parseInt(driversAge),
         num_drivers: parseInt(numDrivers),
         needs_insurance: needsInsurance,
@@ -101,7 +90,7 @@ export default function CarRentalPage() {
         budget: budget ? parseFloat(budget) : null,
         contact_email: contactEmail,
         contact_phone: contactPhone || null,
-        special_notes: notesWithExtras || null,
+        special_notes: specialNotes || null,
       });
 
       if (error) throw error;
@@ -307,63 +296,27 @@ export default function CarRentalPage() {
                 <p className="text-sm text-muted-foreground mb-4">What kind of car are you looking for?</p>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label>Car Type</Label>
-                    <Select value={carType} onValueChange={setCarType}>
+                    <Label>Car Class</Label>
+                    <Select value={carClass} onValueChange={setCarClass}>
                       <SelectTrigger className="bg-card border-border"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="economy">🚗 Economy</SelectItem>
-                        <SelectItem value="compact">🚙 Compact</SelectItem>
-                        <SelectItem value="midsize">🚘 Midsize</SelectItem>
-                        <SelectItem value="full-size">🚗 Full Size</SelectItem>
-                        <SelectItem value="suv">🚙 SUV</SelectItem>
-                        <SelectItem value="minivan">🚐 Minivan</SelectItem>
-                        <SelectItem value="luxury">✨ Luxury</SelectItem>
-                        <SelectItem value="convertible">🏎️ Convertible</SelectItem>
-                        <SelectItem value="pickup-truck">🛻 Pickup Truck</SelectItem>
-                        <SelectItem value="electric">⚡ Electric / Hybrid</SelectItem>
+                        <SelectItem value="standard">🚘 Standard</SelectItem>
+                        <SelectItem value="premium">✨ Premium</SelectItem>
+                        <SelectItem value="luxury">👑 Luxury</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Transmission</Label>
-                    <Select value={transmission} onValueChange={setTransmission}>
+                    <Label>Car Size</Label>
+                    <Select value={carSize} onValueChange={setCarSize}>
                       <SelectTrigger className="bg-card border-border"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="automatic">Automatic</SelectItem>
-                        <SelectItem value="manual">Manual</SelectItem>
-                        <SelectItem value="no-preference">No Preference</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Preferred Rental Company</Label>
-                    <Select value={rentalCompany} onValueChange={setRentalCompany}>
-                      <SelectTrigger className="bg-card border-border"><SelectValue placeholder="Any company" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">Any Company</SelectItem>
-                        <SelectItem value="enterprise">Enterprise</SelectItem>
-                        <SelectItem value="hertz">Hertz</SelectItem>
-                        <SelectItem value="avis">Avis</SelectItem>
-                        <SelectItem value="budget">Budget</SelectItem>
-                        <SelectItem value="national">National</SelectItem>
-                        <SelectItem value="alamo">Alamo</SelectItem>
-                        <SelectItem value="dollar">Dollar</SelectItem>
-                        <SelectItem value="thrifty">Thrifty</SelectItem>
-                        <SelectItem value="sixt">Sixt</SelectItem>
-                        <SelectItem value="turo">Turo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Fuel Policy</Label>
-                    <Select value={fuelPolicy} onValueChange={setFuelPolicy}>
-                      <SelectTrigger className="bg-card border-border">
-                        <Fuel className="w-4 h-4 mr-2" /><SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="full-to-full">Full to Full</SelectItem>
-                        <SelectItem value="prepaid">Prepaid Fuel</SelectItem>
-                        <SelectItem value="no-preference">No Preference</SelectItem>
+                        <SelectItem value="compact">🚗 Compact</SelectItem>
+                        <SelectItem value="midsize">🚙 Midsize</SelectItem>
+                        <SelectItem value="full-size">🚘 Full Size</SelectItem>
+                        <SelectItem value="suv">🛻 SUV</SelectItem>
+                        <SelectItem value="minivan">🚐 Minivan</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -397,13 +350,6 @@ export default function CarRentalPage() {
                         <SelectItem value="3">3 Drivers (+additional driver fee)</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="loyalty">Loyalty / Rewards Program #</Label>
-                    <div className="relative">
-                      <Award className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input id="loyalty" placeholder="e.g., Hertz Gold #12345" value={loyaltyProgram} onChange={(e) => setLoyaltyProgram(e.target.value)} className="bg-card border-border pl-10" />
-                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="budget">Budget per Day (USD)</Label>
