@@ -10,6 +10,8 @@ import { VoiceButton } from "@/components/chat/VoiceButton";
 import { supabase } from "@/integrations/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import logo from "@/assets/logo-black-gold-shield.png";
+import carRentalSuv from "@/assets/car-rental-suv.jpg";
+import carRentalSedan from "@/assets/car-rental-sedan.jpg";
 
 type Message = {
   role: "user" | "assistant";
@@ -525,8 +527,73 @@ const Index = () => {
             </div>
           </section>
 
+          {/* Car Rental Section */}
+          <section className="py-16 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-b from-background via-accent/5 to-background" />
+            <div className="container mx-auto px-4 relative z-10">
+              <div className="max-w-5xl mx-auto">
+                <div className="grid lg:grid-cols-2 gap-8 items-center">
+                  {/* Left: Images */}
+                  <div className="relative">
+                    <img 
+                      src={carRentalSuv} 
+                      alt="Premium SUV rental" 
+                      className="rounded-2xl shadow-2xl w-full object-cover h-[280px]" 
+                    />
+                    <img 
+                      src={carRentalSedan} 
+                      alt="Luxury sedan rental" 
+                      className="absolute -bottom-6 -right-4 w-40 h-40 rounded-xl shadow-xl object-cover border-4 border-background hidden md:block" 
+                    />
+                  </div>
+
+                  {/* Right: Content */}
+                  <div>
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 border border-accent/20 mb-4">
+                      <Car className="w-4 h-4 text-accent" />
+                      <span className="text-sm font-bold text-accent">CAR RENTAL SERVICE</span>
+                    </div>
+                    <h2 className="text-2xl md:text-3xl font-display font-bold mb-4">
+                      Need a Car? We've Got You Covered.
+                    </h2>
+                    <p className="text-muted-foreground mb-6">
+                      From compact city cars to luxury SUVs — tell us what you need and we'll find the best rental deal for you. No hidden fees, best price guaranteed.
+                    </p>
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Shield className="w-4 h-4 text-success flex-shrink-0" />
+                        <span className="text-muted-foreground">Best Price Guarantee</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Zap className="w-4 h-4 text-accent flex-shrink-0" />
+                        <span className="text-muted-foreground">Quote in 24 Hours</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <CheckCircle className="w-4 h-4 text-primary flex-shrink-0" />
+                        <span className="text-muted-foreground">Free Cancellation</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Car className="w-4 h-4 text-primary flex-shrink-0" />
+                        <span className="text-muted-foreground">All Car Types</span>
+                      </div>
+                    </div>
+
+                    <Button size="lg" asChild className="rounded-full px-8">
+                      <Link to="/car-rental">
+                        <Car className="w-5 h-5 mr-2" />
+                        Request a Car Rental
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* Request a Ticket Section */}
-          <section className="py-16">
+          <section className="py-16 bg-muted/30">
             <div className="container mx-auto px-4">
               <div className="max-w-3xl mx-auto text-center">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-4">

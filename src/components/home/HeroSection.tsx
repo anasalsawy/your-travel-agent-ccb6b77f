@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Ticket, Plane } from "lucide-react";
+import { ArrowRight, Ticket, Plane, Car } from "lucide-react";
 
 export function HeroSection() {
   return (
@@ -26,12 +26,12 @@ export function HeroSection() {
 
           {/* Subheading */}
           <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            We help you save on flights with verified travel credits and expert ticket booking. 
-            Tell us where you want to go — we handle the rest.
+            Flights, car rentals, and travel credits — all at unbeatable prices. 
+            Tell us what you need and we handle the rest.
           </p>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-slide-up" style={{ animationDelay: '0.4s' }}>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-slide-up flex-wrap" style={{ animationDelay: '0.4s' }}>
             <Button variant="hero" size="xl" asChild>
               <Link to="/vouchers">
                 <Ticket className="w-5 h-5" />
@@ -42,7 +42,13 @@ export function HeroSection() {
             <Button variant="heroOutline" size="xl" asChild>
               <Link to="/request-ticket">
                 <Plane className="w-5 h-5" />
-                Request a Ticket
+                Request a Flight
+              </Link>
+            </Button>
+            <Button variant="heroOutline" size="xl" asChild>
+              <Link to="/car-rental">
+                <Car className="w-5 h-5" />
+                Rent a Car
               </Link>
             </Button>
           </div>
