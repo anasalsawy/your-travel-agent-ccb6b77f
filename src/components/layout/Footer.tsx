@@ -30,11 +30,13 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link
-                  to="/request-ticket"
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                >
-                  Request a Ticket
+                <Link to="/request-ticket" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  Request a Flight
+                </Link>
+              </li>
+              <li>
+                <Link to="/car-rental" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  Car Rental
                 </Link>
               </li>
               <li>
