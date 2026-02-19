@@ -1031,6 +1031,44 @@ Could not find market prices for this route.
       }
     }
 
+    // ═══════════════════════════════════════════════════════
+    // 🛡️ GUARDIAN CHECK - Analyze message for relationship/abuse concerns
+    // ═══════════════════════════════════════════════════════
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    let guardianIntervened = false;
+    let guardianResponse = "";
+    
+    if (OPENAI_API_KEY) {
+      try {
+        const guardianFetch = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-guardian`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            From: fromNumber,
+            Body: messageBody,
+            ProfileName: fromNumber.replace("whatsapp:", ""),
+          }),
+        });
+        
+        if (guardianFetch.ok) {
+          const guardianXml = await guardianFetch.text();
+          // Check if Guardian actually responded (not empty Response)
+          const messageMatch = guardianXml.match(/<Message>([\s\S]*?)<\/Message>/);
+          if (messageMatch && messageMatch[1].trim()) {
+            guardianIntervened = true;
+            guardianResponse = messageMatch[1].trim();
+            console.log("[WhatsApp Maya] 🛡️ Guardian intervened:", guardianResponse.substring(0, 100));
+          } else {
+            console.log("[WhatsApp Maya] 🛡️ Guardian: all clear");
+          }
+        }
+      } catch (guardianError) {
+        console.log("[WhatsApp Maya] Guardian check failed (non-blocking):", guardianError);
+      }
+    }
+
     // Call Claude AI with customer context + price research context
     const fullSystemPrompt = SYSTEM_PROMPT + customerContextPrompt + priceResearchContext;
     
@@ -1108,6 +1146,16 @@ Could not find market prices for this route.
     assistantResponse = assistantResponse
       .replace(/\*\*/g, '*')
       .substring(0, 1500);
+
+    // If Guardian intervened, prepend its message
+    if (guardianIntervened && guardianResponse) {
+      const cleanGuardian = guardianResponse
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+        .substring(0, 500);
+      assistantResponse = `${cleanGuardian}\n\n---\n\n${assistantResponse}`;
+      // Trim total to 1500
+      assistantResponse = assistantResponse.substring(0, 1500);
+    }
 
     console.log("[WhatsApp Maya] Final response:", assistantResponse.substring(0, 200));
 
