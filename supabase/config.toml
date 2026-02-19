@@ -110,3 +110,6 @@ verify_jwt = false
 
 [functions.send-promo-email]
 verify_jwt = false
+
+[functions.whatsapp-guardian]
+verify_jwt = false
