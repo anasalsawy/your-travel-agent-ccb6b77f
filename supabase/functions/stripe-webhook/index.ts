@@ -72,7 +72,6 @@ serve(async (req) => {
       const userEmail = metadata.user_email;
 
       if (type === "voucher" && voucherId) {
-        // Create order for voucher purchase
         const { data: order, error: orderError } = await supabase
           .from("orders")
           .insert({
@@ -95,7 +94,6 @@ serve(async (req) => {
 
         logStep("Order created", { orderId: order.id });
 
-        // Update voucher status
         await supabase
           .from("vouchers")
           .update({ status: "sold" })
@@ -104,7 +102,6 @@ serve(async (req) => {
         logStep("Voucher marked as sold");
 
       } else if (type === "ticket_deposit" && ticketRequestId) {
-        // Update ticket request with payment info
         const amountPaid = (session.amount_total || 0) / 100;
         
         const { error: updateError } = await supabase
@@ -124,6 +121,104 @@ serve(async (req) => {
         }
 
         logStep("Ticket request updated", { ticketRequestId });
+      }
+
+    } else if (event.type === "charge.refunded") {
+      const charge = event.data.object as Stripe.Charge;
+      const paymentIntentId = charge.payment_intent as string;
+      logStep("Charge refunded", { chargeId: charge.id, paymentIntentId });
+
+      // Find order by stripe_session_id via the payment intent's session
+      // Or find by matching amount and recent orders
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("id, stripe_session_id")
+        .eq("payment_method", "stripe")
+        .eq("payment_status", "completed")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (orders) {
+        for (const order of orders) {
+          if (order.stripe_session_id) {
+            // Check if this session's payment intent matches
+            try {
+              const session = await stripe.checkout.sessions.retrieve(order.stripe_session_id);
+              if (session.payment_intent === paymentIntentId) {
+                await supabase
+                  .from("orders")
+                  .update({
+                    payment_status: "failed",
+                    order_status: "cancelled",
+                    admin_notes: `Refunded via Stripe on ${new Date().toISOString()}. Amount: $${(charge.amount_refunded / 100).toFixed(2)}`,
+                  })
+                  .eq("id", order.id);
+                logStep("Order marked as refunded", { orderId: order.id });
+                break;
+              }
+            } catch (e) {
+              logStep("Error checking session", { error: e });
+            }
+          }
+        }
+      }
+
+    } else if (event.type === "charge.dispute.created") {
+      const dispute = event.data.object as Stripe.Dispute;
+      const chargeId = dispute.charge as string;
+      logStep("Dispute created", { disputeId: dispute.id, chargeId });
+
+      // Find the charge to get the payment intent
+      const charge = await stripe.charges.retrieve(chargeId);
+      const paymentIntentId = charge.payment_intent as string;
+
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("id, stripe_session_id")
+        .eq("payment_method", "stripe")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (orders) {
+        for (const order of orders) {
+          if (order.stripe_session_id) {
+            try {
+              const session = await stripe.checkout.sessions.retrieve(order.stripe_session_id);
+              if (session.payment_intent === paymentIntentId) {
+                await supabase
+                  .from("orders")
+                  .update({
+                    admin_notes: `⚠️ DISPUTE opened on ${new Date().toISOString()}. Reason: ${dispute.reason}. Amount: $${(dispute.amount / 100).toFixed(2)}. Respond in Stripe Dashboard.`,
+                  })
+                  .eq("id", order.id);
+                logStep("Order flagged with dispute", { orderId: order.id });
+                break;
+              }
+            } catch (e) {
+              logStep("Error checking session", { error: e });
+            }
+          }
+        }
+      }
+
+    } else if (event.type === "payment_intent.payment_failed") {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      logStep("Payment failed", { 
+        paymentIntentId: paymentIntent.id, 
+        error: paymentIntent.last_payment_error?.message 
+      });
+
+      // Update any matching ticket request
+      const ticketRequestId = paymentIntent.metadata?.ticket_request_id;
+      if (ticketRequestId) {
+        await supabase
+          .from("ticket_requests")
+          .update({
+            payment_status: "failed",
+            admin_notes: `Stripe payment failed: ${paymentIntent.last_payment_error?.message || "Unknown error"}`,
+          })
+          .eq("id", ticketRequestId);
+        logStep("Ticket request marked as failed", { ticketRequestId });
       }
     }
 
