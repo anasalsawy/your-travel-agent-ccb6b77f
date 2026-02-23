@@ -54,15 +54,17 @@ serve(async (req) => {
     // Generate unique conference name
     const conferenceName = `proxy_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     
-    // TwiML webhook URL - we'll use a simple TwiML that joins a conference
-    const twimlUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-twiml?conference=${encodeURIComponent(conferenceName)}`;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+    
+    // TwiML webhook URL - include apikey so Twilio can reach the endpoint
+    const twimlUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-twiml?conference=${encodeURIComponent(conferenceName)}&apikey=${encodeURIComponent(SUPABASE_ANON_KEY || "")}`;
 
     // Initiate the call via Twilio REST API
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`;
     const authString = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
 
     // Status callback for call events
-    const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-status?conference=${encodeURIComponent(conferenceName)}`;
+    const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-status?conference=${encodeURIComponent(conferenceName)}&apikey=${encodeURIComponent(SUPABASE_ANON_KEY || "")}`;
 
     const response = await fetch(twilioUrl, {
       method: "POST",
@@ -109,7 +111,7 @@ serve(async (req) => {
         else if (formattedListener.length === 11 && formattedListener.startsWith("1")) formattedListener = "+" + formattedListener;
       }
 
-      const listenerTwimlUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-listener-twiml?conference=${encodeURIComponent(conferenceName)}`;
+      const listenerTwimlUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-listener-twiml?conference=${encodeURIComponent(conferenceName)}&apikey=${encodeURIComponent(SUPABASE_ANON_KEY || "")}`;
 
       try {
         const listenerRes = await fetch(twilioUrl, {
