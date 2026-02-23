@@ -34,12 +34,12 @@ serve(async (req) => {
 
     const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
     const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
+    const TWILIO_PROXY_NUMBER = Deno.env.get("TWILIO_PROXY_NUMBER");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 
-    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PROXY_NUMBER) {
       return new Response(
-        JSON.stringify({ error: "Twilio not configured" }),
+        JSON.stringify({ error: "Twilio not configured (need TWILIO_PROXY_NUMBER)" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -70,7 +70,7 @@ serve(async (req) => {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        From: TWILIO_PHONE_NUMBER,
+        From: TWILIO_PROXY_NUMBER,
         To: formattedPhone,
         Twiml: targetTwiml,
         Record: "false",
@@ -115,7 +115,7 @@ serve(async (req) => {
             "Content-Type": "application/x-www-form-urlencoded",
           },
           body: new URLSearchParams({
-            From: TWILIO_PHONE_NUMBER,
+            From: TWILIO_PROXY_NUMBER,
             To: formattedListener,
             Twiml: listenerTwiml,
             Record: "false",
