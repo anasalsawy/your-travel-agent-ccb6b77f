@@ -24,7 +24,6 @@ serve(async (req) => {
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="alice">You are now listening. Type on the computer to speak.</Say>
   <Conference 
     startConferenceOnEnter="false"
     endConferenceOnExit="false"

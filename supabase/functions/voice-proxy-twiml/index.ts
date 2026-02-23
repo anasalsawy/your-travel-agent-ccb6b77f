@@ -27,7 +27,6 @@ serve(async (req) => {
   // endConferenceOnExit=true means conference ends when they hang up
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="alice">Please hold, connecting you now.</Say>
   <Conference 
     startConferenceOnEnter="true"
     endConferenceOnExit="true"
