@@ -1,3 +1,2 @@
-phone_number,language,voice_id,first_message,prompt,city,other_dyn_variable
-+12345678900,en,,,,London,
-+48517067931,pl,,,,Warsaw,
+phone_number
++18002527522
