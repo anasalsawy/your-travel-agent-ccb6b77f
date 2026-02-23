@@ -32,7 +32,9 @@ serve(async (req) => {
     startConferenceOnEnter="true"
     endConferenceOnExit="true"
     beep="false"
-    waitUrl=""
+    waitUrl="http://twimlets.com/holdmusic?Bucket=com.twilio.music.soft-rock"
+    waitMethod="GET"
+    maxParticipants="10"
   >${conferenceName}</Conference>
 </Response>`;
 
