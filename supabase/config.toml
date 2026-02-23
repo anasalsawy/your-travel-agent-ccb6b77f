@@ -113,3 +113,18 @@ verify_jwt = false
 
 [functions.whatsapp-guardian]
 verify_jwt = false
+
+[functions.voice-proxy-call]
+verify_jwt = false
+
+[functions.voice-proxy-twiml]
+verify_jwt = false
+
+[functions.voice-proxy-speak]
+verify_jwt = false
+
+[functions.voice-proxy-play]
+verify_jwt = false
+
+[functions.voice-proxy-status]
+verify_jwt = false

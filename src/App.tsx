@@ -22,6 +22,7 @@ import RequestTicket from "./pages/RequestTicket";
 import CarRental from "./pages/CarRental";
 import QuotePreview from "./pages/QuotePreview";
 import Promo from "./pages/Promo";
+import VoiceProxy from "./pages/VoiceProxy";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
           <Route path="/refund-policy" element={<RefundPolicy />} />
           <Route path="/quote-preview" element={<QuotePreview />} />
           <Route path="/promo" element={<Promo />} />
+          <Route path="/voice-proxy" element={<VoiceProxy />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
