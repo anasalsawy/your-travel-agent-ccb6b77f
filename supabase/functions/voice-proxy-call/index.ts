@@ -23,7 +23,7 @@ serve(async (req) => {
   }
 
   try {
-    const { phone_number } = await req.json();
+    const { phone_number, listener_phone } = await req.json();
 
     if (!phone_number) {
       return new Response(
@@ -100,10 +100,49 @@ serve(async (req) => {
 
     console.log("[VoiceProxy] Call initiated:", result.sid, "Conference:", conferenceName);
 
+    // Also call the listener (your phone) into the conference, muted
+    let listenerSid = null;
+    if (listener_phone) {
+      let formattedListener = listener_phone.replace(/[^0-9+]/g, "");
+      if (!formattedListener.startsWith("+")) {
+        if (formattedListener.length === 10) formattedListener = "+1" + formattedListener;
+        else if (formattedListener.length === 11 && formattedListener.startsWith("1")) formattedListener = "+" + formattedListener;
+      }
+
+      const listenerTwimlUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-listener-twiml?conference=${encodeURIComponent(conferenceName)}`;
+
+      try {
+        const listenerRes = await fetch(twilioUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Basic ${authString}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({
+            From: TWILIO_PHONE_NUMBER,
+            To: formattedListener,
+            Url: listenerTwimlUrl,
+            Record: "false",
+          }).toString(),
+        });
+
+        if (listenerRes.ok) {
+          const listenerData = await listenerRes.json();
+          listenerSid = listenerData.sid;
+          console.log("[VoiceProxy] Listener call initiated:", listenerSid);
+        } else {
+          console.error("[VoiceProxy] Failed to call listener:", await listenerRes.text());
+        }
+      } catch (e) {
+        console.error("[VoiceProxy] Listener call error:", e);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         call_sid: result.sid,
+        listener_sid: listenerSid,
         conference_name: conferenceName,
         to: formattedPhone,
         status: result.status || "queued",

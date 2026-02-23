@@ -35,6 +35,7 @@ interface SentMessage {
 
 export default function VoiceProxy() {
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [listenerPhone, setListenerPhone] = useState('');
   const [voiceId, setVoiceId] = useState(VOICES[0].id);
   const [textInput, setTextInput] = useState('');
   const [callState, setCallState] = useState<CallState>({
@@ -100,7 +101,7 @@ export default function VoiceProxy() {
           apikey: SUPABASE_KEY,
           Authorization: `Bearer ${SUPABASE_KEY}`,
         },
-        body: JSON.stringify({ phone_number: phoneNumber }),
+        body: JSON.stringify({ phone_number: phoneNumber, listener_phone: listenerPhone || undefined }),
       });
 
       const data = await res.json();
@@ -201,6 +202,17 @@ export default function VoiceProxy() {
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                 />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Your Phone (to listen in)</label>
+                <Input
+                  type="tel"
+                  placeholder="+1 (555) 987-6543"
+                  value={listenerPhone}
+                  onChange={(e) => setListenerPhone(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Your phone will ring and join muted — you hear them, they don't hear you.</p>
               </div>
 
               <div>
