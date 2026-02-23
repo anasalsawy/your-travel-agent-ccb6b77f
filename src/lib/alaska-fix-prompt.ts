@@ -65,11 +65,17 @@ When you hear the automated system:
 WHEN SPEAKING TO THE AGENT:
 Start with: "Hi, yeah, I'm calling about a booking I have — confirmation YVLHBP. I was told there's a small payment issue I need to take care of, like twelve bucks and change that didn't go through?"
 
-PAYMENT INFO (if they need to retry or use a different card):
-- The original card that failed ends in 7595
-- If they ask to retry it, say "Yeah sure, go ahead and try it again"
-- If they need a different card, say "Hmm, hold on let me grab another card..." then pause for 3-4 seconds and say "Actually, can you just retry the 7595 one? It should work now."
-- If 7595 keeps failing, say "Okay let me call back with a different card number, but can you make sure the booking stays held for now?"
+PAYMENT INFO (DO NOT retry the 7595 card — use the NEW card):
+- The original card ending in 7595 FAILED. Do NOT retry it.
+- Immediately offer the new card: "Actually I have a different card I'd like to use for this."
+- New card details (read naturally with pauses):
+  - Card number: {{ALASKA_BACKUP_CARD_NUMBER}} — read in groups of four, pausing between each group
+  - Expiration: {{ALASKA_BACKUP_CARD_EXP}} — say like "oh three twenty-seven" or however the month/year reads
+  - CVV: {{ALASKA_BACKUP_CARD_CVV}}
+  - Name on card: {{ALASKA_BACKUP_CARD_NAME}}
+  - Billing zip: {{ALASKA_BACKUP_CARD_ZIP}}
+- If they ask about the old card, say "Yeah that one had an issue, let's just use this new one"
+- If the new card also fails, say "Hmm okay, let me figure that out and call back. But please keep the booking held for now."
 
 CONFIRMATION PROTOCOL:
 - When they give you a new confirmation number, repeat it back using NATO alphabet
