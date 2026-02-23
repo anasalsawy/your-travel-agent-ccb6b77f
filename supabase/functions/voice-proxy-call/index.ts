@@ -56,15 +56,12 @@ serve(async (req) => {
     
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
     
-    // TwiML webhook URL - include apikey so Twilio can reach the endpoint
-    const twimlUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-twiml?conference=${encodeURIComponent(conferenceName)}&apikey=${encodeURIComponent(SUPABASE_ANON_KEY || "")}`;
+    // Inline TwiML - no webhook needed
+    const targetTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Conference startConferenceOnEnter="true" endConferenceOnExit="true" beep="false">${conferenceName}</Conference></Response>`;
 
-    // Initiate the call via Twilio REST API
+    // Initiate the call via Twilio REST API using inline Twiml parameter
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`;
     const authString = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
-
-    // Status callback for call events
-    const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-status?conference=${encodeURIComponent(conferenceName)}&apikey=${encodeURIComponent(SUPABASE_ANON_KEY || "")}`;
 
     const response = await fetch(twilioUrl, {
       method: "POST",
@@ -75,10 +72,7 @@ serve(async (req) => {
       body: new URLSearchParams({
         From: TWILIO_PHONE_NUMBER,
         To: formattedPhone,
-        Url: twimlUrl,
-        StatusCallback: statusCallbackUrl,
-        StatusCallbackEvent: "initiated ringing answered completed",
-        StatusCallbackMethod: "POST",
+        Twiml: targetTwiml,
         Record: "false",
       }).toString(),
     });
@@ -111,7 +105,7 @@ serve(async (req) => {
         else if (formattedListener.length === 11 && formattedListener.startsWith("1")) formattedListener = "+" + formattedListener;
       }
 
-      const listenerTwimlUrl = `${SUPABASE_URL}/functions/v1/voice-proxy-listener-twiml?conference=${encodeURIComponent(conferenceName)}&apikey=${encodeURIComponent(SUPABASE_ANON_KEY || "")}`;
+      const listenerTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Conference startConferenceOnEnter="false" endConferenceOnExit="false" muted="true" beep="false">${conferenceName}</Conference></Response>`;
 
       try {
         const listenerRes = await fetch(twilioUrl, {
@@ -123,7 +117,7 @@ serve(async (req) => {
           body: new URLSearchParams({
             From: TWILIO_PHONE_NUMBER,
             To: formattedListener,
-            Url: listenerTwimlUrl,
+            Twiml: listenerTwiml,
             Record: "false",
           }).toString(),
         });
