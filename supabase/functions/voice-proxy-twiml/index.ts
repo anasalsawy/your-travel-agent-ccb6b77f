@@ -27,14 +27,7 @@ serve(async (req) => {
   // endConferenceOnExit=true means conference ends when they hang up
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Conference 
-    startConferenceOnEnter="true"
-    endConferenceOnExit="true"
-    beep="false"
-    waitUrl="http://twimlets.com/holdmusic?Bucket=com.twilio.music.soft-rock"
-    waitMethod="GET"
-    maxParticipants="10"
-  >${conferenceName}</Conference>
+  <Conference startConferenceOnEnter="true" endConferenceOnExit="true" beep="false">${conferenceName}</Conference>
 </Response>`;
 
   return new Response(twiml, {

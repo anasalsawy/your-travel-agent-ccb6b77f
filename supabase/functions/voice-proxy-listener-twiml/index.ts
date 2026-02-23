@@ -24,15 +24,7 @@ serve(async (req) => {
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Conference 
-    startConferenceOnEnter="false"
-    endConferenceOnExit="false"
-    muted="true"
-    beep="false"
-    waitUrl="http://twimlets.com/holdmusic?Bucket=com.twilio.music.soft-rock"
-    waitMethod="GET"
-    maxParticipants="10"
-  >${conferenceName}</Conference>
+  <Conference startConferenceOnEnter="false" endConferenceOnExit="false" muted="true" beep="false">${conferenceName}</Conference>
 </Response>`;
 
   return new Response(twiml, {
