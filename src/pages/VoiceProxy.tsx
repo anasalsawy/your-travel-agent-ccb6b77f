@@ -36,7 +36,7 @@ interface SentMessage {
 export default function VoiceProxy() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [listenerPhone, setListenerPhone] = useState('');
-  const [voiceId, setVoiceId] = useState(VOICES[0].id);
+  const [voiceId, setVoiceId] = useState("TX3LPaxmHKxFdv7VOQHJ");
   const [textInput, setTextInput] = useState('');
   const [callState, setCallState] = useState<CallState>({
     status: 'idle',
