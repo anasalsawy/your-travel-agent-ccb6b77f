@@ -83,8 +83,14 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
   const requestId = data.requestId ? String(data.requestId).substring(0, 8) : "";
   
   switch (type) {
-    // ========== TEST EMAIL ==========
+    // ========== TEST EMAIL / CUSTOM EMAIL ==========
     case "test_email":
+      if (data.customHtml) {
+        return {
+          subject: data.customSubject || "Notification from Your Travel Agent",
+          html: data.customHtml,
+        };
+      }
       return {
         subject: `Test Email - Your Travel Agent`,
         html: `

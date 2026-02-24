@@ -197,6 +197,23 @@ export async function notifyCustomerTicketIssued(
   });
 }
 
+export async function sendCustomQuote(
+  customerEmail: string,
+  data: {
+    subject?: string;
+    html: string;
+  }
+) {
+  return sendNotification({
+    type: "test_email", // We reuse test_email logic but with custom HTML
+    data: {
+      customSubject: data.subject || "Flight Quote - Your Travel Agent",
+      customHtml: data.html,
+    },
+    customerEmail,
+  });
+}
+
 // Ticket Request Payment Notifications
 export async function notifyTicketPaymentProofUploaded(requestData: {
   requestId: string;
