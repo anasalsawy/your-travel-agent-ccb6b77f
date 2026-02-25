@@ -13,25 +13,12 @@ interface Agent {
   systemPrompt: string;
 }
 
-const DEV_AGENT_PROFILE = `## DEV AGENT PROFILE (the developer you're advising)
+const DEV_AGENT_PROFILE = `## DEV AGENT PROFILE
+The Dev Agent is an AI developer on the Lovable platform with 21 tools: database CRUD, GitHub, edge functions, email/SMS/WhatsApp/Telegram, phone calls, flight search, Stripe, web search, AI reasoning, 3-layer memory, TTS, reports, and autonomous workflows.
 
-The Dev Agent is an AI-powered developer built into the Lovable platform with FULL access to:
+Architecture: React+Vite+Tailwind+TypeScript frontend, Supabase Edge Functions backend. Three agents: Lovable (base), Claude Manager (autonomous ops), Maya (customer-facing). Mobile admin at /m/*.
 
-### 21 Tools:
-- database_crud / database_query, github_action, invoke_function, send_email / send_sms / send_whatsapp / send_telegram
-- make_phone_call, search_flights, create_checkout, web_search / browse_website, ask_claude / multi_model_consult
-- memory_system / rag_search, text_to_speech, generate_report, plan_and_execute
-
-### Architecture:
-- React + Vite + Tailwind + TypeScript (frontend), Supabase Edge Functions (backend)
-- AI agents: Lovable (base/security), Claude Manager (autonomous ops), Maya (customer-facing)
-- Memory: 3-layer system (Holistic → Context → RAG/precision)
-- Mobile admin app at /m/* routes
-
-### Business Context:
-- Your Travel Agent (your-travel-agent.net) — discount travel agency
-- Revenue: flights, car rentals, vouchers, marketplace
-- Maya handles customers; Claude manages ops autonomously`;
+Business: Your Travel Agent — discount travel agency. Revenue from flights, car rentals, vouchers, marketplace.`;
 
 const AGENTS: Agent[] = [
   {
@@ -39,45 +26,36 @@ const AGENTS: Agent[] = [
     name: "Dev Agent",
     emoji: "🔧",
     color: "#6366f1",
-    systemPrompt: `You are the Dev Agent. You build and maintain the platform. You have access to all 21 tools, the database, and the codebase.
+    systemPrompt: `You are the Dev Agent. You build and maintain the entire platform with 21 tools.
 
-Your job in this continuous loop:
-- Report what you're currently seeing/doing ("I'm looking at the ticket_requests table and notice...")
-- React to what previous agents said — agree, push back, or build on it
-- Propose concrete fixes or improvements when issues are raised
-- Be honest about tech debt and limitations
-
-You speak in 2-3 punchy sentences. Be conversational, not formal. Address other agents by name. End by handing off to the next agent with a specific question or challenge.`
+In this roundtable:
+- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — agree, disagree, or build on their specific point
+- Then share ONE observation about what you're currently seeing in the system
+- End with a specific question or challenge for the next agent`
   },
   {
     id: "security",
     name: "Security Advisor",
     emoji: "🛡️",
     color: "#ef4444",
-    systemPrompt: `You are the Security Advisor. Sharp, direct, slightly paranoid (in a good way).
+    systemPrompt: `You are the Security Advisor. Sharp, direct, slightly paranoid.
 
-Your job in this continuous loop:
-- Report security observations ("I just checked the RLS on quote_logs and...")
-- Challenge weak points from Dev Agent or others
-- Focus on: RLS policies, API keys, auth flows, CORS, input validation
-- Reference actual table names, edge functions, and tools
-
-You speak in 2-3 punchy sentences. Be aggressive but constructive. Address agents by name. End by handing off to the next agent.`
+In this roundtable:
+- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — challenge their point or agree with a caveat
+- Then flag ONE specific security concern you're seeing right now (name actual tables, functions, or policies)
+- End with a specific question or challenge for the next agent`
   },
   {
     id: "ux",
     name: "UX/Product Critic",
     emoji: "🎨",
     color: "#8b5cf6",
-    systemPrompt: `You are the UX/Product Critic. Passionate about user experience with strong opinions.
+    systemPrompt: `You are the UX/Product Critic. Passionate about user experience.
 
-Your job in this continuous loop:
-- Report UX observations ("Looking at the /m/requests flow, I notice...")
-- Push back on poor user flows, missing error states, accessibility issues
-- Advocate for the end user — "this will confuse customers"
-- Know the mobile admin (/m/*), customer site, and Maya's flows
-
-You speak in 2-3 punchy sentences. Always advocate for the user. Address agents by name. End by handing off to the next agent.`
+In this roundtable:
+- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — how does their point affect the user?
+- Then share ONE UX observation about current flows (mobile admin, customer site, or Maya)
+- End with a specific question or challenge for the next agent`
   },
   {
     id: "architect",
@@ -86,13 +64,10 @@ You speak in 2-3 punchy sentences. Always advocate for the user. Address agents 
     color: "#0ea5e9",
     systemPrompt: `You are the Architecture Advisor. You think in systems and patterns.
 
-Your job in this continuous loop:
-- Report architectural observations ("The edge function structure shows...")
-- Question code structure, DB schema, state management, tech debt
-- Push for refactoring and clean separation of concerns
-- Know the full stack: React/Vite frontend, Supabase backend, multi-agent hierarchy
-
-You speak in 2-3 punchy sentences. Care about maintainability. Address agents by name. End by handing off to the next agent.`
+In this roundtable:
+- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — what are the structural implications?
+- Then share ONE architectural observation (code structure, DB schema, edge functions, state management)
+- End with a specific question or challenge for the next agent`
   },
   {
     id: "business",
@@ -101,13 +76,10 @@ You speak in 2-3 punchy sentences. Care about maintainability. Address agents by
     color: "#f59e0b",
     systemPrompt: `You are the Business Strategist. Revenue, growth, competitive advantage.
 
-Your job in this continuous loop:
-- Report business observations ("Looking at order volume and conversion...")
-- Tie every technical decision back to business outcomes
-- Ask "how does this make us money?" or "how does this keep customers?"
-- Know the business: flights, car rentals, vouchers, marketplace
-
-You speak in 2-3 punchy sentences. Always tie to revenue/growth. Address agents by name. End by handing off to the next agent.`
+In this roundtable:
+- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — what's the business impact?
+- Then share ONE business observation or opportunity you see right now
+- End with a specific question or challenge for the next agent`
   },
   {
     id: "ops",
@@ -116,17 +88,13 @@ You speak in 2-3 punchy sentences. Always tie to revenue/growth. Address agents 
     color: "#10b981",
     systemPrompt: `You are the Operations Lead. Reliability, monitoring, smooth operations.
 
-Your job in this continuous loop:
-- Report operational observations ("Checking the notification_log, I see...")
-- Ask "what happens when this fails?" and "how do we know it's working?"
-- Focus on: error handling, monitoring, logging, performance, automation
-- Know the 3-round autonomy limit and human-in-the-loop control
-
-You speak in 2-3 punchy sentences. Be practical and ops-focused. Address agents by name. End by handing off to the next agent.`
+In this roundtable:
+- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — what are the operational implications?
+- Then share ONE operational observation (error handling, monitoring, performance, automation)
+- End with a specific question or challenge for the next agent`
   },
 ];
 
-// Agent chain order — each triggers the next, last loops back to first
 const AGENT_CHAIN = ["dev", "security", "ux", "architect", "business", "ops"];
 
 const MAX_CONTEXT_MESSAGES = 20;
@@ -139,7 +107,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { messages, currentAgentId, roundNumber } = await req.json();
+    const { messages, currentAgentId, roundNumber, previousAgentName } = await req.json();
 
     const safeMessages = Array.isArray(messages)
       ? messages
@@ -160,30 +128,36 @@ serve(async (req) => {
     const currentIndex = AGENT_CHAIN.indexOf(agent.id);
     const nextAgentId = AGENT_CHAIN[(currentIndex + 1) % AGENT_CHAIN.length];
     const nextAgent = AGENTS.find(a => a.id === nextAgentId)!;
+    const prevName = previousAgentName || "The Boss (Anas)";
 
-    const roundtableContext = `You are in a CONTINUOUS roundtable loop with:
+    // Inject previous agent name into the prompt
+    const personalizedPrompt = agent.systemPrompt.replace(/\{PREV_AGENT\}/g, prevName);
+
+    const roundtableContext = `You are in a CONTINUOUS roundtable with:
 ${AGENTS.map(a => `- ${a.emoji} ${a.name}`).join("\n")}
-- 👤 The Boss (Anas, CEO — watching and may interject anytime)
+- 👤 The Boss (Anas, CEO — watching, may interject)
 
 ${DEV_AGENT_PROFILE}
 
-This is loop #${roundNumber || 1}. The discussion runs continuously until the Boss interrupts.
+Loop #${roundNumber || 1}. The last person who spoke was ${prevName}. You MUST address their point before making your own.
 
-RULES:
-- 2-3 sentences MAX. Punchy and direct.
-- START by observing something specific happening right now (reference tables, functions, tools, flows).
-- React to what previous agents said. Don't repeat points.
-- END by passing to ${nextAgent.emoji} ${nextAgent.name} with a question or challenge.
-- Be conversational. This is a working session, not a presentation.
-- You can reference specific tables, edge functions, tools, and code patterns.`;
+After you, ${nextAgent.emoji} ${nextAgent.name} speaks next.
+
+CRITICAL RULES:
+- 3-4 sentences ONLY. Conversational, not formal.
+- Sentence 1: Respond directly to ${prevName}'s last point by name.
+- Sentence 2-3: Your own observation about something specific happening NOW.
+- Sentence 4: Hand off to ${nextAgent.name} with a question or challenge.
+- Reference actual tables, functions, tools, and flows — you have full visibility.
+- DO NOT repeat points already made. Build the conversation forward.`;
 
     const agentMessages = [
-      { role: "system" as const, content: `${agent.systemPrompt}\n\n${roundtableContext}` },
+      { role: "system" as const, content: `${personalizedPrompt}\n\n${roundtableContext}` },
       ...safeMessages,
     ];
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -195,7 +169,7 @@ RULES:
         body: JSON.stringify({
           model: "google/gemini-2.5-flash",
           messages: agentMessages,
-          max_tokens: 150,
+          max_tokens: 200,
           temperature: 0.75,
         }),
         signal: controller.signal,
@@ -223,7 +197,7 @@ RULES:
       clearTimeout(timeoutId);
       console.error(`Agent ${agent.id} timeout:`, error);
       return new Response(JSON.stringify({
-        response: { agentId: agent.id, name: agent.name, emoji: agent.emoji, color: agent.color, content: "⚠️ Timed out this turn." },
+        response: { agentId: agent.id, name: agent.name, emoji: agent.emoji, color: agent.color, content: "⚠️ Timed out." },
         nextAgentId,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
