@@ -963,9 +963,18 @@ const handler = async (req: Request): Promise<Response> => {
     console.log("Email subject:", subject);
     
     // Determine recipient
-    // Use explicit `to` override (e.g. from MobileSendQuote), otherwise fall back to admin/customer logic
-    const isAdmin = !to && isAdminNotification(type, !!customerEmail);
-    const recipient = to || (isAdmin ? adminEmail : customerEmail);
+    // Use explicit `to` override (e.g. from MobileSendQuote), otherwise resolve from payload and admin/customer logic
+    const fallbackCustomerEmail =
+      customerEmail ||
+      data?.customerEmail ||
+      data?.contactEmail ||
+      data?.email ||
+      data?.buyerEmail ||
+      data?.sellerEmail ||
+      null;
+
+    const isAdmin = !to && isAdminNotification(type, !!fallbackCustomerEmail);
+    const recipient = to || (isAdmin ? adminEmail : fallbackCustomerEmail);
 
     // Derive record_id for logging
     const recordId = entityId || data?.orderId || data?.requestId || data?.ticketRequestId || null;
@@ -1025,16 +1034,36 @@ const handler = async (req: Request): Promise<Response> => {
       },
     };
 
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-      },
-      body: JSON.stringify(emailPayload),
-    });
+    let res: Response | null = null;
+    let emailResponse: any = null;
 
-    const emailResponse = await res.json();
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+        },
+        body: JSON.stringify(emailPayload),
+      });
+
+      emailResponse = await res.json().catch(() => ({ message: "Invalid email provider response" }));
+
+      // Retry only on provider rate limit
+      if (res.ok || res.status !== 429 || attempt === maxAttempts) {
+        break;
+      }
+
+      const retryAfterHeader = Number(res.headers.get("retry-after") || "1");
+      const waitMs = Math.max(retryAfterHeader * 1000, attempt * 1200);
+      console.warn(`Resend rate-limited (attempt ${attempt}/${maxAttempts}), retrying in ${waitMs}ms`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+
+    if (!res) {
+      throw new Error("Email provider request did not execute");
+    }
     console.log("Resend API response status:", res.status);
     console.log("Resend API response:", JSON.stringify(emailResponse));
 
