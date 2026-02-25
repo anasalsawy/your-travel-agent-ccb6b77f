@@ -17,7 +17,7 @@ export default function MobileDevAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "💬 Unrestricted AI ready. Ask me anything — code, roleplay, brainstorm, analyze, create. No limits.\n\nPowered by GPT-5.2. What's up?",
+      content: "🔥 ULTIMATE AGENT ONLINE — 20 tools armed.\n\n🧠 Memory (3-layer) • 🌍 Web Search • 🖥 Browser • 📞 Calls/SMS/WhatsApp • 💬 Telegram • 📧 Email • 💰 Stripe • ✈️ Flights • 🗂 Database • 🐙 GitHub • 🤖 Claude + Gemini + GPT • 🔊 Voice • 📊 Reports • 🧭 Auto-Planning\n\nI don't just chat. I operate. What do you need done?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -89,7 +89,7 @@ export default function MobileDevAgent() {
         <div className="flex items-center justify-between px-4 py-2 border-b border-border/30">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs text-muted-foreground">Full access mode</span>
+            <span className="text-xs text-muted-foreground">20 tools • 20-round autonomous loop</span>
           </div>
           <Button variant="ghost" size="sm" onClick={clearChat} className="text-xs gap-1 h-7">
             <Trash2 className="w-3 h-3" />
@@ -150,7 +150,7 @@ export default function MobileDevAgent() {
                   sendMessage();
                 }
               }}
-              placeholder="Create a new page for... / Fix the bug in... / Refactor..."
+              placeholder="Search flights, create voucher, send email, call customer, generate report..."
               className="flex-1 min-h-[44px] max-h-[120px] resize-none rounded-xl bg-secondary/50 border-border/30 text-sm"
               rows={1}
             />
