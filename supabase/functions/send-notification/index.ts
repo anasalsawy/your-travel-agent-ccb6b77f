@@ -828,6 +828,15 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
 
     case "car_rental_quote_ready": {
       const rentalId = data.requestId ? String(data.requestId).substring(0, 8) : "";
+      const paymentButton = data.paymentUrl 
+        ? `<div style="text-align: center; margin: 20px 0;">
+            <a href="${data.paymentUrl}" style="display: inline-block; padding: 14px 32px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">💳 Pay Now with Card →</a>
+          </div>
+          <p style="text-align: center; color: #718096; font-size: 13px;">Or pay via Zelle/PayPal — details in your dashboard.</p>`
+        : `<div style="text-align: center; margin: 20px 0;">
+            <a href="https://your-travel-agent.lovable.app/dashboard" style="display: inline-block; padding: 14px 32px; background-color: #38a169; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">View Quote & Pay Now →</a>
+          </div>
+          <p style="text-align: center; color: #718096; font-size: 14px;">Log in to your dashboard to review the quote and confirm your rental.</p>`;
       return {
         subject: `Your Car Rental Quote is Ready - #${rentalId}`,
         html: `
@@ -837,12 +846,10 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
             <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <p><strong>Pickup:</strong> ${data.pickupLocation}</p>
               <p><strong>Dates:</strong> ${data.pickupDate} → ${data.dropoffDate}</p>
+              ${data.rentalCompany ? `<p><strong>Rental Company:</strong> ${data.rentalCompany}</p>` : ""}
               <p style="font-size: 24px; color: #1a365d;"><strong>Price: $${data.quotedPrice}</strong></p>
             </div>
-            <div style="text-align: center; margin: 20px 0;">
-              <a href="https://your-travel-agent.lovable.app/dashboard" style="display: inline-block; padding: 14px 32px; background-color: #38a169; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">View Quote & Pay Now →</a>
-            </div>
-            <p style="text-align: center; color: #718096; font-size: 14px;">Log in to your dashboard to review the quote and confirm your rental.</p>
+            ${paymentButton}
           </div>
         `,
       };
