@@ -360,7 +360,7 @@ export function AdminCarRentals() {
                   <Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Internal notes..." />
                 </div>
                 {/* Send Quote Action */}
-                {(selected.status === "submitted" || selected.status === "quoted") && (
+                {selected && (
                   <div className="p-4 rounded-lg border-2 border-dashed border-primary/50 space-y-3">
                     <label className="text-sm font-semibold text-primary flex items-center gap-2">
                       <DollarSign className="w-4 h-4" /> {selected.status === "submitted" ? "Send Quote to Customer" : "Resend Quote"}
