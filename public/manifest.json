@@ -1,8 +1,8 @@
 {
-  "name": "Your Travel Agent",
+  "name": "Your Travel Agent - Command Center",
   "short_name": "TravelAgent",
-  "description": "Verified Travel Vouchers & Discounted Tickets",
-  "start_url": "/",
+  "description": "Admin command center for Your Travel Agent",
+  "start_url": "/m",
   "display": "standalone",
   "background_color": "#0a0f1a",
   "theme_color": "#3b82f6",
