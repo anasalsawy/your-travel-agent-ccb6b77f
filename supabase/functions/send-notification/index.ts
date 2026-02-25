@@ -1001,18 +1001,37 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Sending email via Resend API...");
     
+    // Generate plain text from HTML for deliverability
+    const plainText = html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .trim();
+
+    const emailPayload: Record<string, any> = {
+      from: FROM_EMAIL,
+      to: [recipient],
+      subject,
+      html,
+      text: plainText,
+      reply_to: "anasalsawy@gmail.com",
+      headers: {
+        "List-Unsubscribe": `<mailto:anasalsawy@gmail.com?subject=unsubscribe>`,
+        "X-Entity-Ref-ID": recordId || `notif-${Date.now()}`,
+      },
+    };
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${RESEND_API_KEY}`,
       },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: [recipient],
-        subject,
-        html,
-      }),
+      body: JSON.stringify(emailPayload),
     });
 
     const emailResponse = await res.json();
