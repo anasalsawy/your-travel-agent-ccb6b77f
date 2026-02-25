@@ -22,6 +22,7 @@ interface Message {
 }
 
 const AGENT_LIST = [
+  { id: "dev", name: "Dev Agent", emoji: "🔧", color: "#6366f1" },
   { id: "security", name: "Security", emoji: "🛡️", color: "#ef4444" },
   { id: "ux", name: "UX/Product", emoji: "🎨", color: "#8b5cf6" },
   { id: "architect", name: "Architecture", emoji: "🏗️", color: "#0ea5e9" },
@@ -62,7 +63,6 @@ export default function MobileAgentRoundtable() {
     setIsLoading(true);
 
     try {
-      // Build conversation history for context
       const history: { role: string; content: string }[] = messages.flatMap(m => {
         if (m.role === "user") return [{ role: "user", content: m.content! }];
         if (m.responses) return m.responses.map(r => ({
@@ -78,6 +78,7 @@ export default function MobileAgentRoundtable() {
           messages: history,
           targetAgents: selectedAgents.length > 0 ? selectedAgents : undefined,
           debateRounds,
+          includeCodeContext: true,
         },
       });
 
@@ -106,7 +107,7 @@ export default function MobileAgentRoundtable() {
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" />
               <span className="text-xs text-muted-foreground font-medium">
-                5 advisors • free debate
+                6 agents • Dev Agent + 5 advisors
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -151,10 +152,10 @@ export default function MobileAgentRoundtable() {
             <div className="text-center py-12 space-y-3">
               <div className="text-4xl">🏛️</div>
               <p className="text-sm text-muted-foreground max-w-[280px] mx-auto">
-                Start a discussion. Your 5 advisors will debate and guide the Dev Agent. Filter by agent or @mention to moderate.
+                Start a discussion. Dev Agent + 5 advisors will debate with full visibility into the codebase, tools, and architecture.
               </p>
               <div className="flex flex-wrap gap-1.5 justify-center">
-                {["What should we improve next?", "Review our security posture", "How can we grow revenue?"].map(q => (
+                {["What should we improve next?", "Review our security posture", "How can we grow revenue?", "Audit the Dev Agent's capabilities"].map(q => (
                   <Button key={q} variant="outline" size="sm" className="text-xs rounded-full"
                     onClick={() => setInput(q)}>
                     {q}
@@ -226,7 +227,7 @@ export default function MobileAgentRoundtable() {
                   sendMessage();
                 }
               }}
-              placeholder="Ask the roundtable anything... or @security @ux to target agents"
+              placeholder="Ask the roundtable... filter agents above to target specific ones"
               className="flex-1 min-h-[44px] max-h-[120px] resize-none rounded-xl bg-secondary/50 border-border/30 text-sm"
               rows={1}
             />
