@@ -23,24 +23,55 @@ export function MobileAdminLayout({ children, title }: MobileAdminLayoutProps) {
   const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // Set up listener FIRST (critical for token refresh / magic link callbacks)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!session) {
-        navigate("/m/login", { replace: true });
+        // Only redirect if we've already finished initial check
+        if (authed !== null) {
+          setAuthed(false);
+          navigate("/m/login", { replace: true });
+        }
         return;
       }
-      // Verify admin/staff
+      // Don't re-check roles if already authed
+      if (authed === true) return;
+
       const { data: roles } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", session.user.id)
         .in("role", ["admin", "staff"]);
 
-      if (!roles?.length) {
+      if (roles?.length) {
+        setAuthed(true);
+      } else {
+        setAuthed(false);
+        navigate("/m/login", { replace: true });
+      }
+    });
+
+    // Then check existing session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        setAuthed(false);
         navigate("/m/login", { replace: true });
         return;
       }
-      setAuthed(true);
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .in("role", ["admin", "staff"]);
+
+      if (roles?.length) {
+        setAuthed(true);
+      } else {
+        setAuthed(false);
+        navigate("/m/login", { replace: true });
+      }
     });
+
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const isActive = (path: string) => {
