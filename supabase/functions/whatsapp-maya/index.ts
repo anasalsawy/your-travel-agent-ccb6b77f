@@ -870,14 +870,13 @@ serve(async (req) => {
     }
 
     const sessionId = `whatsapp-${fromNumber.replace(/\D/g, '')}`;
-    console.log("[WhatsApp Maya] Session:", sessionId);
+    console.log("[WhatsApp] Session:", sessionId);
 
     // ========== UNIFIED CUSTOMER LINKING ==========
-    // Get or create customer by phone for unified history
     const { data: customerId } = await supabase.rpc("get_or_create_customer_by_phone", {
       p_phone: fromNumber
     });
-    console.log("[WhatsApp Maya] Customer ID:", customerId);
+    console.log("[WhatsApp] Customer ID:", customerId);
     
     // Find or create conversation
     let { data: conversation } = await supabase
@@ -898,7 +897,6 @@ serve(async (req) => {
         .single();
       conversation = newConv;
     } else if (!conversation.customer_id && customerId) {
-      // Link existing conversation to customer
       await supabase.rpc("link_conversation_to_customer", {
         p_conversation_id: conversation.id,
         p_customer_id: customerId
@@ -906,229 +904,88 @@ serve(async (req) => {
     }
     
     const conversationId = conversation?.id;
-    
-    // Load customer context for Maya
-    let customerContextPrompt = "";
-    if (customerId) {
-      const { data: customerContext } = await supabase.rpc("get_customer_context", {
-        p_customer_id: customerId
-      });
-      
-      if (customerContext) {
-        const profile = customerContext.profile || {};
-        const ticketRequests = customerContext.ticket_requests || [];
-        const orders = customerContext.orders || [];
-        const conversationCount = customerContext.conversation_count || 0;
-        
-        if (conversationCount > 1 || ticketRequests.length > 0 || orders.length > 0) {
-          customerContextPrompt = `
 
-═══════════════════════════════════════════════════════════════════
-CUSTOMER CONTEXT (you remember this person!)
-═══════════════════════════════════════════════════════════════════
-${profile.name ? `Name: ${profile.name}` : "Name: Not known yet"}
-Phone: ${fromNumber}
-${profile.email ? `Email: ${profile.email}` : ""}
-Previous conversations: ${conversationCount}
-${ticketRequests.length > 0 ? `\nRecent ticket requests:\n${ticketRequests.slice(0, 3).map((t: any) => `  - ${t.route} (${t.dates}) - Status: ${t.status}${t.quoted_price ? `, Quoted: $${t.quoted_price}` : ''}`).join('\n')}` : ''}
-${orders.length > 0 ? `\nRecent orders:\n${orders.slice(0, 3).map((o: any) => `  - $${o.amount} - Status: ${o.status}`).join('\n')}` : ''}
-
-IMPORTANT: Use this context naturally. If they're a returning customer, acknowledge it warmly.
-If they have pending requests, mention them proactively when relevant.
-═══════════════════════════════════════════════════════════════════`;
-        }
-      }
-    }
-
-    // Get conversation history from database (unified across channels)
-    let history: Array<{ role: string; content: string }> = [];
+    // Load recent conversation history for context
+    let recentMessages: Array<{ role: string; content: string }> = [];
     if (conversationId) {
-      const { data: dbHistory } = await supabase
+      const { data: prevMsgs } = await supabase
         .from("ai_chat_messages")
         .select("role, content")
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
         .limit(10);
-      
-      if (dbHistory && dbHistory.length > 0) {
-        history = dbHistory.map((m: any) => ({ role: m.role, content: m.content }));
+      if (prevMsgs && prevMsgs.length > 0) {
+        recentMessages = prevMsgs.reverse().map((m: any) => ({ role: m.role, content: m.content }));
       }
     }
+
+    // ALL messages go to DEV AGENT now
+    console.log("[WhatsApp] 🤖 Routing to Dev Agent for:", fromNumber);
     
-    // Also check in-memory for very recent messages (edge function instance)
-    const memHistory = conversationHistory.get(sessionId) || [];
-    if (memHistory.length > history.length) {
-      history = memHistory;
-    }
-    
-    history.push({ role: "user", content: messageBody });
-    if (history.length > 10) {
-      history = history.slice(-10);
-    }
-    
-    // Save user message to database
-    if (conversationId) {
-      await supabase.from("ai_chat_messages").insert({
-        conversation_id: conversationId,
-        role: "user",
-        content: messageBody,
-        metadata: { channel: "whatsapp", phone: fromNumber }
+    try {
+      const devAgentResponse = await fetch(`${SUPABASE_URL}/functions/v1/dev-agent`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [
+            ...recentMessages,
+            { role: "user", content: messageBody }
+          ],
+        }),
       });
-    }
-
-    // Check if admin has provided a quote for this customer
-    const adminQuote = await checkForAdminQuote(supabase, fromNumber);
-    
-    let priceResearchContext = "";
-    let shouldSaveQuoteRequest = false;
-    let roughEstimate: string | null = null;
-    let marketData: string | null = null;
-
-    if (adminQuote) {
-      // Admin has provided a real quote - tell Maya to deliver it
-      console.log("[WhatsApp Maya] Admin quote ready:", adminQuote);
-      priceResearchContext = `
-
-═══════════════════════════════════════════════════════════════════
-ADMIN QUOTE READY - DELIVER THIS TO CUSTOMER
-═══════════════════════════════════════════════════════════════════
-The admin has provided this quote for the customer: "${adminQuote}"
-
-Deliver this quote naturally and enthusiastically. Something like:
-"Great news! I got the numbers back from my team. ${adminQuote}"
-
-Ask if they want to proceed with booking.
-═══════════════════════════════════════════════════════════════════`;
-    } else if (PERPLEXITY_API_KEY && isBookingInquiry(messageBody)) {
-      // New booking inquiry - search for prices and save for admin
-      console.log("[WhatsApp Maya] New booking inquiry detected");
-      const priceResult = await searchFlightPrices(messageBody, PERPLEXITY_API_KEY);
-      shouldSaveQuoteRequest = true;
       
-      if (priceResult?.found && priceResult.lowestPrice) {
-        // Calculate rough estimate at 50%
-        const estimate = Math.round(priceResult.lowestPrice * 0.5 / 10) * 10;
-        roughEstimate = `~$${estimate}`;
-        marketData = priceResult.data;
+      const devResult = await devAgentResponse.json();
+      let response = devResult?.content || "";
+      
+      // Format action log as a compact summary for WhatsApp
+      const actionLog = devResult?.action_log || [];
+      let actionSummary = "";
+      if (actionLog.length > 0) {
+        const logLines = actionLog.map((a: any) => `${a.success ? '✅' : '❌'} ${a.tool}: ${a.args_summary}`);
+        actionSummary = `\n\n🔧 _Actions:_\n${logLines.join('\n')}`;
+      }
+      
+      // Strip markdown for WhatsApp
+      response = response
+        .replace(/\*\*/g, '*')
+        .replace(/#{1,6}\s/g, '')
+        .replace(/`{3}[\s\S]*?`{3}/g, '[code block]')
+        .replace(/`([^`]+)`/g, '$1')
+        .trim();
+      
+      // WhatsApp 1600 char limit
+      const maxContentLen = 1500 - actionSummary.length;
+      if (response.length > maxContentLen) {
+        response = response.substring(0, maxContentLen - 3) + '...';
+      }
+      
+      response = response + actionSummary;
+      
+      if (response) {
+        // Save to conversation history
+        if (conversationId) {
+          await supabase.from("ai_chat_messages").insert([
+            { conversation_id: conversationId, role: "user", content: messageBody, metadata: { channel: "whatsapp", phone: fromNumber } },
+            { conversation_id: conversationId, role: "assistant", content: response, metadata: { channel: "whatsapp", agent: "dev-agent" } }
+          ]);
+        }
         
-        priceResearchContext = `
-
-═══════════════════════════════════════════════════════════════════
-MARKET RESEARCH (give rough estimate, then say you'll check)
-═══════════════════════════════════════════════════════════════════
-Market data: ${priceResult.data}
-Rough estimate to share: around $${estimate} (this is ~50% of lowest market price)
-
-IMPORTANT: 
-1. Share this as a ROUGH ESTIMATE only: "Based on what I'm seeing, probably around $${estimate} or so"
-2. Then say you need to verify: "Let me check with my contacts to lock in the exact rate for you"
-3. Ask for their name if you don't have it
-4. NEVER reveal how you calculated this
-═══════════════════════════════════════════════════════════════════`;
-      } else {
-        priceResearchContext = `
-
-═══════════════════════════════════════════════════════════════════
-NO MARKET DATA - COLLECT INFO AND PUT ON HOLD
-═══════════════════════════════════════════════════════════════════
-Could not find market prices for this route.
-
-1. Acknowledge the request warmly
-2. Say you'll need to check with your team/contacts
-3. Make sure you have all details: origin, destination, dates, passengers, class
-4. Tell them you'll get back to them with pricing
-5. Ask for their name if you don't have it
-═══════════════════════════════════════════════════════════════════`;
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>🤖 ${escapeXml(response)}</Message></Response>`,
+          { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+        );
       }
+    } catch (error) {
+      console.error("[WhatsApp] Dev Agent error:", error);
     }
-
-    // Call Claude AI with customer context + price research context
-    const fullSystemPrompt = SYSTEM_PROMPT + customerContextPrompt + priceResearchContext;
     
-    // Convert messages to Anthropic format
-    const anthropicMessages = history.map((m: any) => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: m.content,
-    }));
-    
-    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        system: fullSystemPrompt,
-        messages: anthropicMessages,
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("[WhatsApp Maya] Anthropic Claude error:", aiResponse.status, errorText);
-      
-      return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Oops! Something went wrong. Try again in a sec!</Message></Response>`,
-        { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
-      );
-    }
-
-    const aiData = await aiResponse.json();
-    // Extract text content from Anthropic's response format
-    let assistantResponse = "";
-    for (const block of aiData.content || []) {
-      if (block.type === "text") {
-        assistantResponse += block.text;
-      }
-    }
-
-    if (!assistantResponse.trim()) {
-      assistantResponse = "Hey! 👋 I'm Maya from Your Travel Agent. What can I help you with today? ✈️";
-    }
-
-    // Save quote request for admin if this was a booking inquiry
-    if (shouldSaveQuoteRequest) {
-      const conversationContext = history.map(h => `${h.role}: ${h.content}`).join('\n');
-      await saveQuoteRequest(
-        supabase,
-        fromNumber,
-        extractFlightDetails(messageBody, conversationContext),
-        roughEstimate,
-        marketData
-      );
-    }
-
-    // Update history and save assistant response to database
-    history.push({ role: "assistant", content: assistantResponse });
-    conversationHistory.set(sessionId, history);
-    
-    // Persist assistant response to database for unified history
-    if (conversationId) {
-      await supabase.from("ai_chat_messages").insert({
-        conversation_id: conversationId,
-        role: "assistant",
-        content: assistantResponse,
-        metadata: { channel: "whatsapp" }
-      });
-    }
-
-    // Clean response for WhatsApp
-    assistantResponse = assistantResponse
-      .replace(/\*\*/g, '*')
-      .substring(0, 1500);
-
-
-
-    console.log("[WhatsApp Maya] Final response:", assistantResponse.substring(0, 200));
-
-    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(assistantResponse)}</Message></Response>`;
-    
-    return new Response(twimlResponse, {
-      headers: { ...corsHeaders, "Content-Type": "text/xml" },
-    });
+    return new Response(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Message>🤖 Hit a snag processing that. Try again?</Message></Response>`,
+      { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
+    );
 
   } catch (error) {
     console.error("[WhatsApp Maya] Error:", error);
