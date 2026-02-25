@@ -3,7 +3,7 @@ import { MobileAdminLayout } from "@/components/mobile-admin/MobileAdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Phone, PhoneCall, CreditCard, TrendingUp, Mail, Package, Shield, Users,
-  Building2, Settings, Bell, LogOut, ChevronRight, Mic
+  Building2, Settings, Bell, LogOut, ChevronRight, Mic, Code
 } from "lucide-react";
 
 const sections = [
@@ -32,6 +32,12 @@ const sections = [
       { label: "Users", icon: Users, path: "/m/more" },
       { label: "Notifications", icon: Bell, path: "/m/notifications" },
       { label: "Settings", icon: Settings, path: "/m/more" },
+    ],
+  },
+  {
+    title: "Developer",
+    items: [
+      { label: "Dev Agent", icon: Code, path: "/m/dev" },
     ],
   },
 ];
