@@ -17,7 +17,7 @@ export default function MobileDevAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "💬 Unrestricted AI ready. Ask me anything — code, roleplay, brainstorm, analyze, create. No limits.\n\nPowered by GPT-4.1. What's up?",
+      content: "💬 Unrestricted AI ready. Ask me anything — code, roleplay, brainstorm, analyze, create. No limits.\n\nPowered by GPT-4o. What's up?",
     },
   ]);
   const [input, setInput] = useState("");
