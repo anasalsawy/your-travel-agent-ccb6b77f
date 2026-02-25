@@ -11,6 +11,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
     "@elevenlabs/react": "^0.12.3",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/syne": "^5.2.7",
