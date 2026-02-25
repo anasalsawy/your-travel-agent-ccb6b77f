@@ -64,6 +64,7 @@ export default function MobileAgentRoundtable() {
   const [readingAgent, setReadingAgent] = useState<string | null>(null);
   const stopRef = useRef(false);
   const loopIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const roundRef = useRef(1);
 
@@ -93,17 +94,35 @@ export default function MobileAgentRoundtable() {
       const history = buildHistory(currentMsgs);
 
       try {
-        const { data, error } = await supabase.functions.invoke("agent-roundtable", {
-          body: {
-            messages: history,
-            currentAgentId: agentId,
-            roundNumber: roundRef.current,
-            previousAgentName,
-          },
-        });
+        const ac = new AbortController();
+        abortRef.current = ac;
+
+        const fetchPromise = fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/agent-roundtable`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: JSON.stringify({
+              messages: history,
+              currentAgentId: agentId,
+              roundNumber: roundRef.current,
+              previousAgentName,
+            }),
+            signal: ac.signal,
+          }
+        );
+
+        const res = await fetchPromise;
+        if (stopRef.current || loopIdRef.current !== thisLoopId) break;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
 
         if (stopRef.current || loopIdRef.current !== thisLoopId) break;
-        if (error) throw new Error(error.message);
+        if (data.error) throw new Error(data.error);
 
         const response: AgentResponse = data.response;
         const nextAgentId: string = data.nextAgentId;
@@ -160,6 +179,8 @@ export default function MobileAgentRoundtable() {
   const stopLoop = () => {
     stopRef.current = true;
     loopIdRef.current++;
+    abortRef.current?.abort();
+    abortRef.current = null;
     setIsRunning(false);
     setCurrentAgent(null);
     setReadingAgent(null);
