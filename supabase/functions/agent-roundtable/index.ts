@@ -103,8 +103,16 @@ The "directive" tells the next agent what specific aspect to address. Be specifi
 }
 
 // ─── MODE: AGENT SPEAKS (guided by orchestrator directive) ───
+function resolveAgent(input: string): Agent | undefined {
+  const s = input.trim().toLowerCase();
+  return AGENTS.find(a => a.id === s) 
+    || AGENTS.find(a => a.name.toLowerCase() === s)
+    || AGENTS.find(a => s.includes(a.id) || s.includes(a.name.toLowerCase()))
+    || AGENTS.find(a => s.includes(a.emoji));
+}
+
 async function agentSpeak(agentId: string, history: any[], topic: string, directive: string, prevSpeaker: string) {
-  const agent = AGENTS.find(a => a.id === agentId);
+  const agent = resolveAgent(agentId);
   if (!agent) throw new Error(`Unknown agent: ${agentId}`);
 
   const system = `You are ${agent.emoji} ${agent.name}. Expertise: ${agent.expertise}.
