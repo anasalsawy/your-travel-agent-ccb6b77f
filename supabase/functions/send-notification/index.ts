@@ -65,6 +65,12 @@ type NotificationType =
   | "escrow_status_update"
   | "escrow_sparefare_listed"
   | "escrow_action_needed"
+  // Car rental notifications
+  | "car_rental_received"
+  | "admin_new_car_rental"
+  | "car_rental_quote_ready"
+  | "car_rental_confirmed"
+  | "car_rental_cancelled"
   // Legacy/misc
   | "payment_under_review"
   | "test_email";
@@ -774,6 +780,105 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
         `,
       };
 
+    // ========== CAR RENTAL EMAILS ==========
+    case "car_rental_received": {
+      const rentalId = data.requestId ? String(data.requestId).substring(0, 8) : "";
+      return {
+        subject: `Car Rental Request Received - #${rentalId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">Car Rental Request Received! 🚗</h1>
+            <p>Thank you for your car rental request <strong>#${rentalId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Pickup:</strong> ${data.pickupLocation}</p>
+              ${data.dropoffLocation ? `<p><strong>Dropoff:</strong> ${data.dropoffLocation}</p>` : ""}
+              <p><strong>Dates:</strong> ${data.pickupDate} → ${data.dropoffDate}</p>
+              <p><strong>Car Type:</strong> ${data.carType || "Any"}</p>
+            </div>
+            <p>Our team will review your request and send you a quote shortly.</p>
+          </div>
+        `,
+      };
+    }
+
+    case "admin_new_car_rental": {
+      const rentalId = data.requestId ? String(data.requestId).substring(0, 8) : "";
+      return {
+        subject: `New Car Rental Request - ${data.pickupLocation}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a365d;">New Car Rental Request 🚗</h1>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px;">
+              <p><strong>Request ID:</strong> ${rentalId}</p>
+              <p><strong>Pickup:</strong> ${data.pickupLocation}</p>
+              ${data.dropoffLocation ? `<p><strong>Dropoff:</strong> ${data.dropoffLocation}</p>` : ""}
+              <p><strong>Dates:</strong> ${data.pickupDate} → ${data.dropoffDate}</p>
+              <p><strong>Car Type:</strong> ${data.carType || "Any"}</p>
+              <p><strong>Transmission:</strong> ${data.transmission || "Any"}</p>
+              <p><strong>Budget:</strong> ${data.budget ? `$${data.budget}` : "Not specified"}</p>
+              <p><strong>Customer:</strong> ${data.contactEmail}</p>
+              ${data.contactPhone ? `<p><strong>Phone:</strong> ${data.contactPhone}</p>` : ""}
+              ${data.specialNotes ? `<p><strong>Notes:</strong> ${data.specialNotes}</p>` : ""}
+            </div>
+            <p>Please review and send a quote via Admin → Car Rentals.</p>
+          </div>
+        `,
+      };
+    }
+
+    case "car_rental_quote_ready": {
+      const rentalId = data.requestId ? String(data.requestId).substring(0, 8) : "";
+      return {
+        subject: `Your Car Rental Quote is Ready - #${rentalId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Your Car Rental Quote is Ready! 🚗</h1>
+            <p>Great news! We have a quote for your car rental request <strong>#${rentalId}</strong>.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Pickup:</strong> ${data.pickupLocation}</p>
+              <p><strong>Dates:</strong> ${data.pickupDate} → ${data.dropoffDate}</p>
+              <p style="font-size: 24px; color: #1a365d;"><strong>Price: $${data.quotedPrice}</strong></p>
+            </div>
+            <p>Reply to this email or contact us to confirm your booking.</p>
+          </div>
+        `,
+      };
+    }
+
+    case "car_rental_confirmed": {
+      const rentalId = data.requestId ? String(data.requestId).substring(0, 8) : "";
+      return {
+        subject: `Car Rental Confirmed - #${rentalId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #38a169;">Car Rental Confirmed! 🎉🚗</h1>
+            <p>Your car rental <strong>#${rentalId}</strong> has been confirmed.</p>
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Pickup:</strong> ${data.pickupLocation}</p>
+              <p><strong>Dates:</strong> ${data.pickupDate} → ${data.dropoffDate}</p>
+              ${data.rentalCompany ? `<p><strong>Company:</strong> ${data.rentalCompany}</p>` : ""}
+            </div>
+            <p>We'll send you the rental details closer to your pickup date. Have a great trip!</p>
+          </div>
+        `,
+      };
+    }
+
+    case "car_rental_cancelled": {
+      const rentalId = data.requestId ? String(data.requestId).substring(0, 8) : "";
+      return {
+        subject: `Car Rental Cancelled - #${rentalId}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #718096;">Car Rental Cancelled</h1>
+            <p>Your car rental request <strong>#${rentalId}</strong> has been cancelled.</p>
+            ${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ""}
+            <p>If you have any questions, please contact us.</p>
+          </div>
+        `,
+      };
+    }
+
     default:
       return {
         subject: "Notification - Your Travel Agent",
@@ -797,6 +902,7 @@ const ADMIN_NOTIFICATION_TYPES = [
   "admin_ticket_completed",
   "admin_ticket_rejected",
   "escrow_action_needed",
+  "admin_new_car_rental",
   "test_email"
 ];
 
