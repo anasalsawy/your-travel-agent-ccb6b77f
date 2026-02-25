@@ -2037,12 +2037,12 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         const tripType = args.trip_type || (returnDate ? "round_trip" : "one_way");
 
         try {
-          // Call Claude's quote function (the Manager handles all quoting)
+          // Call Smart Quote V2 (authoritative quoting engine)
           const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
           const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
           const quoteResponse = await fetch(
-            `${SUPABASE_URL}/functions/v1/claude-quote`,
+            `${SUPABASE_URL}/functions/v1/smart-quote-v2`,
             {
               method: "POST",
               headers: {
@@ -2064,7 +2064,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
 
           if (!quoteResponse.ok) {
             const errText = await quoteResponse.text();
-            console.error("[Maya] claude-quote failed:", quoteResponse.status, errText);
+            console.error("[Maya] smart-quote-v2 failed:", quoteResponse.status, errText);
             return JSON.stringify({
               success: false,
               error: "Quote system temporarily unavailable. Let me try another method.",
@@ -2074,14 +2074,14 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           const quoteData = await quoteResponse.json();
 
           if (!quoteData.success) {
-            console.error("[Maya] claude-quote returned error:", quoteData.message);
+            console.error("[Maya] smart-quote-v2 returned error:", quoteData.message);
             return JSON.stringify({
               success: false,
               error: quoteData.message || "Could not generate quote. Let me try another method.",
             });
           }
 
-          console.log(`[Maya] claude-quote success: $${quoteData.quoted_price} (${quoteData.discount_percent}% off $${quoteData.market_price})`);
+          console.log(`[Maya] smart-quote-v2 success: $${quoteData.quoted_price} (market $${quoteData.market_price})`);
 
           // Notify boss about quote (async, non-blocking)
           notifyBoss('quote', `Quote given: ${origin} → ${destination}\n💵 $${quoteData.quoted_price} for ${passengers} pax\n📅 ${departureDate}${returnDate ? ` - ${returnDate}` : ''}\n✈️ ${cabinClass}${quoteData.booking_method ? `\n🎯 ${quoteData.booking_method}` : ''}`)

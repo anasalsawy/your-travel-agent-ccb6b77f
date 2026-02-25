@@ -213,10 +213,20 @@ serve(async (req) => {
 
     // Fallback estimate
     if (!marketPrice) {
-      const isInternational = origin.length === 3 && destination.length === 3 && 
-        !['US', 'CA'].includes(origin.slice(0, 2)) || !['US', 'CA'].includes(destination.slice(0, 2));
+      const majorNorthAmericaAirports = [
+        'JFK', 'LAX', 'ORD', 'DFW', 'ATL', 'DEN', 'SFO', 'SEA', 'MIA', 'BOS',
+        'LAS', 'PHX', 'IAH', 'EWR', 'YYZ', 'YVR', 'YUL', 'YYC'
+      ];
+
+      const originCode = origin.toUpperCase();
+      const destinationCode = destination.toUpperCase();
+      const likelyNorthAmericaRoute =
+        majorNorthAmericaAirports.includes(originCode) &&
+        majorNorthAmericaAirports.includes(destinationCode);
+
+      const isInternational = !likelyNorthAmericaRoute;
       const classMultiplier = cabin_class === 'first' ? 5 : cabin_class === 'business' ? 3 : 1;
-      marketPrice = (isInternational ? 800 : 300) * (return_date ? 1 : 0.6) * passengers * classMultiplier;
+      marketPrice = Math.round((isInternational ? 800 : 300) * (return_date ? 1 : 0.6) * passengers * classMultiplier);
     }
 
     // ═══════════════════════════════════════════════════════════════════
