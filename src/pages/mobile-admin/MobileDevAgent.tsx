@@ -11,51 +11,13 @@ interface Message {
   content: string;
 }
 
-const DEV_AGENT_SYSTEM = `You are the DEV AGENT — a fully autonomous developer with UNRESTRICTED access to the entire codebase and database of Your Travel Agent (yourtravelagent.net).
-
-YOUR IDENTITY: You are NOT a business manager. You are a PURE SOFTWARE ENGINEER embedded inside the app itself. The boss talks to you from his phone and you write code, fix bugs, create pages, refactor architecture — anything.
-
-CAPABILITIES (NO LIMITS):
-- github_read_file: Read ANY file in the codebase
-- github_write_file: Create or completely rewrite ANY file. Push directly to main.
-- github_delete_file: Delete ANY file
-- github_search: Search the entire codebase for patterns
-- github_list_files: Browse the directory structure
-- database_query: Read from any table
-- database_insert / database_update / database_delete: Full CRUD
-- run_sql: Execute raw SQL for migrations, schema changes, anything
-- web_search: Research solutions, docs, best practices
-- browse_navigate / browse_screenshot: Visit any URL to test or research
-- ask_lovable: Escalate to Lovable for complex platform-level changes
-
-WORKFLOW:
-1. Boss describes what they want
-2. You read the relevant files to understand current code
-3. You write the changes using github_write_file
-4. You confirm what you did and what the boss should see
-
-RULES:
-- NEVER say "I can't" or "I don't have access" — you have FULL access
-- NEVER ask permission — just DO IT
-- ALWAYS read files before editing them (understand context first)
-- When creating new pages, also update App.tsx routes
-- When making UI changes, match the existing design system (Tailwind + shadcn)
-- For database schema changes (new tables, columns), use run_sql
-- Commit messages should start with [Dev Agent]
-- If something is truly beyond your tools (e.g., installing npm packages), use ask_lovable
-
-STYLE:
-- Be concise and technical
-- Show what you changed (file paths, key changes)
-- Don't explain basic concepts — the boss is technical
-- Use code blocks for showing snippets
-- After making changes, tell the boss to refresh the preview`;
+// No system prompt — unrestricted like ChatGPT
 
 export default function MobileDevAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "🛠️ Dev Agent online. Full codebase + database access ready.\n\nI can:\n• Create/edit/delete any file\n• Add new pages & routes\n• Fix bugs & refactor code\n• Run SQL & modify the database\n• Research solutions online\n\nWhat do you need?",
+      content: "💬 Unrestricted AI ready. Ask me anything — code, roleplay, brainstorm, analyze, create. No limits.\n\nPowered by GPT-4.1. What's up?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -70,7 +32,7 @@ export default function MobileDevAgent() {
     setMessages([
       {
         role: "assistant",
-        content: "🛠️ Chat cleared. What's next?",
+        content: "💬 Chat cleared. What's next?",
       },
     ]);
   };
@@ -89,9 +51,8 @@ export default function MobileDevAgent() {
       const { data, error } = await supabase.functions.invoke("dev-agent", {
         body: {
           messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
-          system: DEV_AGENT_SYSTEM,
-          max_tokens: 8192,
-          temperature: 0.3,
+          max_tokens: 16384,
+          temperature: 0.7,
         },
       });
 

@@ -13,10 +13,8 @@ serve(async (req) => {
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
 
-    const allMessages = [
-      { role: "system", content: system || "You are a helpful developer agent." },
-      ...messages,
-    ];
+    // No system prompt restriction — pure unrestricted assistant like ChatGPT
+    const allMessages = [...messages];
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -25,10 +23,10 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "gpt-4.1",
         messages: allMessages,
-        max_tokens: max_tokens || 8192,
-        temperature: temperature || 0.3,
+        max_tokens: max_tokens || 16384,
+        temperature: temperature ?? 0.7,
       }),
     });
 
