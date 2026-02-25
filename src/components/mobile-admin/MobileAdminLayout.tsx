@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, ShoppingCart, Plane, MessageSquare, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Plane, Car, MessageSquare, MoreHorizontal } from "lucide-react";
 
 interface MobileAdminLayoutProps {
   children: ReactNode;
@@ -10,7 +10,8 @@ interface MobileAdminLayoutProps {
 const tabs = [
   { path: "/m", icon: LayoutDashboard, label: "Home" },
   { path: "/m/orders", icon: ShoppingCart, label: "Orders" },
-  { path: "/m/requests", icon: Plane, label: "Requests" },
+  { path: "/m/requests", icon: Plane, label: "Flights" },
+  { path: "/m/car-rentals", icon: Car, label: "Cars" },
   { path: "/m/maya", icon: MessageSquare, label: "Maya" },
   { path: "/m/more", icon: MoreHorizontal, label: "More" },
 ];
