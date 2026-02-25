@@ -3,35 +3,41 @@ import { MobileAdminLayout } from "@/components/mobile-admin/MobileAdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Phone, PhoneCall, CreditCard, TrendingUp, Mail, Package, Shield, Users,
-  Building2, Settings, Bell, LogOut, ChevronRight, Mic, Code
+  Building2, Settings, Bell, LogOut, ChevronRight, Mic, Code, LayoutGrid
 } from "lucide-react";
 
 const sections = [
   {
+    title: "Full Admin Panel",
+    items: [
+      { label: "Open Full Admin Panel", icon: LayoutGrid, path: "/m/admin", highlight: true },
+    ],
+  },
+  {
     title: "Operations",
     items: [
-      { label: "Quote Logs", icon: TrendingUp, path: "/m/more" },
-      { label: "Call Logs", icon: PhoneCall, path: "/m/more" },
-      { label: "Inventory", icon: CreditCard, path: "/m/more" },
+      { label: "Quote Logs", icon: TrendingUp, path: "/m/admin?tab=quote-logs" },
+      { label: "Call Logs", icon: PhoneCall, path: "/m/admin?tab=call-logs" },
+      { label: "Inventory", icon: CreditCard, path: "/m/admin?tab=inventory" },
       { label: "Send Quote", icon: Mail, path: "/m/send-quote" },
     ],
   },
   {
     title: "Voice",
     items: [
-      { label: "Book by Phone", icon: Phone, path: "/m/more" },
-      { label: "Voice Proxy", icon: Mic, path: "/m/more" },
+      { label: "Book by Phone", icon: Phone, path: "/m/admin?tab=book-call" },
+      { label: "Voice Proxy", icon: Mic, path: "/m/admin?tab=voice-proxy" },
     ],
   },
   {
     title: "Manage",
     items: [
-      { label: "Vouchers", icon: Package, path: "/m/more" },
-      { label: "Sellers", icon: Building2, path: "/m/more" },
-      { label: "Escrow", icon: Shield, path: "/m/more" },
-      { label: "Users", icon: Users, path: "/m/more" },
-      { label: "Notifications", icon: Bell, path: "/m/notifications" },
-      { label: "Settings", icon: Settings, path: "/m/more" },
+      { label: "Vouchers", icon: Package, path: "/m/admin?tab=vouchers" },
+      { label: "Sellers", icon: Building2, path: "/m/admin?tab=sellers" },
+      { label: "Escrow", icon: Shield, path: "/m/admin?tab=escrow" },
+      { label: "Users", icon: Users, path: "/m/admin?tab=users" },
+      { label: "Promo Emails", icon: Mail, path: "/m/admin?tab=promo-emails" },
+      { label: "Settings", icon: Settings, path: "/m/admin?tab=settings" },
     ],
   },
   {
@@ -63,10 +69,12 @@ export default function MobileMore() {
                 <button
                   key={item.label}
                   onClick={() => navigate(item.path)}
-                  className="w-full flex items-center gap-3 px-4 py-3 active:bg-secondary transition-colors"
+                  className={`w-full flex items-center gap-3 px-4 py-3 active:bg-secondary transition-colors ${
+                    (item as any).highlight ? "bg-primary/5" : ""
+                  }`}
                 >
-                  <item.icon className="w-5 h-5 text-primary" />
-                  <span className="flex-1 text-left text-sm">{item.label}</span>
+                  <item.icon className={`w-5 h-5 ${(item as any).highlight ? "text-primary" : "text-primary"}`} />
+                  <span className={`flex-1 text-left text-sm ${(item as any).highlight ? "font-semibold" : ""}`}>{item.label}</span>
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </button>
               ))}
