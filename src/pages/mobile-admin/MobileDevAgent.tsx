@@ -86,7 +86,7 @@ export default function MobileDevAgent() {
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke("claude-agent", {
+      const { data, error } = await supabase.functions.invoke("dev-agent", {
         body: {
           messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
           system: DEV_AGENT_SYSTEM,
