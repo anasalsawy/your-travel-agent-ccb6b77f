@@ -494,6 +494,56 @@ export async function notifySellerEscrowUpdate(
   });
 }
 
+// ========== CAR RENTAL NOTIFICATIONS ==========
+
+export async function notifyCarRentalQuoteReady(
+  customerEmail: string,
+  data: {
+    requestId: string;
+    pickupLocation: string;
+    pickupDate: string;
+    dropoffDate: string;
+    quotedPrice: number;
+  }
+) {
+  return sendNotification({
+    type: "car_rental_quote_ready" as NotificationType,
+    data,
+    customerEmail,
+  });
+}
+
+export async function notifyCarRentalConfirmed(
+  customerEmail: string,
+  data: {
+    requestId: string;
+    pickupLocation: string;
+    pickupDate: string;
+    dropoffDate: string;
+    rentalCompany?: string;
+  }
+) {
+  return sendNotification({
+    type: "car_rental_confirmed" as NotificationType,
+    data,
+    customerEmail,
+  });
+}
+
+export async function notifyCarRentalCancelled(
+  customerEmail: string,
+  data: {
+    requestId: string;
+    reason?: string;
+  }
+) {
+  return sendNotification({
+    type: "car_rental_cancelled" as NotificationType,
+    data,
+    customerEmail,
+  });
+}
+
 // Notify both parties when SpareFare listing is created
 export async function notifyEscrowSpareFareListed(
   recipientEmail: string,
