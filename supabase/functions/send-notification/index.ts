@@ -839,7 +839,10 @@ function getEmailContent(type: NotificationType, data: Record<string, any>): { s
               <p><strong>Dates:</strong> ${data.pickupDate} → ${data.dropoffDate}</p>
               <p style="font-size: 24px; color: #1a365d;"><strong>Price: $${data.quotedPrice}</strong></p>
             </div>
-            <p>Reply to this email or contact us to confirm your booking.</p>
+            <div style="text-align: center; margin: 20px 0;">
+              <a href="https://your-travel-agent.lovable.app/dashboard" style="display: inline-block; padding: 14px 32px; background-color: #38a169; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">View Quote & Pay Now →</a>
+            </div>
+            <p style="text-align: center; color: #718096; font-size: 14px;">Log in to your dashboard to review the quote and confirm your rental.</p>
           </div>
         `,
       };

@@ -76,12 +76,22 @@ export default function DashboardPage() {
     
     if (requestsData) setRequests(requestsData);
 
-    // Fetch car rental requests
-    const { data: rentalData } = await supabase
+    // Fetch car rental requests (match by user_id OR email for reliability)
+    const { data: rentalByUser } = await supabase
+      .from("car_rental_requests")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false });
+
+    const { data: rentalByEmail } = await supabase
       .from("car_rental_requests")
       .select("*")
       .eq("contact_email", session.user.email || "")
       .order("created_at", { ascending: false });
+
+    // Merge and deduplicate
+    const allRentals = [...(rentalByUser || []), ...(rentalByEmail || [])];
+    const rentalData = allRentals.filter((r, i, arr) => arr.findIndex(x => x.id === r.id) === i);
 
     if (rentalData) setCarRentals(rentalData);
 
@@ -110,11 +120,20 @@ export default function DashboardPage() {
   };
 
   const refreshRentals = async () => {
-    const { data: rentalData } = await supabase
+    const { data: rentalByUser } = await supabase
+      .from("car_rental_requests")
+      .select("*")
+      .eq("user_id", user?.id || "")
+      .order("created_at", { ascending: false });
+
+    const { data: rentalByEmail } = await supabase
       .from("car_rental_requests")
       .select("*")
       .eq("contact_email", user?.email || "")
       .order("created_at", { ascending: false });
+
+    const allRentals = [...(rentalByUser || []), ...(rentalByEmail || [])];
+    const rentalData = allRentals.filter((r, i, arr) => arr.findIndex(x => x.id === r.id) === i);
 
     if (rentalData) {
       setCarRentals(rentalData);
