@@ -44,6 +44,7 @@ const sections = [
     title: "Developer",
     items: [
       { label: "Dev Agent", icon: Code, path: "/m/dev" },
+      { label: "AI Roundtable", icon: Users, path: "/m/roundtable" },
     ],
   },
 ];

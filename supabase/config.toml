@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.voice-proxy-status]
 verify_jwt = false
+
+[functions.agent-roundtable]
+verify_jwt = false
