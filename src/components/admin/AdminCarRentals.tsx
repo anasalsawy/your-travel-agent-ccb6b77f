@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ export function AdminCarRentals() {
   const [editCompany, setEditCompany] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [includeStripeLink, setIncludeStripeLink] = useState(true);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -128,8 +130,33 @@ export function AdminCarRentals() {
       toast.error("Please enter a price before sending the quote");
       return;
     }
-    setEditStatus("quoted");
     setSaving(true);
+
+    let paymentUrl: string | undefined;
+
+    // Generate Stripe payment link if requested
+    if (includeStripeLink) {
+      try {
+        const { data: stripeData, error: stripeError } = await supabase.functions.invoke("create-stripe-checkout", {
+          body: {
+            type: "car_rental",
+            amount: parseFloat(editPrice),
+            description: `Car Rental - ${selected.pickup_location} (${selected.pickup_date} → ${selected.dropoff_date})`,
+            customerEmail: selected.contact_email,
+          },
+        });
+
+        if (stripeError) {
+          console.error("Stripe error:", stripeError);
+          toast.error("Failed to generate payment link, sending quote without it");
+        } else if (stripeData?.url) {
+          paymentUrl = stripeData.url;
+        }
+      } catch (err) {
+        console.error("Stripe link generation failed:", err);
+        toast.error("Failed to generate payment link, sending quote without it");
+      }
+    }
 
     const { error } = await supabase
       .from("car_rental_requests")
@@ -150,8 +177,10 @@ export function AdminCarRentals() {
         pickupDate: selected.pickup_date,
         dropoffDate: selected.dropoff_date,
         quotedPrice: parseFloat(editPrice),
+        rentalCompany: editCompany || undefined,
+        paymentUrl,
       });
-      toast.success("Quote sent to " + selected.contact_email);
+      toast.success(`Quote sent to ${selected.contact_email}${paymentUrl ? " with Stripe payment link" : ""}`);
       setSelected(null);
       fetchRequests();
     }
@@ -331,17 +360,24 @@ export function AdminCarRentals() {
                   <Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Internal notes..." />
                 </div>
                 {/* Send Quote Action */}
-                {selected.status === "submitted" && (
+                {(selected.status === "submitted" || selected.status === "quoted") && (
                   <div className="p-4 rounded-lg border-2 border-dashed border-primary/50 space-y-3">
                     <label className="text-sm font-semibold text-primary flex items-center gap-2">
-                      <DollarSign className="w-4 h-4" /> Send Quote to Customer
+                      <DollarSign className="w-4 h-4" /> {selected.status === "submitted" ? "Send Quote to Customer" : "Resend Quote"}
                     </label>
                     <p className="text-xs text-muted-foreground">
-                      Set the price and rental company, then send the quote. The customer will receive an email with payment instructions.
+                      The customer will receive an email with the price{includeStripeLink ? " and a secure Stripe payment link" : ""}.
                     </p>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Include Stripe payment link</span>
+                        <span className="text-xs text-muted-foreground">💳</span>
+                      </div>
+                      <Switch checked={includeStripeLink} onCheckedChange={setIncludeStripeLink} />
+                    </div>
                     <Button onClick={handleSendQuote} disabled={saving || !editPrice} className="w-full gap-2">
                       {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                      Send Quote (${editPrice || "0"}) to {selected.contact_email}
+                      {selected.status === "submitted" ? "Send" : "Resend"} Quote (${editPrice || "0"}) to {selected.contact_email}
                     </Button>
                   </div>
                 )}

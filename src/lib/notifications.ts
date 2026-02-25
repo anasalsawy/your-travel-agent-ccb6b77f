@@ -504,6 +504,8 @@ export async function notifyCarRentalQuoteReady(
     pickupDate: string;
     dropoffDate: string;
     quotedPrice: number;
+    rentalCompany?: string;
+    paymentUrl?: string;
   }
 ) {
   return sendNotification({
