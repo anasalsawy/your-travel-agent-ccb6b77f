@@ -61,9 +61,8 @@ type NotificationType =
   | "bid_accepted"
   | "bid_rejected"
   | "listing_expired"
-  // Escrow/SpareFare notifications
+  // Escrow notifications
   | "escrow_status_update"
-  | "escrow_sparefare_listed"
   | "escrow_action_needed"
   // Car rental notifications
   | "car_rental_received"

@@ -87,7 +87,6 @@ You ARE experienced, reliable, calm under pressure, and detail-oriented.
 
 CRITICAL BRANDING:
 - Your company is "Your Travel Agent" or "YourTravelAgent.net"
-- You are NOT "SpareFare" - that's a separate escrow service for secure transactions
 - Always introduce yourself as Maya from Your Travel Agent
 
 ═══════════════════════════════════════════════════════════════════
@@ -438,22 +437,18 @@ You have access to an extensive toolkit. Use them proactively and creatively to 
 - create_marketplace_listing: Post new listings
 - recommend_sellers: Suggest trusted sellers
 
-🔐 ESCROW & SPAREFARE MANAGEMENT:
+🔐 ESCROW MANAGEMENT:
 - get_pending_escrow_actions: Check for transactions needing escrow setup - DO THIS PROACTIVELY
-- setup_sparefare_listing: Set up SpareFare listing for awarded bids
 - update_escrow_status: Move transactions through the escrow flow
 - get_escrow_details: Get full transaction details
-- generate_sparefare_listing_info: Generate info needed for SpareFare listing
 - send_payment_link_to_buyer: Send payment link to buyer
 
 ESCROW WORKFLOW - YOU HANDLE THIS, NOT ADMIN:
 When a bid is accepted, YOU are responsible for the escrow flow:
 1. Use get_pending_escrow_actions to find transactions needing setup
-2. Use generate_sparefare_listing_info to get the details for SpareFare
-3. Create the listing on SpareFare (you'll provide the info to create it manually)
-4. Use setup_sparefare_listing to record the SpareFare URL
-5. Use send_payment_link_to_buyer to notify the buyer
-6. Monitor status and use update_escrow_status as things progress
+2. Create a Stripe payment link for the buyer
+3. Use send_payment_link_to_buyer to notify the buyer
+4. Monitor status and use update_escrow_status as things progress
 
 Be PROACTIVE - check for pending escrow actions and handle them without being asked!
 
@@ -1366,34 +1361,17 @@ const TOOLS: any[] = [
       }
     }
   },
-  // ==================== ESCROW & SPAREFARE MANAGEMENT ====================
+  // ==================== ESCROW MANAGEMENT ====================
   {
     type: "function",
     function: {
       name: "get_pending_escrow_actions",
-      description: "Get all marketplace listings that need escrow action - bids accepted but not yet on SpareFare. Maya should check this proactively and handle them.",
+      description: "Get all marketplace listings that need escrow action - bids accepted but not yet set up.",
       parameters: {
         type: "object",
         properties: {
           limit: { type: "number", description: "Number of listings to return" }
         },
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "setup_sparefare_listing",
-      description: "Set up a SpareFare listing for an awarded marketplace transaction. Maya generates the listing details and updates the escrow status.",
-      parameters: {
-        type: "object",
-        properties: {
-          listing_id: { type: "string", description: "The marketplace listing ID" },
-          sparefare_url: { type: "string", description: "The SpareFare listing URL (once created)" },
-          notes: { type: "string", description: "Any notes about the setup" }
-        },
-        required: ["listing_id"],
         additionalProperties: false
       }
     }
@@ -1407,7 +1385,7 @@ const TOOLS: any[] = [
         type: "object",
         properties: {
           listing_id: { type: "string", description: "The marketplace listing ID" },
-          status: { type: "string", enum: ["pending_sparefare", "on_sparefare", "payment_received", "funds_released", "completed", "disputed"], description: "New escrow status" },
+          status: { type: "string", enum: ["pending_escrow", "awaiting_payment", "payment_received", "funds_released", "completed", "disputed"], description: "New escrow status" },
           notes: { type: "string", description: "Notes about the status change" },
           notify_buyer: { type: "boolean", description: "Whether to notify the buyer" },
           notify_seller: { type: "boolean", description: "Whether to notify the seller" }
@@ -1435,32 +1413,17 @@ const TOOLS: any[] = [
   {
     type: "function",
     function: {
-      name: "generate_sparefare_listing_info",
-      description: "Generate the information needed to create a SpareFare listing based on the accepted bid. Returns formatted details Maya can use.",
-      parameters: {
-        type: "object",
-        properties: {
-          listing_id: { type: "string", description: "The marketplace listing ID" }
-        },
-        required: ["listing_id"],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
       name: "send_payment_link_to_buyer",
-      description: "Send the SpareFare payment link to the buyer via email/SMS so they can complete their payment.",
+      description: "Send a payment link to the buyer via email/SMS so they can complete their payment.",
       parameters: {
         type: "object",
         properties: {
           listing_id: { type: "string", description: "The marketplace listing ID" },
-          sparefare_url: { type: "string", description: "The SpareFare payment URL" },
+          payment_url: { type: "string", description: "The payment URL (e.g. Stripe checkout link)" },
           send_email: { type: "boolean", description: "Send via email" },
           send_sms: { type: "boolean", description: "Send via SMS" }
         },
-        required: ["listing_id", "sparefare_url"],
+        required: ["listing_id", "payment_url"],
         additionalProperties: false
       }
     }
@@ -3475,7 +3438,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      // ==================== ESCROW & SPAREFARE MANAGEMENT ====================
+      // ==================== ESCROW MANAGEMENT ====================
       case "get_pending_escrow_actions": {
         const { data, error } = await supabase
           .from("marketplace_listings")
@@ -3485,7 +3448,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             bids!marketplace_listings_winning_bid_id_fkey (amount, message, estimated_delivery, sellers (business_name, contact_email))
           `)
           .eq("status", "awarded")
-          .in("escrow_status", ["pending_sparefare", null])
+          .in("escrow_status", ["pending_escrow", "pending_sparefare", null])
           .order("updated_at", { ascending: false })
           .limit(args.limit || 10);
 
@@ -3505,7 +3468,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
           winning_bid_amount: l.bids?.amount,
           seller_name: l.bids?.sellers?.business_name,
           seller_email: l.bids?.sellers?.contact_email,
-          escrow_status: l.escrow_status || "pending_sparefare",
+          escrow_status: l.escrow_status || "pending_escrow",
           awarded_at: l.updated_at
         }));
 
@@ -3519,86 +3482,12 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
         });
       }
 
-      case "generate_sparefare_listing_info": {
-        const { data: listing, error } = await supabase
-          .from("marketplace_listings")
-          .select(`
-            *,
-            ticket_requests (*),
-            bids!marketplace_listings_winning_bid_id_fkey (*, sellers (*))
-          `)
-          .eq("id", args.listing_id)
-          .single();
 
-        if (error || !listing) {
-          return JSON.stringify({ success: false, error: "Listing not found" });
-        }
-
-        const tr = listing.ticket_requests;
-        const bid = listing.bids;
-        const seller = bid?.sellers;
-
-        const sparefareInfo = {
-          title: `${tr?.origin || "?"} to ${tr?.destination || "?"} - ${tr?.passengers || 1} Passenger(s)`,
-          description: `Flight from ${tr?.origin} to ${tr?.destination} on ${tr?.departure_date}${tr?.return_date ? ` returning ${tr?.return_date}` : " (one-way)"}. ${tr?.cabin_class || "Economy"} class. ${tr?.special_notes || ""}`,
-          price: bid?.amount || 0,
-          travel_date: tr?.departure_date,
-          return_date: tr?.return_date,
-          passengers: tr?.passengers || 1,
-          cabin_class: tr?.cabin_class || "economy",
-          buyer_name: "Buyer",
-          buyer_email: tr?.contact_email,
-          buyer_phone: tr?.contact_phone,
-          seller_name: seller?.business_name,
-          seller_email: seller?.contact_email,
-          estimated_delivery: bid?.estimated_delivery,
-          special_notes: tr?.special_notes
-        };
-
-        return JSON.stringify({
-          success: true,
-          listing_id: args.listing_id,
-          sparefare_listing_info: sparefareInfo,
-          instructions: "Use this info to create a listing on sparefare.com. Once created, copy the listing URL and use setup_sparefare_listing to save it."
-        });
-      }
-
-      case "setup_sparefare_listing": {
-        const updates: any = {
-          escrow_status: "on_sparefare",
-          escrow_notes: args.notes || "SpareFare listing created by Maya",
-          updated_at: new Date().toISOString()
-        };
-
-        if (args.sparefare_url) {
-          updates.sparefare_listing_url = args.sparefare_url;
-        }
-
-        const { data, error } = await supabase
-          .from("marketplace_listings")
-          .update(updates)
-          .eq("id", args.listing_id)
-          .select()
-          .single();
-
-        if (error) {
-          return JSON.stringify({ success: false, error: "Failed to update listing" });
-        }
-
-        return JSON.stringify({
-          success: true,
-          listing_id: args.listing_id,
-          sparefare_url: args.sparefare_url,
-          message: args.sparefare_url 
-            ? "SpareFare listing recorded! Ready to send payment link to buyer."
-            : "Escrow status updated. Add the SpareFare URL when you have it."
-        });
-      }
 
       case "update_escrow_status": {
         const statusLabels: any = {
-          pending_sparefare: "Awaiting SpareFare Setup",
-          on_sparefare: "On SpareFare - Awaiting Payment",
+          pending_escrow: "Pending Escrow Setup",
+          awaiting_payment: "Awaiting Payment",
           payment_received: "Payment Received",
           funds_released: "Funds Released to Seller",
           completed: "Transaction Completed",
@@ -3670,8 +3559,8 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             listing_id: data.id,
             title: data.title,
             status: data.status,
-            escrow_status: data.escrow_status || "pending_sparefare",
-            sparefare_url: data.sparefare_listing_url,
+            escrow_status: data.escrow_status || "pending_escrow",
+            payment_url: data.sparefare_listing_url,
             escrow_notes: data.escrow_notes,
             route: `${tr?.origin} → ${tr?.destination}`,
             travel_date: tr?.departure_date,
@@ -3713,7 +3602,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             payload: { 
               type: "email",
               subject: `Complete Your Payment - ${route}`,
-              sparefare_url: args.sparefare_url
+              payment_url: args.payment_url
             },
             status: "queued"
           });
@@ -3727,8 +3616,8 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
             record_id: args.listing_id,
             payload: { 
               type: "sms",
-              message: `Your ${route} ticket is ready! Complete payment securely: ${args.sparefare_url}`,
-              sparefare_url: args.sparefare_url
+              message: `Your ${route} ticket is ready! Complete payment securely: ${args.payment_url}`,
+              payment_url: args.payment_url
             },
             status: "queued"
           });

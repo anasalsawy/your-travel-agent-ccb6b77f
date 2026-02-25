@@ -47,11 +47,17 @@ const escrowStatusConfig: Record<string, { label: string; color: string; icon: a
     icon: Clock,
     description: "Your transaction is being set up.",
   },
-  pending_sparefare: {
-    label: "Creating Secure Listing",
+  pending_escrow: {
+    label: "Pending Setup",
     color: "bg-yellow-100 text-yellow-800",
     icon: Clock,
-    description: "We're creating a secure listing for your transaction. You'll receive a payment link soon.",
+    description: "We're setting up your secure transaction. You'll receive a payment link soon.",
+  },
+  pending_sparefare: {
+    label: "Pending Setup",
+    color: "bg-yellow-100 text-yellow-800",
+    icon: Clock,
+    description: "We're setting up your secure transaction. You'll receive a payment link soon.",
   },
   on_sparefare: {
     label: "Ready for Payment",
@@ -210,7 +216,7 @@ export function MarketplaceOrders({ userId }: { userId: string }) {
       {orders.map((order) => {
         const status = escrowStatusConfig[order.escrow_status || "none"] || escrowStatusConfig.none;
         const StatusIcon = status.icon;
-        const showPaymentLink = order.escrow_status === "on_sparefare" && order.sparefare_listing_url;
+        const showPaymentLink = (order.escrow_status === "on_sparefare" || order.escrow_status === "awaiting_payment") && order.sparefare_listing_url;
 
         return (
           <Card key={order.id} className={`glass-card overflow-hidden ${showPaymentLink ? "border-2 border-accent" : ""}`}>
