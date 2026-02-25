@@ -35,6 +35,7 @@ const MobileSendQuote = lazy(() => import("./pages/mobile-admin/MobileSendQuote"
 const MobileDevAgent = lazy(() => import("./pages/mobile-admin/MobileDevAgent"));
 const MobileCarRentals = lazy(() => import("./pages/mobile-admin/MobileCarRentals"));
 const MobileFullAdmin = lazy(() => import("./pages/mobile-admin/MobileFullAdmin"));
+const MobileAgentRoundtable = lazy(() => import("./pages/mobile-admin/MobileAgentRoundtable"));
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/m/dev" element={<MobileDevAgent />} />
             <Route path="/m/car-rentals" element={<MobileCarRentals />} />
             <Route path="/m/admin" element={<MobileFullAdmin />} />
+            <Route path="/m/roundtable" element={<MobileAgentRoundtable />} />
             {/* Legacy mobile-admin redirects */}
             <Route path="/mobile-admin" element={<Navigate to="/m" replace />} />
             <Route path="/mobile-admin/login" element={<Navigate to="/m/login" replace />} />
