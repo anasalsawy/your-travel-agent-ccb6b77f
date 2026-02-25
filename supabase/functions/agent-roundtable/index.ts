@@ -65,25 +65,45 @@ async function callLLM(messages: any[], maxTokens = 300, temperature = 0.7) {
 
 // ─── MODE: ORCHESTRATE (decide who speaks next or end discussion) ───
 async function orchestrate(history: any[], topic: string, turnCount: number) {
-  const agentList = AGENTS.map(a => `- ${a.emoji} ${a.name} (${a.expertise})`).join("\n");
+  const agentList = AGENTS.map(a => `- ${a.id}: ${a.emoji} ${a.name} (${a.expertise})`).join("\n");
+
+  // Extract who already spoke from history
+  const spokeAlready: string[] = [];
+  for (const msg of history) {
+    const content = String(msg?.content || "");
+    for (const a of AGENTS) {
+      if (content.includes(a.emoji) || content.includes(a.name)) {
+        if (!spokeAlready.includes(a.id)) spokeAlready.push(a.id);
+      }
+    }
+  }
+  const notSpoken = AGENTS.filter(a => !spokeAlready.includes(a.id));
+  const diversityHint = notSpoken.length > 0
+    ? `\n\nAGENTS WHO HAVE NOT SPOKEN YET: ${notSpoken.map(a => `${a.emoji} ${a.name} (id: "${a.id}")`).join(", ")}. STRONGLY PREFER picking one of these agents next to ensure diverse perspectives.`
+    : `\n\nAll agents have spoken at least once. Pick whoever is most relevant to advance the discussion.`;
 
   const system = `You are the Orchestrator 🎯. You manage a focused roundtable discussion.
 
 TOPIC: "${topic}"
 
-Available agents:
+Available agents (use the "id" value for nextAgentId):
 ${agentList}
+
+Agents who already spoke: ${spokeAlready.length > 0 ? spokeAlready.join(", ") : "none yet"}
+${diversityHint}
 
 ${PLATFORM_CONTEXT}
 
 You have two jobs:
-1. Pick which agent should speak NEXT based on what's been said and what perspectives are missing.
+1. Pick which agent should speak NEXT — ROTATE through agents. Do NOT pick the same agent twice in a row. Ensure ALL agents get a turn before repeating any.
 2. Decide if we have ENOUGH input to form a concrete action plan.
 
 The discussion has had ${turnCount} agent turns so far.
 - Under 4 turns: ALWAYS continue discussion. Not enough perspectives yet.
 - 4-8 turns: Continue if important perspectives are missing. End if consensus is forming.
 - Over 8 turns: Strongly lean toward ending unless critical disagreements remain.
+
+CRITICAL: The "nextAgentId" MUST be one of these exact strings: ${AGENTS.map(a => `"${a.id}"`).join(", ")}
 
 Reply with EXACTLY this JSON format (no markdown, no backticks):
 {"action":"continue","nextAgentId":"dev","directive":"Focus on X because Y"}
