@@ -47,6 +47,7 @@ export function AdminCarRentals() {
   const [selected, setSelected] = useState<CarRentalRequest | null>(null);
   const [editStatus, setEditStatus] = useState("");
   const [editPrice, setEditPrice] = useState("");
+  const [editCompany, setEditCompany] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -77,6 +78,7 @@ export function AdminCarRentals() {
     setSelected(req);
     setEditStatus(req.status);
     setEditPrice(req.quoted_price?.toString() || "");
+    setEditCompany(req.rental_company || "");
     setEditNotes(req.admin_notes || "");
   };
 
@@ -88,6 +90,7 @@ export function AdminCarRentals() {
       .update({
         status: editStatus,
         quoted_price: editPrice ? parseFloat(editPrice) : null,
+        rental_company: editCompany || null,
         admin_notes: editNotes || null,
       })
       .eq("id", selected.id);
@@ -265,6 +268,10 @@ export function AdminCarRentals() {
                 <div>
                   <label className="text-sm text-muted-foreground">Quoted Price ($)</label>
                   <Input type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="Enter price" />
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Rental Company</label>
+                  <Input value={editCompany} onChange={(e) => setEditCompany(e.target.value)} placeholder="e.g., Enterprise, Hertz, Budget..." />
                 </div>
                 <div>
                   <label className="text-sm text-muted-foreground">Admin Notes</label>
