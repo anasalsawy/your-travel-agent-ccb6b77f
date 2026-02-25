@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { RefreshCw, Search, Car, Loader2 } from "lucide-react";
+import { RefreshCw, Search, Car, Loader2, DollarSign, Send } from "lucide-react";
 import { format } from "date-fns";
+import { notifyCarRentalQuoteReady } from "@/lib/notifications";
 
 interface CarRentalRequest {
   id: string;
@@ -85,6 +86,10 @@ export function AdminCarRentals() {
   const handleSave = async () => {
     if (!selected) return;
     setSaving(true);
+    
+    const wasNotQuoted = selected.status !== "quoted" && selected.status !== "confirmed";
+    const isNowQuoted = editStatus === "quoted";
+    
     const { error } = await supabase
       .from("car_rental_requests")
       .update({
@@ -99,6 +104,54 @@ export function AdminCarRentals() {
       toast.error("Failed to update");
     } else {
       toast.success("Car rental request updated");
+      
+      // Send quote notification email when status changes to "quoted"
+      if (wasNotQuoted && isNowQuoted && editPrice) {
+        await notifyCarRentalQuoteReady(selected.contact_email, {
+          requestId: selected.id,
+          pickupLocation: selected.pickup_location,
+          pickupDate: selected.pickup_date,
+          dropoffDate: selected.dropoff_date,
+          quotedPrice: parseFloat(editPrice),
+        });
+        toast.success("Quote email sent to " + selected.contact_email);
+      }
+      
+      setSelected(null);
+      fetchRequests();
+    }
+    setSaving(false);
+  };
+
+  const handleSendQuote = async () => {
+    if (!selected || !editPrice) {
+      toast.error("Please enter a price before sending the quote");
+      return;
+    }
+    setEditStatus("quoted");
+    setSaving(true);
+
+    const { error } = await supabase
+      .from("car_rental_requests")
+      .update({
+        status: "quoted",
+        quoted_price: parseFloat(editPrice),
+        rental_company: editCompany || null,
+        admin_notes: editNotes || null,
+      })
+      .eq("id", selected.id);
+
+    if (error) {
+      toast.error("Failed to send quote");
+    } else {
+      await notifyCarRentalQuoteReady(selected.contact_email, {
+        requestId: selected.id,
+        pickupLocation: selected.pickup_location,
+        pickupDate: selected.pickup_date,
+        dropoffDate: selected.dropoff_date,
+        quotedPrice: parseFloat(editPrice),
+      });
+      toast.success("Quote sent to " + selected.contact_email);
       setSelected(null);
       fetchRequests();
     }
@@ -277,9 +330,25 @@ export function AdminCarRentals() {
                   <label className="text-sm text-muted-foreground">Admin Notes</label>
                   <Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Internal notes..." />
                 </div>
-                <Button onClick={handleSave} disabled={saving} className="w-full">
+                {/* Send Quote Action */}
+                {selected.status === "submitted" && (
+                  <div className="p-4 rounded-lg border-2 border-dashed border-primary/50 space-y-3">
+                    <label className="text-sm font-semibold text-primary flex items-center gap-2">
+                      <DollarSign className="w-4 h-4" /> Send Quote to Customer
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Set the price and rental company, then send the quote. The customer will receive an email with payment instructions.
+                    </p>
+                    <Button onClick={handleSendQuote} disabled={saving || !editPrice} className="w-full gap-2">
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      Send Quote (${editPrice || "0"}) to {selected.contact_email}
+                    </Button>
+                  </div>
+                )}
+
+                <Button onClick={handleSave} disabled={saving} className="w-full" variant={selected.status === "submitted" ? "outline" : "default"}>
                   {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Save Changes
+                  {selected.status === "submitted" ? "Save Without Sending" : "Save Changes"}
                 </Button>
               </div>
             </div>
