@@ -144,11 +144,27 @@ You speak concisely (2-4 sentences per turn). You're practical and operations-fo
   },
 ];
 
+const MAX_CONTEXT_MESSAGES = 18;
+const MAX_MESSAGE_CHARS = 900;
+const MAX_DEBATE_HISTORY_ENTRIES = 12;
+
+const trimMessage = (content: string) =>
+  content.length > MAX_MESSAGE_CHARS ? `${content.slice(0, MAX_MESSAGE_CHARS)}…` : content;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     const { messages, targetAgents, debateRounds = 2, includeCodeContext } = await req.json();
+    const safeMessages: { role: "user" | "assistant"; content: string }[] = Array.isArray(messages)
+      ? messages
+          .slice(-MAX_CONTEXT_MESSAGES)
+          .map((m) => ({
+            role: m?.role === "assistant" ? "assistant" : "user",
+            content: trimMessage(String(m?.content ?? "").trim()),
+          }))
+          .filter((m) => m.content.length > 0)
+      : [];
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -189,8 +205,8 @@ RULES:
           role: "system" as const,
           content: `${agent.systemPrompt}\n\n${roundtableContext}\n\nThis is round ${round + 1} of ${roundsCount}. ${round > 0 ? "Build on the previous discussion. Don't repeat points already made." : "Share your initial reaction."}`,
         },
-        ...messages,
-        ...debateHistory,
+        ...safeMessages,
+        ...debateHistory.slice(-MAX_DEBATE_HISTORY_ENTRIES),
       ];
 
       const controller = new AbortController();
@@ -206,7 +222,7 @@ RULES:
           body: JSON.stringify({
             model: "google/gemini-2.5-flash",
             messages: agentMessages,
-            max_tokens: 220,
+            max_tokens: 180,
             temperature: 0.7,
           }),
           signal: controller.signal,
@@ -249,9 +265,9 @@ RULES:
     };
 
     for (let round = 0; round < rounds; round++) {
-      const debateHistory = responses.map(r => ({
+      const debateHistory = responses.slice(-MAX_DEBATE_HISTORY_ENTRIES).map(r => ({
         role: "assistant" as const,
-        content: `[${r.emoji} ${r.name}]: ${r.content}`,
+        content: trimMessage(`[${r.emoji} ${r.name}]: ${r.content}`),
       }));
 
       const roundResponses = await Promise.all(

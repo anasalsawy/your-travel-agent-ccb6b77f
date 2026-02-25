@@ -31,6 +31,12 @@ const AGENT_LIST = [
 ];
 
 const REQUEST_TIMEOUT_MS = 45000;
+const MAX_HISTORY_ENTRIES = 18;
+const MAX_CONTENT_CHARS = 700;
+const MAX_STORED_MESSAGES = 30;
+
+const trimContent = (text: string) =>
+  text.length > MAX_CONTENT_CHARS ? `${text.slice(0, MAX_CONTENT_CHARS)}…` : text;
 
 export default function MobileAgentRoundtable() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -60,22 +66,29 @@ export default function MobileAgentRoundtable() {
     if (!text || isLoading) return;
 
     const userMsg: Message = { role: "user", content: text };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages(prev => [...prev, userMsg].slice(-MAX_STORED_MESSAGES));
     setInput("");
     setIsLoading(true);
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      const history: { role: string; content: string }[] = messages.flatMap(m => {
-        if (m.role === "user") return [{ role: "user", content: m.content! }];
-        if (m.responses) return m.responses.map(r => ({
-          role: "assistant",
-          content: `[${r.emoji} ${r.name}]: ${r.content}`
-        }));
+      const historySource = messages.slice(-MAX_HISTORY_ENTRIES);
+      const history: { role: string; content: string }[] = historySource.flatMap(m => {
+        if (m.role === "user") {
+          return [{ role: "user", content: trimContent(m.content || "") }];
+        }
+
+        if (m.responses) {
+          return m.responses.slice(0, 6).map(r => ({
+            role: "assistant",
+            content: trimContent(`[${r.emoji} ${r.name}]: ${r.content}`),
+          }));
+        }
+
         return [] as { role: string; content: string }[];
       });
-      history.push({ role: "user", content: text });
+      history.push({ role: "user", content: trimContent(text) });
 
       const invokePromise = supabase.functions.invoke("agent-roundtable", {
         body: {
@@ -103,14 +116,17 @@ export default function MobileAgentRoundtable() {
       const responses: AgentResponse[] = invokeResult.data?.responses || [];
       if (!responses.length) throw new Error("No advisors responded. Please retry.");
 
-      setMessages(prev => [...prev, { role: "roundtable", responses }]);
+      setMessages(prev => [...prev, { role: "roundtable", responses } as Message].slice(-MAX_STORED_MESSAGES));
     } catch (err: any) {
       console.error("Roundtable error:", err);
       toast.error(err?.message || "Failed to reach the roundtable");
-      setMessages(prev => [...prev, {
-        role: "roundtable",
-        responses: [{ agentId: "error", name: "System", emoji: "⚠️", color: "#666", content: err?.message || "Connection failed." }]
-      }]);
+      setMessages(prev => ([
+        ...prev,
+        {
+          role: "roundtable",
+          responses: [{ agentId: "error", name: "System", emoji: "⚠️", color: "#666", content: err?.message || "Connection failed." }]
+        } as Message
+      ].slice(-MAX_STORED_MESSAGES)));
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
       setIsLoading(false);
