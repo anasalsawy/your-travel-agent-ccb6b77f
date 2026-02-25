@@ -18,18 +18,23 @@ import {
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import { TicketRequestDetail } from "@/components/dashboard/TicketRequestDetail";
+import { CarRentalDetail } from "@/components/dashboard/CarRentalDetail";
+import { Car } from "lucide-react";
 
 
 type Order = Tables<"orders"> & { vouchers: Tables<"vouchers"> | null };
 type TicketRequest = Tables<"ticket_requests">;
+type CarRentalRequest = Tables<"car_rental_requests">;
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [requests, setRequests] = useState<TicketRequest[]>([]);
+  const [carRentals, setCarRentals] = useState<CarRentalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<TicketRequest | null>(null);
+  const [selectedRental, setSelectedRental] = useState<CarRentalRequest | null>(null);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const paymentSubmitted = searchParams.get("payment_submitted") === "true";
@@ -71,6 +76,15 @@ export default function DashboardPage() {
     
     if (requestsData) setRequests(requestsData);
 
+    // Fetch car rental requests
+    const { data: rentalData } = await supabase
+      .from("car_rental_requests")
+      .select("*")
+      .eq("contact_email", session.user.email || "")
+      .order("created_at", { ascending: false });
+
+    if (rentalData) setCarRentals(rentalData);
+
     setLoading(false);
   };
 
@@ -91,6 +105,22 @@ export default function DashboardPage() {
       if (selectedRequest) {
         const updated = requestsData.find(r => r.id === selectedRequest.id);
         if (updated) setSelectedRequest(updated);
+      }
+    }
+  };
+
+  const refreshRentals = async () => {
+    const { data: rentalData } = await supabase
+      .from("car_rental_requests")
+      .select("*")
+      .eq("contact_email", user?.email || "")
+      .order("created_at", { ascending: false });
+
+    if (rentalData) {
+      setCarRentals(rentalData);
+      if (selectedRental) {
+        const updated = rentalData.find(r => r.id === selectedRental.id);
+        if (updated) setSelectedRental(updated);
       }
     }
   };
@@ -183,12 +213,12 @@ export default function DashboardPage() {
               Welcome back, <span className="text-gradient">{profile?.full_name || "Traveler"}</span>
             </h1>
             <p className="text-muted-foreground">
-              Manage your voucher orders and ticket requests
+              Manage your voucher orders, ticket requests, and car rentals
             </p>
           </div>
 
           {/* Quick Actions */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/vouchers")}>
               <Package className="w-8 h-8 text-primary mb-3" />
               <h3 className="font-semibold mb-1">Browse Vouchers</h3>
@@ -198,6 +228,11 @@ export default function DashboardPage() {
               <Plane className="w-8 h-8 text-accent mb-3" />
               <h3 className="font-semibold mb-1">Request Ticket</h3>
               <p className="text-sm text-muted-foreground">Get a personalized quote</p>
+            </div>
+            <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/car-rental")}>
+              <Car className="w-8 h-8 text-primary mb-3" />
+              <h3 className="font-semibold mb-1">Rent a Car</h3>
+              <p className="text-sm text-muted-foreground">Get a car rental quote</p>
             </div>
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/")}>
               <MessageSquare className="w-8 h-8 text-success mb-3" />
@@ -217,6 +252,7 @@ export default function DashboardPage() {
             <TabsList className="bg-card border border-border">
               <TabsTrigger value="orders">Voucher Orders ({orders.length})</TabsTrigger>
               <TabsTrigger value="requests">Ticket Requests ({requests.length})</TabsTrigger>
+              <TabsTrigger value="rentals">Car Rentals ({carRentals.length})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="orders">
@@ -378,6 +414,91 @@ export default function DashboardPage() {
                             <p className="text-sm text-muted-foreground whitespace-pre-line">{request.issued_ticket_info}</p>
                           </div>
                         )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="rentals">
+              {selectedRental ? (
+                <CarRentalDetail
+                  request={selectedRental}
+                  onBack={() => setSelectedRental(null)}
+                  onUpdate={refreshRentals}
+                />
+              ) : carRentals.length === 0 ? (
+                <div className="glass-card p-12 text-center">
+                  <Car className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="font-semibold text-lg mb-2">No car rental requests</h3>
+                  <p className="text-muted-foreground mb-6">Need a car? Submit a rental request and we'll find you the best deal!</p>
+                  <Button variant="hero" onClick={() => navigate("/car-rental")}>
+                    Request a Car Rental
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {carRentals.map((rental) => {
+                    const hasQuote = rental.status === "quoted" && !!rental.quoted_price;
+                    return (
+                      <div
+                        key={rental.id}
+                        className={`glass-card p-6 cursor-pointer transition-all hover:border-primary/50 ${hasQuote ? "border-2 border-accent/30" : ""}`}
+                        onClick={() => setSelectedRental(rental)}
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="font-semibold text-lg flex items-center gap-2">
+                                <Car className="w-5 h-5 text-primary" />
+                                {rental.pickup_location}
+                              </h3>
+                              <Badge className={getStatusColor(rental.status)}>
+                                {rental.status}
+                              </Badge>
+                              {hasQuote && (
+                                <Badge className="bg-accent/20 text-accent animate-pulse">
+                                  Action Required
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-4 h-4" />
+                                {formatDate(rental.pickup_date)} - {formatDate(rental.dropoff_date)}
+                              </div>
+                              <span>{rental.car_type || "Any"} • {rental.transmission || "Auto"}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-4">
+                            {rental.quoted_price ? (
+                              <div className="text-right">
+                                <div className="text-sm text-muted-foreground">Quote</div>
+                                <div className="font-bold text-xl text-gradient">
+                                  {formatCurrency(Number(rental.quoted_price))}
+                                </div>
+                              </div>
+                            ) : rental.budget ? (
+                              <div className="text-right">
+                                <div className="text-sm text-muted-foreground">Budget</div>
+                                <div className="font-semibold">{formatCurrency(Number(rental.budget))}</div>
+                              </div>
+                            ) : null}
+                            <Button variant="ghost" size="icon">
+                              <Eye className="w-5 h-5" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            Submitted {formatDate(rental.created_at || "")}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
