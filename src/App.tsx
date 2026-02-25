@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Vouchers from "./pages/Vouchers";
 import VoucherDetail from "./pages/VoucherDetail";
@@ -54,6 +54,10 @@ const App = () => (
             <Route path="/m/more" element={<MobileMore />} />
             <Route path="/m/send-quote" element={<MobileSendQuote />} />
             <Route path="/m/dev" element={<MobileDevAgent />} />
+            {/* Legacy mobile-admin redirects */}
+            <Route path="/mobile-admin" element={<Navigate to="/m" replace />} />
+            <Route path="/mobile-admin/login" element={<Navigate to="/m/login" replace />} />
+            <Route path="/mobile-admin/*" element={<Navigate to="/m" replace />} />
             {/* Website routes */}
             <Route path="/vouchers" element={<Vouchers />} />
             <Route path="/vouchers/:id" element={<VoucherDetail />} />
