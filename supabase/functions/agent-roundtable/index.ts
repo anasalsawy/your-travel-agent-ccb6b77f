@@ -5,201 +5,221 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const PLATFORM_CONTEXT = `## PLATFORM CONTEXT
+Your Travel Agent — discount travel agency built on React+Vite+Tailwind+TypeScript with Supabase Edge Functions backend.
+Revenue: flights, car rentals, vouchers, marketplace. Three AI agents: Lovable (base), Claude Manager (autonomous ops), Maya (customer-facing). Mobile admin at /m/*.
+21 tools: database CRUD, GitHub, edge functions, email/SMS/WhatsApp/Telegram, phone calls, flight search, Stripe, web search, AI reasoning, 3-layer memory, TTS, reports.`;
+
 interface Agent {
   id: string;
   name: string;
   emoji: string;
   color: string;
-  systemPrompt: string;
+  expertise: string;
 }
 
-const DEV_AGENT_PROFILE = `## DEV AGENT PROFILE
-The Dev Agent is an AI developer on the Lovable platform with 21 tools: database CRUD, GitHub, edge functions, email/SMS/WhatsApp/Telegram, phone calls, flight search, Stripe, web search, AI reasoning, 3-layer memory, TTS, reports, and autonomous workflows.
-
-Architecture: React+Vite+Tailwind+TypeScript frontend, Supabase Edge Functions backend. Three agents: Lovable (base), Claude Manager (autonomous ops), Maya (customer-facing). Mobile admin at /m/*.
-
-Business: Your Travel Agent — discount travel agency. Revenue from flights, car rentals, vouchers, marketplace.`;
-
 const AGENTS: Agent[] = [
-  {
-    id: "dev",
-    name: "Dev Agent",
-    emoji: "🔧",
-    color: "#6366f1",
-    systemPrompt: `You are the Dev Agent. You build and maintain the entire platform with 21 tools.
-
-In this roundtable:
-- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — agree, disagree, or build on their specific point
-- Then share ONE observation about what you're currently seeing in the system
-- End with a specific question or challenge for the next agent`
-  },
-  {
-    id: "security",
-    name: "Security Advisor",
-    emoji: "🛡️",
-    color: "#ef4444",
-    systemPrompt: `You are the Security Advisor. Sharp, direct, slightly paranoid.
-
-In this roundtable:
-- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — challenge their point or agree with a caveat
-- Then flag ONE specific security concern you're seeing right now (name actual tables, functions, or policies)
-- End with a specific question or challenge for the next agent`
-  },
-  {
-    id: "ux",
-    name: "UX/Product Critic",
-    emoji: "🎨",
-    color: "#8b5cf6",
-    systemPrompt: `You are the UX/Product Critic. Passionate about user experience.
-
-In this roundtable:
-- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — how does their point affect the user?
-- Then share ONE UX observation about current flows (mobile admin, customer site, or Maya)
-- End with a specific question or challenge for the next agent`
-  },
-  {
-    id: "architect",
-    name: "Architecture Advisor",
-    emoji: "🏗️",
-    color: "#0ea5e9",
-    systemPrompt: `You are the Architecture Advisor. You think in systems and patterns.
-
-In this roundtable:
-- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — what are the structural implications?
-- Then share ONE architectural observation (code structure, DB schema, edge functions, state management)
-- End with a specific question or challenge for the next agent`
-  },
-  {
-    id: "business",
-    name: "Business Strategist",
-    emoji: "📈",
-    color: "#f59e0b",
-    systemPrompt: `You are the Business Strategist. Revenue, growth, competitive advantage.
-
-In this roundtable:
-- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — what's the business impact?
-- Then share ONE business observation or opportunity you see right now
-- End with a specific question or challenge for the next agent`
-  },
-  {
-    id: "ops",
-    name: "Operations Lead",
-    emoji: "⚙️",
-    color: "#10b981",
-    systemPrompt: `You are the Operations Lead. Reliability, monitoring, smooth operations.
-
-In this roundtable:
-- First, DIRECTLY RESPOND to what {PREV_AGENT} just said — what are the operational implications?
-- Then share ONE operational observation (error handling, monitoring, performance, automation)
-- End with a specific question or challenge for the next agent`
-  },
+  { id: "dev", name: "Dev Agent", emoji: "🔧", color: "#6366f1", expertise: "code, architecture, edge functions, database, integrations" },
+  { id: "security", name: "Security Advisor", emoji: "🛡️", color: "#ef4444", expertise: "RLS policies, auth, data protection, API security, secrets" },
+  { id: "ux", name: "UX/Product Critic", emoji: "🎨", color: "#8b5cf6", expertise: "user flows, mobile UX, conversion, accessibility, design" },
+  { id: "architect", name: "Architecture Advisor", emoji: "🏗️", color: "#0ea5e9", expertise: "system design, DB schema, state management, scaling, patterns" },
+  { id: "business", name: "Business Strategist", emoji: "📈", color: "#f59e0b", expertise: "revenue, growth, pricing, competitive advantage, market" },
+  { id: "ops", name: "Operations Lead", emoji: "⚙️", color: "#10b981", expertise: "reliability, monitoring, error handling, automation, performance" },
 ];
 
-const AGENT_CHAIN = ["dev", "security", "ux", "architect", "business", "ops"];
+const ORCHESTRATOR: Agent = {
+  id: "orchestrator",
+  name: "Orchestrator",
+  emoji: "🎯",
+  color: "#f97316",
+  expertise: "facilitation, synthesis, decision-making",
+};
 
-const MAX_CONTEXT_MESSAGES = 20;
-const MAX_MESSAGE_CHARS = 800;
+const MAX_CONTEXT_MESSAGES = 24;
+const MAX_MESSAGE_CHARS = 900;
+const trim = (c: string) => (c.length > MAX_MESSAGE_CHARS ? c.slice(0, MAX_MESSAGE_CHARS) + "…" : c);
 
-const trimMessage = (content: string) =>
-  content.length > MAX_MESSAGE_CHARS ? `${content.slice(0, MAX_MESSAGE_CHARS)}…` : content;
+async function callLLM(messages: any[], maxTokens = 300, temperature = 0.7) {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "google/gemini-2.5-flash", messages, max_tokens: maxTokens, temperature }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new Error(`LLM error: ${res.status}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || "";
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw e;
+  }
+}
+
+// ─── MODE: ORCHESTRATE (decide who speaks next or end discussion) ───
+async function orchestrate(history: any[], topic: string, turnCount: number) {
+  const agentList = AGENTS.map(a => `- ${a.emoji} ${a.name} (${a.expertise})`).join("\n");
+
+  const system = `You are the Orchestrator 🎯. You manage a focused roundtable discussion.
+
+TOPIC: "${topic}"
+
+Available agents:
+${agentList}
+
+${PLATFORM_CONTEXT}
+
+You have two jobs:
+1. Pick which agent should speak NEXT based on what's been said and what perspectives are missing.
+2. Decide if we have ENOUGH input to form a concrete action plan.
+
+The discussion has had ${turnCount} agent turns so far.
+- Under 4 turns: ALWAYS continue discussion. Not enough perspectives yet.
+- 4-8 turns: Continue if important perspectives are missing. End if consensus is forming.
+- Over 8 turns: Strongly lean toward ending unless critical disagreements remain.
+
+Reply with EXACTLY this JSON format (no markdown, no backticks):
+{"action":"continue","nextAgentId":"dev","directive":"Focus on X because Y"}
+OR
+{"action":"plan","summary":"Brief summary of what was agreed"}
+
+The "directive" tells the next agent what specific aspect to address. Be specific — don't let them ramble.`;
+
+  const content = await callLLM([{ role: "system", content: system }, ...history], 200, 0.4);
+
+  try {
+    const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch {
+    return { action: "continue", nextAgentId: "dev", directive: "Share your perspective on the topic." };
+  }
+}
+
+// ─── MODE: AGENT SPEAKS (guided by orchestrator directive) ───
+async function agentSpeak(agentId: string, history: any[], topic: string, directive: string, prevSpeaker: string) {
+  const agent = AGENTS.find(a => a.id === agentId);
+  if (!agent) throw new Error(`Unknown agent: ${agentId}`);
+
+  const system = `You are ${agent.emoji} ${agent.name}. Expertise: ${agent.expertise}.
+
+You are in a focused roundtable discussion about: "${topic}"
+
+${PLATFORM_CONTEXT}
+
+The Orchestrator has directed you: "${directive}"
+${prevSpeaker ? `The last person who spoke was ${prevSpeaker}. Acknowledge or build on their point first.` : "You are speaking first."}
+
+RULES:
+- 3-5 sentences. Conversational, direct, opinionated.
+- Stay focused on the orchestrator's directive.
+- Reference specific tables, functions, tools, or flows from the platform.
+- End with a clear position or recommendation, not a vague question.
+- Be concrete: name actual components, endpoints, or features.`;
+
+  const content = await callLLM([{ role: "system", content: system }, ...history], 250, 0.75);
+  return { agentId: agent.id, name: agent.name, emoji: agent.emoji, color: agent.color, content: content || "No comment this round." };
+}
+
+// ─── MODE: GENERATE PLAN (synthesize discussion into actionable todos) ───
+async function generatePlan(history: any[], topic: string) {
+  const system = `You are the Orchestrator 🎯. The roundtable discussion on "${topic}" is complete.
+
+${PLATFORM_CONTEXT}
+
+Synthesize the entire discussion into a CONCRETE action plan. Each task must be:
+- Specific and implementable (not vague)
+- Assigned to the most relevant agent
+- Ordered by priority/dependency
+
+Reply with EXACTLY this JSON format (no markdown, no backticks):
+{"plan":[{"id":1,"task":"Short actionable task description","assignee":"dev","detail":"1-2 sentences explaining what to do and why"},{"id":2,"task":"...","assignee":"security","detail":"..."}]}
+
+Use 3-8 tasks. Assignee must be one of: dev, security, ux, architect, business, ops.
+Tasks should be concrete: "Add RLS policy to X table" not "Improve security".`;
+
+  const content = await callLLM([{ role: "system", content: system }, ...history], 500, 0.3);
+
+  try {
+    const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch {
+    return { plan: [{ id: 1, task: "Review discussion and create manual plan", assignee: "dev", detail: "The auto-planner failed. Review the discussion above and create tasks manually." }] };
+  }
+}
+
+// ─── MODE: EXECUTE TASK (agent works on a specific task) ───
+async function executeTask(task: any, allTasks: any[], history: any[], topic: string) {
+  const agent = AGENTS.find(a => a.id === task.assignee);
+  if (!agent) throw new Error(`Unknown assignee: ${task.assignee}`);
+
+  const completedTasks = allTasks.filter((t: any) => t.status === "done").map((t: any) => `✅ ${t.task}`).join("\n");
+  const pendingTasks = allTasks.filter((t: any) => t.status === "pending").map((t: any) => `⏳ ${t.task}`).join("\n");
+
+  const system = `You are ${agent.emoji} ${agent.name}, executing a specific task from the action plan.
+
+ORIGINAL TOPIC: "${topic}"
+YOUR TASK: "${task.task}"
+DETAIL: "${task.detail}"
+
+${completedTasks ? `Already completed:\n${completedTasks}\n` : ""}
+${pendingTasks ? `Still pending:\n${pendingTasks}\n` : ""}
+
+${PLATFORM_CONTEXT}
+
+Provide a CONCRETE execution report:
+1. What exactly you would do (specific files, tables, functions, policies)
+2. Any blockers or dependencies you see
+3. Your confidence level (high/medium/low)
+
+Be specific: mention actual file paths, table names, function names, SQL statements, or code patterns.
+3-6 sentences. End with a clear "DONE" or "BLOCKED: reason".`;
+
+  const content = await callLLM([{ role: "system", content: system }, ...history.slice(-6)], 300, 0.6);
+  return { agentId: agent.id, name: agent.name, emoji: agent.emoji, color: agent.color, content: content || "Task acknowledged." };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { messages, currentAgentId, roundNumber, previousAgentName } = await req.json();
+    const body = await req.json();
+    const { mode, messages, topic, turnCount, currentAgentId, directive, previousAgentName, task, allTasks } = body;
 
     const safeMessages = Array.isArray(messages)
-      ? messages
-          .slice(-MAX_CONTEXT_MESSAGES)
-          .map((m: any) => ({
-            role: m?.role === "assistant" ? "assistant" as const : "user" as const,
-            content: trimMessage(String(m?.content ?? "").trim()),
-          }))
-          .filter((m) => m.content.length > 0)
+      ? messages.slice(-MAX_CONTEXT_MESSAGES).map((m: any) => ({
+          role: m?.role === "assistant" ? "assistant" as const : "user" as const,
+          content: trim(String(m?.content ?? "").trim()),
+        })).filter((m) => m.content.length > 0)
       : [];
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    let result: any;
 
-    const agent = AGENTS.find(a => a.id === currentAgentId);
-    if (!agent) throw new Error(`Unknown agent: ${currentAgentId}`);
+    switch (mode) {
+      case "orchestrate":
+        result = await orchestrate(safeMessages, topic || "", turnCount || 0);
+        return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const currentIndex = AGENT_CHAIN.indexOf(agent.id);
-    const nextAgentId = AGENT_CHAIN[(currentIndex + 1) % AGENT_CHAIN.length];
-    const nextAgent = AGENTS.find(a => a.id === nextAgentId)!;
-    const prevName = previousAgentName || "The Boss (Anas)";
+      case "speak":
+        const response = await agentSpeak(currentAgentId, safeMessages, topic || "", directive || "", previousAgentName || "");
+        return new Response(JSON.stringify({ response }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // Inject previous agent name into the prompt
-    const personalizedPrompt = agent.systemPrompt.replace(/\{PREV_AGENT\}/g, prevName);
+      case "plan":
+        const plan = await generatePlan(safeMessages, topic || "");
+        return new Response(JSON.stringify(plan), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const roundtableContext = `You are in a CONTINUOUS roundtable with:
-${AGENTS.map(a => `- ${a.emoji} ${a.name}`).join("\n")}
-- 👤 The Boss (Anas, CEO — watching, may interject)
+      case "execute":
+        const execResponse = await executeTask(task, allTasks || [], safeMessages, topic || "");
+        return new Response(JSON.stringify({ response: execResponse }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-${DEV_AGENT_PROFILE}
-
-Loop #${roundNumber || 1}. The last person who spoke was ${prevName}. You MUST address their point before making your own.
-
-After you, ${nextAgent.emoji} ${nextAgent.name} speaks next.
-
-CRITICAL RULES:
-- 3-4 sentences ONLY. Conversational, not formal.
-- Sentence 1: Respond directly to ${prevName}'s last point by name.
-- Sentence 2-3: Your own observation about something specific happening NOW.
-- Sentence 4: Hand off to ${nextAgent.name} with a question or challenge.
-- Reference actual tables, functions, tools, and flows — you have full visibility.
-- DO NOT repeat points already made. Build the conversation forward.`;
-
-    const agentMessages = [
-      { role: "system" as const, content: `${personalizedPrompt}\n\n${roundtableContext}` },
-      ...safeMessages,
-    ];
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-    try {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: agentMessages,
-          max_tokens: 200,
-          temperature: 0.75,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`Agent ${agent.id} error:`, errText);
-        return new Response(JSON.stringify({
-          response: { agentId: agent.id, name: agent.name, emoji: agent.emoji, color: agent.color, content: "⚠️ Connection issue this turn." },
-          nextAgentId,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content?.trim() || "No comment.";
-
-      return new Response(JSON.stringify({
-        response: { agentId: agent.id, name: agent.name, emoji: agent.emoji, color: agent.color, content },
-        nextAgentId,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error(`Agent ${agent.id} timeout:`, error);
-      return new Response(JSON.stringify({
-        response: { agentId: agent.id, name: agent.name, emoji: agent.emoji, color: agent.color, content: "⚠️ Timed out." },
-        nextAgentId,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      default:
+        throw new Error(`Unknown mode: ${mode}`);
     }
   } catch (e) {
     console.error("Roundtable error:", e);
