@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall, CreditCard, TrendingUp, Play, MessagesSquare, Mail, Mic } from "lucide-react";
+import { Loader2, Package, ShoppingCart, Plane, Settings, Users, Building2, Shield, MessageSquare, Phone, Zap, FileSpreadsheet, PhoneCall, CreditCard, TrendingUp, Play, MessagesSquare, Mail, Mic, Car } from "lucide-react";
 import { AdminVouchers } from "@/components/admin/AdminVouchers";
 import { AdminOrders } from "@/components/admin/AdminOrders";
 import { AdminTicketRequests } from "@/components/admin/AdminTicketRequests";
@@ -21,6 +21,7 @@ import { AdminQuoteLogs } from "@/components/admin/AdminQuoteLogs";
 import { AdminBookingQueue } from "@/components/admin/AdminBookingQueue";
 import { AdminConversations } from "@/components/admin/AdminConversations";
 import { AdminPromoEmails } from "@/components/admin/AdminPromoEmails";
+import { AdminCarRentals } from "@/components/admin/AdminCarRentals";
 import { lazy, Suspense } from "react";
 const VoiceProxyContent = lazy(() => import("@/components/admin/AdminVoiceProxy"));
 
@@ -119,6 +120,10 @@ export default function AdminPage() {
                 <Plane className="w-4 h-4" />
                 Ticket Requests
               </TabsTrigger>
+              <TabsTrigger value="car-rentals" className="gap-2">
+                <Car className="w-4 h-4" />
+                Car Rentals
+              </TabsTrigger>
               {isAdmin && (
                 <>
                   <TabsTrigger value="conversations" className="gap-2">
@@ -195,6 +200,10 @@ export default function AdminPage() {
 
             <TabsContent value="requests">
               <AdminTicketRequests isAdmin={isAdmin} />
+            </TabsContent>
+
+            <TabsContent value="car-rentals">
+              <AdminCarRentals />
             </TabsContent>
 
             {isAdmin && (
