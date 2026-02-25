@@ -912,8 +912,7 @@ const ADMIN_NOTIFICATION_TYPES = [
   "admin_ticket_completed",
   "admin_ticket_rejected",
   "escrow_action_needed",
-  "admin_new_car_rental",
-  "test_email"
+  "admin_new_car_rental"
 ];
 
 // Split payment admin notifications (when no customerEmail provided)
