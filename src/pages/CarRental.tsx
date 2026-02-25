@@ -73,7 +73,7 @@ export default function CarRentalPage() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.from("car_rental_requests").insert({
+      const { data: insertData, error } = await supabase.from("car_rental_requests").insert({
         user_id: user.id,
         pickup_location: pickupLocation,
         dropoff_location: sameDropoff ? pickupLocation : dropoffLocation,
@@ -91,9 +91,34 @@ export default function CarRentalPage() {
         contact_email: contactEmail,
         contact_phone: contactPhone || null,
         special_notes: specialNotes || null,
-      });
+      }).select("id").single();
 
       if (error) throw error;
+
+      // Send notification emails (don't block on failure)
+      const notifData = {
+        requestId: insertData?.id || "",
+        pickupLocation,
+        dropoffLocation: sameDropoff ? pickupLocation : dropoffLocation,
+        pickupDate: format(pickupDate, "yyyy-MM-dd"),
+        dropoffDate: format(dropoffDate, "yyyy-MM-dd"),
+        carType: `${carClass} / ${carSize}`,
+        transmission: "automatic",
+        budget: budget ? parseFloat(budget) : null,
+        contactEmail: contactEmail,
+        contactPhone: contactPhone || null,
+        specialNotes: specialNotes || null,
+      };
+
+      // Send admin notification and customer confirmation in parallel
+      Promise.all([
+        supabase.functions.invoke("send-notification", {
+          body: { type: "admin_new_car_rental", data: notifData },
+        }),
+        supabase.functions.invoke("send-notification", {
+          body: { type: "car_rental_received", data: notifData, customerEmail: contactEmail },
+        }),
+      ]).catch((err) => console.error("[CarRental] Notification error:", err));
 
       setSubmitted(true);
       toast({ title: "Request Submitted!", description: "We'll review your car rental request and send you a quote soon." });
