@@ -32,16 +32,36 @@ const AGENT_CHAIN = [
 const MAX_HISTORY = 24;
 const MAX_CHARS = 600;
 const MAX_STORED = 60;
-const DELAY_BETWEEN_AGENTS_MS = 800;
-const REQUEST_TIMEOUT_MS = 12000;
+// ~200 words per minute reading speed → ~15ms per character
+const MS_PER_CHAR = 18;
+const MIN_PAUSE_MS = 4000;
+const MAX_PAUSE_MS = 12000;
 
 const trim = (t: string) => (t.length > MAX_CHARS ? t.slice(0, MAX_CHARS) + "…" : t);
+
+/** Calculate human reading time for a message */
+const readingDelay = (text: string) =>
+  Math.min(MAX_PAUSE_MS, Math.max(MIN_PAUSE_MS, text.length * MS_PER_CHAR));
+
+/** Interruptible sleep that checks stopRef */
+const sleepInterruptible = (ms: number, stopRef: React.MutableRefObject<boolean>) =>
+  new Promise<void>((resolve) => {
+    const interval = 200;
+    let elapsed = 0;
+    const check = () => {
+      if (stopRef.current || elapsed >= ms) { resolve(); return; }
+      elapsed += interval;
+      setTimeout(check, interval);
+    };
+    check();
+  });
 
 export default function MobileAgentRoundtable() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [currentAgent, setCurrentAgent] = useState<string | null>(null);
+  const [readingAgent, setReadingAgent] = useState<string | null>(null);
   const stopRef = useRef(false);
   const loopIdRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -51,32 +71,38 @@ export default function MobileAgentRoundtable() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  const buildHistory = useCallback((msgs: Message[], userText?: string) => {
-    const history = msgs.slice(-MAX_HISTORY).map(m => {
+  const buildHistory = useCallback((msgs: Message[]) => {
+    return msgs.slice(-MAX_HISTORY).map(m => {
       if (m.role === "user") return { role: "user", content: trim(m.content || "") };
       if (m.response) return { role: "assistant", content: trim(`[${m.response.emoji} ${m.response.name}]: ${m.response.content}`) };
       return null;
     }).filter(Boolean);
-    if (userText) history.push({ role: "user", content: trim(userText) });
-    return history;
   }, []);
 
   const runAgentLoop = useCallback(async (startMessages: Message[], startAgentId: string) => {
+    const thisLoopId = ++loopIdRef.current;
     stopRef.current = false;
     setIsRunning(true);
     let currentMsgs = startMessages;
     let agentId = startAgentId;
+    let previousAgentName = "";
 
-    while (!stopRef.current) {
+    while (!stopRef.current && loopIdRef.current === thisLoopId) {
       setCurrentAgent(agentId);
+      setReadingAgent(null);
       const history = buildHistory(currentMsgs);
 
       try {
         const { data, error } = await supabase.functions.invoke("agent-roundtable", {
-          body: { messages: history, currentAgentId: agentId, roundNumber: roundRef.current },
+          body: {
+            messages: history,
+            currentAgentId: agentId,
+            roundNumber: roundRef.current,
+            previousAgentName,
+          },
         });
 
-        if (stopRef.current) break;
+        if (stopRef.current || loopIdRef.current !== thisLoopId) break;
         if (error) throw new Error(error.message);
 
         const response: AgentResponse = data.response;
@@ -86,14 +112,21 @@ export default function MobileAgentRoundtable() {
         currentMsgs = [...currentMsgs, newMsg].slice(-MAX_STORED);
         setMessages([...currentMsgs]);
 
-        // If we completed a full cycle, increment round
+        // Show who just spoke and give reading time
+        setCurrentAgent(null);
+        setReadingAgent(agentId);
+        const pause = readingDelay(response.content);
+        await sleepInterruptible(pause, stopRef);
+
+        if (stopRef.current || loopIdRef.current !== thisLoopId) break;
+
+        // Track who spoke for the next agent's context
+        previousAgentName = response.name;
+
         if (nextAgentId === AGENT_CHAIN[0].id) roundRef.current++;
-
         agentId = nextAgentId;
-
-        // Small delay between agents for readability
-        await new Promise(r => setTimeout(r, DELAY_BETWEEN_AGENTS_MS));
       } catch (err: any) {
+        if (stopRef.current) break;
         console.error("Agent loop error:", err);
         toast.error(err?.message || "Agent failed");
         break;
@@ -102,19 +135,16 @@ export default function MobileAgentRoundtable() {
 
     setIsRunning(false);
     setCurrentAgent(null);
+    setReadingAgent(null);
   }, [buildHistory]);
 
   const sendMessage = async () => {
     const text = input.trim();
     if (!text) return;
 
-    // If loop is running, inject user message and continue
     if (isRunning) {
       const userMsg: Message = { role: "user", content: text };
-      setMessages(prev => {
-        const updated = [...prev, userMsg].slice(-MAX_STORED);
-        return updated;
-      });
+      setMessages(prev => [...prev, userMsg].slice(-MAX_STORED));
       setInput("");
       return;
     }
@@ -124,22 +154,25 @@ export default function MobileAgentRoundtable() {
     setMessages(updated);
     setInput("");
     roundRef.current = 1;
-
-    // Start the continuous loop from Dev Agent
     runAgentLoop(updated, "dev");
   };
 
   const stopLoop = () => {
     stopRef.current = true;
+    loopIdRef.current++;
+    setIsRunning(false);
+    setCurrentAgent(null);
+    setReadingAgent(null);
   };
 
   const clearChat = () => {
-    stopRef.current = true;
+    stopLoop();
     setMessages([]);
     roundRef.current = 1;
   };
 
   const activeAgent = AGENT_CHAIN.find(a => a.id === currentAgent);
+  const pauseAgent = AGENT_CHAIN.find(a => a.id === readingAgent);
 
   return (
     <MobileAdminLayout title="AI Roundtable">
@@ -153,7 +186,7 @@ export default function MobileAgentRoundtable() {
                 Continuous Loop • 6 agents
               </span>
               {isRunning && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 animate-pulse">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/20 text-destructive animate-pulse">
                   LIVE
                 </span>
               )}
@@ -173,18 +206,16 @@ export default function MobileAgentRoundtable() {
               </Button>
             </div>
           </div>
-          {/* Agent chain visualization */}
+          {/* Agent chain */}
           <div className="flex gap-1 mt-1.5 items-center">
             {AGENT_CHAIN.map((agent, i) => (
               <div key={agent.id} className="flex items-center gap-0.5">
                 <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all ${
-                    currentAgent === agent.id ? "ring-2 ring-offset-1 ring-offset-background scale-110" : "opacity-50"
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all duration-300 ${
+                    currentAgent === agent.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background scale-125" :
+                    readingAgent === agent.id ? "scale-110 opacity-80" : "opacity-40"
                   }`}
-                  style={{
-                    backgroundColor: agent.color + "25",
-                    ...(currentAgent === agent.id ? { ringColor: agent.color } : {}),
-                  }}
+                  style={{ backgroundColor: agent.color + "25" }}
                   title={agent.name}
                 >
                   {agent.emoji}
@@ -199,12 +230,12 @@ export default function MobileAgentRoundtable() {
         </div>
 
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {messages.length === 0 && (
             <div className="text-center py-12 space-y-3">
               <div className="text-4xl">🏛️</div>
               <p className="text-sm text-muted-foreground max-w-[280px] mx-auto">
-                Send a message to start the continuous loop. Agents will keep discussing until you hit Stop.
+                Send a message to start the continuous loop. Agents take turns, each responding to the previous one.
               </p>
               <div className="flex flex-wrap gap-1.5 justify-center">
                 {["What should we improve next?", "Review our security", "How to grow revenue?"].map(q => (
@@ -220,7 +251,7 @@ export default function MobileAgentRoundtable() {
           {messages.map((msg, i) => (
             <div key={i}>
               {msg.role === "user" && (
-                <div className="flex justify-end my-2">
+                <div className="flex justify-end my-3">
                   <div className="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm bg-primary text-primary-foreground whitespace-pre-wrap">
                     {msg.content}
                   </div>
@@ -247,18 +278,26 @@ export default function MobileAgentRoundtable() {
             </div>
           ))}
 
+          {/* Thinking indicator */}
           {isRunning && activeAgent && (
             <div className="flex items-center gap-2 py-2">
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center text-xs"
-                style={{ backgroundColor: activeAgent.color + "30" }}
-              >
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs"
+                style={{ backgroundColor: activeAgent.color + "30" }}>
                 {activeAgent.emoji}
               </div>
               <div className="flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">{activeAgent.name} is thinking...</span>
               </div>
+            </div>
+          )}
+
+          {/* Reading pause indicator */}
+          {isRunning && !activeAgent && pauseAgent && (
+            <div className="flex items-center gap-2 py-1">
+              <span className="text-[10px] text-muted-foreground italic">
+                ⏸ Reading time...
+              </span>
             </div>
           )}
         </div>
