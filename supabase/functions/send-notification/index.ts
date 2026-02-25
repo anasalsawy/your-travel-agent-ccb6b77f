@@ -837,7 +837,10 @@ const handler = async (req: Request): Promise<Response> => {
     const body = await req.json();
     console.log("Request body:", JSON.stringify(body));
     
-    const { type, data, customerEmail, entityType, entityId }: NotificationRequest = body;
+    const { type, data: rawData, customerEmail, entityType, entityId, to, customSubject, customHtml }: NotificationRequest & { to?: string; customSubject?: string; customHtml?: string } = body;
+    
+    // Merge top-level custom fields into data (for MobileSendQuote compatibility)
+    const data = { ...(rawData || {}), ...(customSubject ? { customSubject } : {}), ...(customHtml ? { customHtml } : {}) };
     
     console.log(`Processing notification type: ${type}`);
 
@@ -845,8 +848,9 @@ const handler = async (req: Request): Promise<Response> => {
     console.log("Email subject:", subject);
     
     // Determine recipient
-    const isAdmin = isAdminNotification(type, !!customerEmail);
-    const recipient = isAdmin ? adminEmail : customerEmail;
+    // Use explicit `to` override (e.g. from MobileSendQuote), otherwise fall back to admin/customer logic
+    const isAdmin = !to && isAdminNotification(type, !!customerEmail);
+    const recipient = to || (isAdmin ? adminEmail : customerEmail);
 
     // Derive record_id for logging
     const recordId = entityId || data?.orderId || data?.requestId || data?.ticketRequestId || null;
