@@ -33,6 +33,7 @@ const MAX_HISTORY = 24;
 const MAX_CHARS = 600;
 const MAX_STORED = 60;
 const DELAY_BETWEEN_AGENTS_MS = 800;
+const REQUEST_TIMEOUT_MS = 12000;
 
 const trim = (t: string) => (t.length > MAX_CHARS ? t.slice(0, MAX_CHARS) + "…" : t);
 
@@ -42,6 +43,7 @@ export default function MobileAgentRoundtable() {
   const [isRunning, setIsRunning] = useState(false);
   const [currentAgent, setCurrentAgent] = useState<string | null>(null);
   const stopRef = useRef(false);
+  const loopIdRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const roundRef = useRef(1);
 
