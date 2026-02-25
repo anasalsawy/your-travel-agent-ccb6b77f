@@ -23,7 +23,7 @@ export default function MobileDevAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "🔥 ULTIMATE AGENT ONLINE — 20 tools armed.\n\n🧠 Memory • 🌍 Web Search • 🖥 Browser • 📞 Calls/SMS/WhatsApp • 💬 Telegram • 📧 Email • 💰 Stripe • ✈️ Flights • 🗂 Database • 🐙 GitHub • 🤖 Claude + Gemini + GPT • 🔊 Voice • 📊 Reports • 🧭 Auto-Planning\n\nEvery action is now verified with a proof log. No more guessing.",
+      content: "Hey boss! 👋 Agent here, fully loaded and ready to roll.\n\nI've got access to everything — database, emails, flights, payments, GitHub, AI models, the works. Just tell me what you need and I'll handle it.\n\nI'll always check with you before doing anything that changes stuff. Ask me anything!",
     },
   ]);
   const [input, setInput] = useState("");
