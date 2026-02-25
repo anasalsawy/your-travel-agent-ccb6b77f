@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 interface Agent {
@@ -145,43 +145,20 @@ You speak concisely (2-4 sentences per turn). You're practical and operations-fo
 ];
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     const { messages, targetAgents, debateRounds = 2, includeCodeContext } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    // Determine which agents should respond
     const activeAgents = targetAgents?.length > 0
       ? AGENTS.filter(a => targetAgents.includes(a.id))
       : AGENTS;
 
-    // Build codebase context if requested or by default
-    let codebaseContext = "";
-    if (includeCodeContext) {
-      // Fetch specific files the advisors should see
-      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-      const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      
-      try {
-        // Try to get the dev-agent prompt from GitHub via the edge function
-        const ghResp = await fetch(`${SUPABASE_URL}/functions/v1/dev-agent`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            apikey: SUPABASE_SERVICE_ROLE_KEY,
-          },
-          body: JSON.stringify({
-            messages: [{ role: "user", content: "List your tools and capabilities briefly." }],
-          }),
-        });
-        // We don't actually need the response — the DEV_AGENT_PROFILE already has everything
-      } catch {}
-      
-      codebaseContext = `\n\n## CODEBASE CONTEXT (you have read access)\n${DEV_AGENT_PROFILE}`;
-    }
+    const codebaseContext = includeCodeContext
+      ? "\n\nYou have read visibility into the full codebase, prompts, and architecture details in this profile."
+      : "";
 
     const roundtableContext = `You are in a roundtable discussion with these participants:
 ${activeAgents.map(a => `- ${a.emoji} ${a.name}`).join("\n")}
@@ -199,23 +176,27 @@ RULES:
 - You can reference specific tables, edge functions, tools, and code patterns — you have full visibility into the system.`;
 
     const responses: { agentId: string; name: string; emoji: string; color: string; content: string }[] = [];
+    const rounds = Math.min(Math.max(Number(debateRounds) || 1, 1), 3);
 
-    // Run debate rounds
-    const rounds = Math.min(debateRounds, 3);
-    for (let round = 0; round < rounds; round++) {
-      for (const agent of activeAgents) {
-        // Build context with all previous responses in this debate
-        const debateHistory = responses.map(r => ({
-          role: "assistant" as const,
-          content: `[${r.emoji} ${r.name}]: ${r.content}`
-        }));
+    const runAgentTurn = async (
+      agent: Agent,
+      round: number,
+      roundsCount: number,
+      debateHistory: { role: "assistant"; content: string }[],
+    ) => {
+      const agentMessages = [
+        {
+          role: "system" as const,
+          content: `${agent.systemPrompt}\n\n${roundtableContext}\n\nThis is round ${round + 1} of ${roundsCount}. ${round > 0 ? "Build on the previous discussion. Don't repeat points already made." : "Share your initial reaction."}`,
+        },
+        ...messages,
+        ...debateHistory,
+      ];
 
-        const agentMessages = [
-          { role: "system" as const, content: `${agent.systemPrompt}\n\n${roundtableContext}\n\nThis is round ${round + 1} of ${rounds}. ${round > 0 ? "Build on the previous discussion. Don't repeat points already made." : "Share your initial reaction."}` },
-          ...messages,
-          ...debateHistory,
-        ];
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort("agent_timeout"), 15000);
 
+      try {
         const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -225,35 +206,59 @@ RULES:
           body: JSON.stringify({
             model: "google/gemini-2.5-flash",
             messages: agentMessages,
-            max_tokens: 300,
-            temperature: 0.8,
+            max_tokens: 220,
+            temperature: 0.7,
           }),
+          signal: controller.signal,
         });
 
         if (!response.ok) {
           const errText = await response.text();
           console.error(`Agent ${agent.id} error:`, errText);
-          responses.push({
+          return {
             agentId: agent.id,
             name: agent.name,
             emoji: agent.emoji,
             color: agent.color,
-            content: `⚠️ Couldn't contribute this round — connection issue.`,
-          });
-          continue;
+            content: "⚠️ Couldn't contribute this round — connection issue.",
+          };
         }
 
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content || "No comment.";
 
-        responses.push({
+        return {
           agentId: agent.id,
           name: agent.name,
           emoji: agent.emoji,
           color: agent.color,
           content: content.trim(),
-        });
+        };
+      } catch (error) {
+        console.error(`Agent ${agent.id} timeout/error:`, error);
+        return {
+          agentId: agent.id,
+          name: agent.name,
+          emoji: agent.emoji,
+          color: agent.color,
+          content: "⚠️ I timed out this round — retry with fewer rounds if needed.",
+        };
+      } finally {
+        clearTimeout(timeoutId);
       }
+    };
+
+    for (let round = 0; round < rounds; round++) {
+      const debateHistory = responses.map(r => ({
+        role: "assistant" as const,
+        content: `[${r.emoji} ${r.name}]: ${r.content}`,
+      }));
+
+      const roundResponses = await Promise.all(
+        activeAgents.map(agent => runAgentTurn(agent, round, rounds, debateHistory)),
+      );
+
+      responses.push(...roundResponses);
     }
 
     return new Response(JSON.stringify({ responses }), {

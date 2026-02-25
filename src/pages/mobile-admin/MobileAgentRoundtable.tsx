@@ -30,6 +30,8 @@ const AGENT_LIST = [
   { id: "ops", name: "Operations", emoji: "⚙️", color: "#10b981" },
 ];
 
+const REQUEST_TIMEOUT_MS = 45000;
+
 export default function MobileAgentRoundtable() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -62,6 +64,8 @@ export default function MobileAgentRoundtable() {
     setInput("");
     setIsLoading(true);
 
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     try {
       const history: { role: string; content: string }[] = messages.flatMap(m => {
         if (m.role === "user") return [{ role: "user", content: m.content! }];
@@ -73,7 +77,7 @@ export default function MobileAgentRoundtable() {
       });
       history.push({ role: "user", content: text });
 
-      const { data, error } = await supabase.functions.invoke("agent-roundtable", {
+      const invokePromise = supabase.functions.invoke("agent-roundtable", {
         body: {
           messages: history,
           targetAgents: selectedAgents.length > 0 ? selectedAgents : undefined,
@@ -82,20 +86,35 @@ export default function MobileAgentRoundtable() {
         },
       });
 
-      if (error) throw error;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error("Roundtable timed out. Try 1x rounds or fewer agents and retry."));
+        }, REQUEST_TIMEOUT_MS);
+      });
 
-      const responses: AgentResponse[] = data?.responses || [];
+      const invokeResult = await Promise.race([invokePromise, timeoutPromise]) as {
+        data: { responses?: AgentResponse[] } | null;
+        error: { message?: string } | null;
+      };
+
+      if (timeoutId) clearTimeout(timeoutId);
+      if (invokeResult.error) throw new Error(invokeResult.error.message || "Roundtable request failed");
+
+      const responses: AgentResponse[] = invokeResult.data?.responses || [];
+      if (!responses.length) throw new Error("No advisors responded. Please retry.");
+
       setMessages(prev => [...prev, { role: "roundtable", responses }]);
     } catch (err: any) {
       console.error("Roundtable error:", err);
-      toast.error("Failed to reach the roundtable");
+      toast.error(err?.message || "Failed to reach the roundtable");
       setMessages(prev => [...prev, {
         role: "roundtable",
-        responses: [{ agentId: "error", name: "System", emoji: "⚠️", color: "#666", content: err.message || "Connection failed." }]
+        responses: [{ agentId: "error", name: "System", emoji: "⚠️", color: "#666", content: err?.message || "Connection failed." }]
       }]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (
