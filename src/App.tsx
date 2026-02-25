@@ -32,6 +32,7 @@ const MobileRequests = lazy(() => import("./pages/mobile-admin/MobileRequests"))
 const MobileMaya = lazy(() => import("./pages/mobile-admin/MobileMaya"));
 const MobileMore = lazy(() => import("./pages/mobile-admin/MobileMore"));
 const MobileSendQuote = lazy(() => import("./pages/mobile-admin/MobileSendQuote"));
+const MobileDevAgent = lazy(() => import("./pages/mobile-admin/MobileDevAgent"));
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const App = () => (
             <Route path="/m/maya" element={<MobileMaya />} />
             <Route path="/m/more" element={<MobileMore />} />
             <Route path="/m/send-quote" element={<MobileSendQuote />} />
+            <Route path="/m/dev" element={<MobileDevAgent />} />
             {/* Website routes */}
             <Route path="/vouchers" element={<Vouchers />} />
             <Route path="/vouchers/:id" element={<VoucherDetail />} />
