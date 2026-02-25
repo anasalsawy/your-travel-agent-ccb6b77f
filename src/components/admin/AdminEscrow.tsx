@@ -11,7 +11,6 @@ import { format } from "date-fns";
 import {
   notifyBuyerEscrowUpdate,
   notifySellerEscrowUpdate,
-  notifyEscrowSpareFareListed,
   sendNotification,
 } from "@/lib/notifications";
 import {
@@ -71,12 +70,11 @@ interface EscrowListing {
   buyer_email: string | null;
 }
 
-type EscrowStatus = 'none' | 'pending_sparefare' | 'on_sparefare' | 'awaiting_payment' | 'funds_held' | 'completed' | 'cancelled';
+type EscrowStatus = 'none' | 'pending_escrow' | 'awaiting_payment' | 'funds_held' | 'completed' | 'cancelled';
 
 const escrowStatusLabels: Record<EscrowStatus, string> = {
   none: 'No Escrow',
-  pending_sparefare: 'Ready for SpareFare',
-  on_sparefare: 'Listed on SpareFare',
+  pending_escrow: 'Pending Setup',
   awaiting_payment: 'Awaiting Payment',
   funds_held: 'Funds Held',
   completed: 'Completed',
@@ -85,8 +83,7 @@ const escrowStatusLabels: Record<EscrowStatus, string> = {
 
 const escrowStatusColors: Record<EscrowStatus, string> = {
   none: 'bg-muted text-muted-foreground',
-  pending_sparefare: 'bg-purple-100 text-purple-800',
-  on_sparefare: 'bg-orange-100 text-orange-800',
+  pending_escrow: 'bg-purple-100 text-purple-800',
   awaiting_payment: 'bg-yellow-100 text-yellow-800',
   funds_held: 'bg-blue-100 text-blue-800',
   completed: 'bg-green-100 text-green-800',
@@ -95,9 +92,8 @@ const escrowStatusColors: Record<EscrowStatus, string> = {
 
 // Workflow progression hints
 const escrowWorkflowHints: Record<EscrowStatus, { next: EscrowStatus | null; action: string }> = {
-  none: { next: 'pending_sparefare', action: 'Accept bid to start escrow' },
-  pending_sparefare: { next: 'on_sparefare', action: '1. Copy summary → 2. Create SpareFare listing → 3. Paste URL below' },
-  on_sparefare: { next: 'funds_held', action: 'Waiting for buyer to complete payment on SpareFare' },
+  none: { next: 'pending_escrow', action: 'Accept bid to start escrow' },
+  pending_escrow: { next: 'awaiting_payment', action: 'Send payment link to buyer' },
   awaiting_payment: { next: 'funds_held', action: 'Confirm payment received' },
   funds_held: { next: 'completed', action: 'Verify ticket transfer, then mark complete' },
   completed: { next: null, action: 'Transaction finished!' },
@@ -108,18 +104,15 @@ export default function AdminEscrow() {
   const [listings, setListings] = useState<EscrowListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedListing, setSelectedListing] = useState<EscrowListing | null>(null);
-  const [sparefareUrl, setSparefareUrl] = useState("");
+  const [paymentUrl, setPaymentUrl] = useState("");
   const [escrowNotes, setEscrowNotes] = useState("");
   const [newStatus, setNewStatus] = useState<EscrowStatus>("none");
   const [updating, setUpdating] = useState(false);
   const [filter, setFilter] = useState<string>("active");
   const [sendNotifications, setSendNotifications] = useState(true);
-  const [notifying, setNotifying] = useState(false);
   const [notificationHistory, setNotificationHistory] = useState<NotificationLogEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewData, setPreviewData] = useState<{ buyer: string; seller: string; route: string; amount: number; departureDate: string; sparefareUrl: string } | null>(null);
 
   useEffect(() => {
     fetchListings();
@@ -153,7 +146,7 @@ export default function AdminEscrow() {
         .order("created_at", { ascending: false });
 
       if (filter === "active") {
-        query = query.in("escrow_status", ["awaiting_payment", "funds_held", "pending_sparefare", "on_sparefare"]);
+        query = query.in("escrow_status", ["awaiting_payment", "funds_held", "pending_escrow", "pending_sparefare", "on_sparefare"]);
       } else if (filter === "completed") {
         query = query.eq("escrow_status", "completed");
       } else if (filter === "awarded") {
@@ -237,9 +230,14 @@ export default function AdminEscrow() {
 
   const openEditDialog = (listing: EscrowListing) => {
     setSelectedListing(listing);
-    setSparefareUrl(listing.sparefare_listing_url || "");
+    setPaymentUrl(listing.sparefare_listing_url || "");
     setEscrowNotes(listing.escrow_notes || "");
-    setNewStatus((listing.escrow_status || "none") as EscrowStatus);
+    // Map legacy statuses to new ones
+    const currentStatus = listing.escrow_status || "none";
+    const mapped = currentStatus === "pending_sparefare" ? "pending_escrow" 
+                 : currentStatus === "on_sparefare" ? "awaiting_payment" 
+                 : currentStatus;
+    setNewStatus(mapped as EscrowStatus);
     fetchNotificationHistory(listing.id);
   };
 
@@ -252,7 +250,7 @@ export default function AdminEscrow() {
       const updates: any = {
         escrow_status: newStatus,
         escrow_notes: escrowNotes,
-        sparefare_listing_url: sparefareUrl || null,
+        sparefare_listing_url: paymentUrl || null,
       };
 
       // Track notification timestamps
@@ -280,57 +278,27 @@ export default function AdminEscrow() {
       if (sendNotifications && newStatus !== oldStatus) {
         const route = `${selectedListing.ticket_request?.origin} → ${selectedListing.ticket_request?.destination}`;
         const amount = selectedListing.winning_bid?.amount || 0;
-        const departureDate = selectedListing.ticket_request?.departure_date
-          ? format(new Date(selectedListing.ticket_request.departure_date), "MMM dd, yyyy")
-          : "TBD";
-
-        // Check if this is specifically the "on_sparefare" status with a URL
-        const isSpareFareListing = newStatus === "on_sparefare" && sparefareUrl;
 
         // Notify buyer
         if (selectedListing.buyer_email) {
-          if (isSpareFareListing) {
-            await notifyEscrowSpareFareListed(selectedListing.buyer_email, {
-              listingId: selectedListing.id,
-              route,
-              sparefareUrl: sparefareUrl!,
-              amount,
-              departureDate,
-              isBuyer: true,
-            });
-          } else {
-            await notifyBuyerEscrowUpdate(selectedListing.buyer_email, {
-              listingId: selectedListing.id,
-              route,
-              escrowStatus: newStatus,
-              sparefareUrl: sparefareUrl || undefined,
-              amount,
-              sellerName: selectedListing.winning_bid?.seller?.business_name || "Seller",
-            });
-          }
+          await notifyBuyerEscrowUpdate(selectedListing.buyer_email, {
+            listingId: selectedListing.id,
+            route,
+            escrowStatus: newStatus,
+            amount,
+            sellerName: selectedListing.winning_bid?.seller?.business_name || "Seller",
+          });
         }
 
         // Notify seller
         if (selectedListing.winning_bid?.seller?.contact_email) {
-          if (isSpareFareListing) {
-            await notifyEscrowSpareFareListed(selectedListing.winning_bid.seller.contact_email, {
-              listingId: selectedListing.id,
-              route,
-              sparefareUrl: sparefareUrl!,
-              amount,
-              departureDate,
-              isBuyer: false,
-            });
-          } else {
-            await notifySellerEscrowUpdate(selectedListing.winning_bid.seller.contact_email, {
-              listingId: selectedListing.id,
-              route,
-              escrowStatus: newStatus,
-              sparefareUrl: sparefareUrl || undefined,
-              amount,
-              buyerEmail: selectedListing.buyer_email || "Buyer",
-            });
-          }
+          await notifySellerEscrowUpdate(selectedListing.winning_bid.seller.contact_email, {
+            listingId: selectedListing.id,
+            route,
+            escrowStatus: newStatus,
+            amount,
+            buyerEmail: selectedListing.buyer_email || "Buyer",
+          });
         }
 
         toast({
@@ -358,12 +326,12 @@ export default function AdminEscrow() {
     }
   };
 
-  const generateSpareFareSummary = (listing: EscrowListing) => {
+  const generateEscrowSummary = (listing: EscrowListing) => {
     const tr = listing.ticket_request;
     if (!tr) return "";
 
     const lines = [
-      `✈️ LISTING FOR SPAREFARE`,
+      `✈️ ESCROW TRANSACTION SUMMARY`,
       ``,
       `Route: ${tr.origin} → ${tr.destination}`,
       `Departure: ${format(new Date(tr.departure_date), "MMM dd, yyyy")}`,
@@ -397,122 +365,6 @@ export default function AdminEscrow() {
     }).format(amount);
   };
 
-  const generateEmailPreviewHtml = (isBuyer: boolean, data: { route: string; amount: number; departureDate: string; sparefareUrl: string }) => {
-    return `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #ea580c;">Transaction Listed on SpareFare! 🔒</h1>
-        <p>Your ${isBuyer ? "ticket purchase" : "ticket sale"} is now protected by SpareFare's secure escrow service.</p>
-        <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <p><strong>Route:</strong> ${data.route}</p>
-          <p><strong>Amount:</strong> ${formatCurrency(data.amount)}</p>
-          <p><strong>Departure:</strong> ${data.departureDate}</p>
-        </div>
-        <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #f59e0b;">
-          <p style="font-weight: bold; margin: 0 0 10px 0;">🔗 Complete Your Transaction:</p>
-          <a href="${data.sparefareUrl}" style="color: #2563eb; font-size: 18px; word-break: break-all;">${data.sparefareUrl}</a>
-        </div>
-        <h2 style="color: #1a365d;">${isBuyer ? "What Happens Next (Buyer)" : "What Happens Next (Seller)"}</h2>
-        ${isBuyer ? `
-          <ol>
-            <li>Click the SpareFare link above</li>
-            <li>Complete your payment through SpareFare's secure platform</li>
-            <li>The seller will transfer the ticket to your name</li>
-            <li>Once confirmed, funds are released to the seller</li>
-          </ol>
-        ` : `
-          <ol>
-            <li>Click the SpareFare link above</li>
-            <li>Wait for the buyer to complete payment</li>
-            <li>Transfer the ticket to the buyer's name</li>
-            <li>Confirm the transfer on SpareFare</li>
-            <li>Receive your payment securely</li>
-          </ol>
-        `}
-        <p style="color: #6b7280; font-size: 14px;">If you have any questions, please contact our support team.</p>
-      </div>
-    `;
-  };
-
-  const openEmailPreview = () => {
-    if (!selectedListing || !sparefareUrl) return;
-    
-    const route = `${selectedListing.ticket_request?.origin} → ${selectedListing.ticket_request?.destination}`;
-    const amount = selectedListing.winning_bid?.amount || 0;
-    const departureDate = selectedListing.ticket_request?.departure_date
-      ? format(new Date(selectedListing.ticket_request.departure_date), "MMM dd, yyyy")
-      : "TBD";
-    
-    setPreviewData({
-      buyer: selectedListing.buyer_email || "",
-      seller: selectedListing.winning_bid?.seller?.contact_email || "",
-      route,
-      amount,
-      departureDate,
-      sparefareUrl,
-    });
-    setShowPreview(true);
-  };
-
-  const sendNotificationsFromPreview = async () => {
-    if (!selectedListing || !previewData) return;
-    
-    setNotifying(true);
-    try {
-      let notified = 0;
-      
-      if (previewData.buyer) {
-        await notifyEscrowSpareFareListed(previewData.buyer, {
-          listingId: selectedListing.id,
-          route: previewData.route,
-          sparefareUrl: previewData.sparefareUrl,
-          amount: previewData.amount,
-          departureDate: previewData.departureDate,
-          isBuyer: true,
-        });
-        notified++;
-      }
-      
-      if (previewData.seller) {
-        await notifyEscrowSpareFareListed(previewData.seller, {
-          listingId: selectedListing.id,
-          route: previewData.route,
-          sparefareUrl: previewData.sparefareUrl,
-          amount: previewData.amount,
-          departureDate: previewData.departureDate,
-          isBuyer: false,
-        });
-        notified++;
-      }
-      
-      // Update notification timestamps
-      await supabase
-        .from("marketplace_listings")
-        .update({
-          sparefare_listing_url: previewData.sparefareUrl,
-          buyer_notified_at: previewData.buyer ? new Date().toISOString() : undefined,
-          seller_notified_at: previewData.seller ? new Date().toISOString() : undefined,
-        })
-        .eq("id", selectedListing.id);
-      
-      toast({
-        title: "Notifications Sent",
-        description: `SpareFare link sent to ${notified} ${notified === 1 ? "party" : "parties"}`,
-      });
-      
-      setShowPreview(false);
-      fetchListings();
-      fetchNotificationHistory(selectedListing.id);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Failed to send notifications",
-        variant: "destructive",
-      });
-    } finally {
-      setNotifying(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -524,7 +376,7 @@ export default function AdminEscrow() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Escrow & SpareFare Handoffs</h2>
+        <h2 className="text-2xl font-bold">Escrow Transactions</h2>
         <Select value={filter} onValueChange={setFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filter" />
@@ -546,89 +398,95 @@ export default function AdminEscrow() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {listings.map((listing) => (
-            <Card key={listing.id} className="overflow-hidden">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Plane className="h-4 w-4" />
-                      {listing.ticket_request?.origin} → {listing.ticket_request?.destination}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {listing.title}
-                    </p>
+          {listings.map((listing) => {
+            // Map legacy statuses for display
+            const displayStatus = listing.escrow_status === "pending_sparefare" ? "pending_escrow"
+                                : listing.escrow_status === "on_sparefare" ? "awaiting_payment"
+                                : (listing.escrow_status || "none");
+            return (
+              <Card key={listing.id} className="overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Plane className="h-4 w-4" />
+                        {listing.ticket_request?.origin} → {listing.ticket_request?.destination}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {listing.title}
+                      </p>
+                    </div>
+                    <Badge className={escrowStatusColors[displayStatus as EscrowStatus] || escrowStatusColors.none}>
+                      {escrowStatusLabels[displayStatus as EscrowStatus] || displayStatus}
+                    </Badge>
                   </div>
-                  <Badge className={escrowStatusColors[(listing.escrow_status || "none") as EscrowStatus]}>
-                    {escrowStatusLabels[(listing.escrow_status || "none") as EscrowStatus]}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Departure:</span>
-                    <p className="font-medium">
-                      {listing.ticket_request?.departure_date
-                        ? format(new Date(listing.ticket_request.departure_date), "MMM dd, yyyy")
-                        : "N/A"}
-                    </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Departure:</span>
+                      <p className="font-medium">
+                        {listing.ticket_request?.departure_date
+                          ? format(new Date(listing.ticket_request.departure_date), "MMM dd, yyyy")
+                          : "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Winning Bid:</span>
+                      <p className="font-medium text-green-600">
+                        {listing.winning_bid
+                          ? formatCurrency(listing.winning_bid.amount)
+                          : "No winner yet"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Seller:</span>
+                      <p className="font-medium">
+                        {listing.winning_bid?.seller?.business_name || "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Buyer:</span>
+                      <p className="font-medium truncate">
+                        {listing.buyer_email || "N/A"}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Winning Bid:</span>
-                    <p className="font-medium text-green-600">
-                      {listing.winning_bid
-                        ? formatCurrency(listing.winning_bid.amount)
-                        : "No winner yet"}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Seller:</span>
-                    <p className="font-medium">
-                      {listing.winning_bid?.seller?.business_name || "N/A"}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Buyer:</span>
-                    <p className="font-medium truncate">
-                      {listing.buyer_email || "N/A"}
-                    </p>
-                  </div>
-                </div>
 
-                {listing.sparefare_listing_url && (
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                    <a
-                      href={listing.sparefare_listing_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline truncate"
+                  {listing.sparefare_listing_url && (
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                      <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      <a
+                        href={listing.sparefare_listing_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline truncate"
+                      >
+                        Payment Link
+                      </a>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(generateEscrowSummary(listing))}
                     >
-                      {listing.sparefare_listing_url}
-                    </a>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Summary
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => openEditDialog(listing)}
+                    >
+                      Manage Escrow
+                    </Button>
                   </div>
-                )}
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(generateSpareFareSummary(listing))}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy SpareFare Summary
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => openEditDialog(listing)}
-                  >
-                    Manage Escrow
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -653,15 +511,15 @@ export default function AdminEscrow() {
                 </p>
               </div>
 
-              {/* Workflow Hint - Action Required */}
-              {escrowWorkflowHints[(selectedListing.escrow_status || "none") as EscrowStatus] && (
+              {/* Workflow Hint */}
+              {escrowWorkflowHints[newStatus] && (
                 <div className="p-3 rounded-md border-2 border-dashed border-primary/40 bg-primary/5">
                   <div className="flex items-center gap-2 mb-1">
                     <Clock className="h-4 w-4 text-primary" />
                     <span className="text-sm font-medium text-primary">Next Step:</span>
                   </div>
                   <p className="text-sm text-foreground">
-                    {escrowWorkflowHints[(selectedListing.escrow_status || "none") as EscrowStatus].action}
+                    {escrowWorkflowHints[newStatus].action}
                   </p>
                 </div>
               )}
@@ -674,8 +532,7 @@ export default function AdminEscrow() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Escrow</SelectItem>
-                    <SelectItem value="pending_sparefare">🟣 Ready for SpareFare</SelectItem>
-                    <SelectItem value="on_sparefare">🟠 Listed on SpareFare</SelectItem>
+                    <SelectItem value="pending_escrow">🟣 Pending Setup</SelectItem>
                     <SelectItem value="awaiting_payment">🟡 Awaiting Payment</SelectItem>
                     <SelectItem value="funds_held">🔵 Funds Held</SelectItem>
                     <SelectItem value="completed">🟢 Completed</SelectItem>
@@ -685,16 +542,12 @@ export default function AdminEscrow() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">SpareFare Listing URL</label>
+                <label className="text-sm font-medium">Payment URL (optional)</label>
                 <Input
-                  placeholder="https://sparefare.net/listing/..."
-                  value={sparefareUrl}
-                  onChange={(e) => setSparefareUrl(e.target.value)}
-                  className={newStatus === "on_sparefare" && !sparefareUrl ? "border-orange-400" : ""}
+                  placeholder="https://checkout.stripe.com/..."
+                  value={paymentUrl}
+                  onChange={(e) => setPaymentUrl(e.target.value)}
                 />
-                {newStatus === "on_sparefare" && !sparefareUrl && (
-                  <p className="text-xs text-orange-600">⚠️ Add SpareFare URL to send payment link to buyer</p>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -727,7 +580,7 @@ export default function AdminEscrow() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => copyToClipboard(generateSpareFareSummary(selectedListing))}
+                    onClick={() => copyToClipboard(generateEscrowSummary(selectedListing))}
                   >
                     <Copy className="h-3 w-3 mr-1" />
                     Copy Summary
@@ -745,15 +598,6 @@ export default function AdminEscrow() {
                     onClick={() => copyToClipboard(selectedListing.winning_bid?.seller?.contact_email || "")}
                   >
                     Copy Seller Email
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!sparefareUrl}
-                    onClick={openEmailPreview}
-                  >
-                    <Eye className="h-3 w-3 mr-1" />
-                    Preview & Notify
                   </Button>
                 </div>
               </div>
@@ -899,81 +743,7 @@ export default function AdminEscrow() {
               Cancel
             </Button>
             <Button onClick={updateEscrowStatus} disabled={updating}>
-              {updating ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Email Preview Dialog */}
-      <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5" />
-              Email Preview
-            </DialogTitle>
-          </DialogHeader>
-
-          {previewData && (
-            <div className="flex-1 overflow-auto space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="p-3 bg-muted rounded-md">
-                  <p className="text-muted-foreground mb-1">Buyer Email:</p>
-                  <p className="font-medium">{previewData.buyer || "No buyer email"}</p>
-                </div>
-                <div className="p-3 bg-muted rounded-md">
-                  <p className="text-muted-foreground mb-1">Seller Email:</p>
-                  <p className="font-medium">{previewData.seller || "No seller email"}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Buyer Preview */}
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-blue-50 px-4 py-2 border-b">
-                    <p className="text-sm font-medium text-blue-800">Buyer Email Preview</p>
-                    <p className="text-xs text-blue-600 truncate">To: {previewData.buyer || "N/A"}</p>
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <div 
-                      className="p-4 bg-white"
-                      dangerouslySetInnerHTML={{ 
-                        __html: generateEmailPreviewHtml(true, previewData) 
-                      }} 
-                    />
-                  </ScrollArea>
-                </div>
-
-                {/* Seller Preview */}
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-green-50 px-4 py-2 border-b">
-                    <p className="text-sm font-medium text-green-800">Seller Email Preview</p>
-                    <p className="text-xs text-green-600 truncate">To: {previewData.seller || "N/A"}</p>
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <div 
-                      className="p-4 bg-white"
-                      dangerouslySetInnerHTML={{ 
-                        __html: generateEmailPreviewHtml(false, previewData) 
-                      }} 
-                    />
-                  </ScrollArea>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowPreview(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={sendNotificationsFromPreview} 
-              disabled={notifying || (!previewData?.buyer && !previewData?.seller)}
-            >
-              <Send className="h-4 w-4 mr-2" />
-              {notifying ? "Sending..." : "Send Notifications"}
+              {updating ? "Updating..." : "Update Escrow"}
             </Button>
           </DialogFooter>
         </DialogContent>

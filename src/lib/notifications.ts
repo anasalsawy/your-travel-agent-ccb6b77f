@@ -24,9 +24,8 @@ type NotificationType =
   | "balance_approved"
   | "balance_rejected"
   | "balance_past_due"
-  // Escrow/SpareFare notification types
-  | "escrow_status_update"
-  | "escrow_sparefare_listed";
+  // Escrow notification types
+  | "escrow_status_update";
 
 interface NotificationData {
   type: NotificationType;
@@ -454,7 +453,7 @@ export async function notifyBalancePastDue(
   });
 }
 
-// ========== ESCROW/SPAREFARE NOTIFICATIONS ==========
+// ========== ESCROW NOTIFICATIONS ==========
 
 // Notify buyer about escrow status change
 export async function notifyBuyerEscrowUpdate(
@@ -463,7 +462,6 @@ export async function notifyBuyerEscrowUpdate(
     listingId: string;
     route: string;
     escrowStatus: string;
-    sparefareUrl?: string;
     amount: number;
     sellerName: string;
   }
@@ -482,7 +480,6 @@ export async function notifySellerEscrowUpdate(
     listingId: string;
     route: string;
     escrowStatus: string;
-    sparefareUrl?: string;
     amount: number;
     buyerEmail: string;
   }
@@ -546,21 +543,3 @@ export async function notifyCarRentalCancelled(
   });
 }
 
-// Notify both parties when SpareFare listing is created
-export async function notifyEscrowSpareFareListed(
-  recipientEmail: string,
-  data: {
-    listingId: string;
-    route: string;
-    sparefareUrl: string;
-    amount: number;
-    departureDate: string;
-    isBuyer: boolean;
-  }
-) {
-  return sendNotification({
-    type: "escrow_sparefare_listed" as NotificationType,
-    data,
-    customerEmail: recipientEmail,
-  });
-}
