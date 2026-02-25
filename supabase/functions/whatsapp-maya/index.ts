@@ -735,8 +735,7 @@ serve(async (req) => {
         }
       }
       
-      // Not a quote reply - treat as boss mode conversation with Maya
-      // Create/get boss mode session
+      // Not a quote reply - route to DEV AGENT (the boss's right-hand man)
       const bossSessionId = `whatsapp-boss-${normalizedFrom}`;
       
       // Get or create conversation with owner_verified = true
@@ -752,7 +751,7 @@ serve(async (req) => {
           .insert({
             session_id: bossSessionId,
             customer_phone: fromNumber,
-            owner_verified: true,  // AUTO-VERIFIED!
+            owner_verified: true,
             status: "owner_mode"
           })
           .select("id")
@@ -760,77 +759,89 @@ serve(async (req) => {
         bossConvo = newBossConvo;
         console.log("[WhatsApp Maya] 👑 Created new boss mode conversation:", bossConvo?.id);
       } else {
-        // Ensure owner_verified is set
         await supabase
           .from("ai_conversations")
           .update({ owner_verified: true, status: "owner_mode" })
           .eq("id", bossConvo.id);
       }
       
-      // Forward to ai-chat with owner mode context
-      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-      const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+      // Load recent conversation history for context continuity
+      let recentMessages: Array<{ role: string; content: string }> = [];
+      if (bossConvo?.id) {
+        const { data: prevMsgs } = await supabase
+          .from("ai_chat_messages")
+          .select("role, content")
+          .eq("conversation_id", bossConvo.id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        if (prevMsgs && prevMsgs.length > 0) {
+          recentMessages = prevMsgs.reverse().map((m: any) => ({ role: m.role, content: m.content }));
+        }
+      }
       
+      // Forward to DEV AGENT with full conversation context
       try {
-        const aiChatResponse = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
+        const devAgentResponse = await fetch(`${SUPABASE_URL}/functions/v1/dev-agent`, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            message: messageBody,
-            conversation_id: bossConvo?.id,
-            phone_number: fromNumber,
-            is_owner: true  // Signal owner mode
+            messages: [
+              ...recentMessages,
+              { role: "user", content: messageBody }
+            ],
           }),
         });
         
-        let response = "";
-        const text = await aiChatResponse.text();
+        const devResult = await devAgentResponse.json();
+        let response = devResult?.content || "";
         
-        // Parse SSE response
-        const lines = text.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ') && !line.includes('[DONE]')) {
-            try {
-              const json = JSON.parse(line.slice(6));
-              if (json.choices?.[0]?.delta?.content) {
-                response += json.choices[0].delta.content;
-              }
-            } catch (e) {
-              // Skip invalid JSON
-            }
-          }
+        // Format action log as a compact summary for WhatsApp
+        const actionLog = devResult?.action_log || [];
+        let actionSummary = "";
+        if (actionLog.length > 0) {
+          const logLines = actionLog.map((a: any) => `${a.success ? '✅' : '❌'} ${a.tool}: ${a.args_summary}`);
+          actionSummary = `\n\n🔧 _Actions:_\n${logLines.join('\n')}`;
         }
         
         // Strip markdown for WhatsApp
         response = response
           .replace(/\*\*/g, '*')
           .replace(/#{1,6}\s/g, '')
-          .replace(/`/g, '')
+          .replace(/`{3}[\s\S]*?`{3}/g, '[code block]')
+          .replace(/`([^`]+)`/g, '$1')
           .trim();
         
+        // WhatsApp 1600 char limit - leave room for action summary
+        const maxContentLen = 1500 - actionSummary.length;
+        if (response.length > maxContentLen) {
+          response = response.substring(0, maxContentLen - 3) + '...';
+        }
+        
+        response = response + actionSummary;
+        
         if (response) {
-          // Save to conversation
+          // Save to conversation history
           if (bossConvo?.id) {
             await supabase.from("ai_chat_messages").insert([
               { conversation_id: bossConvo.id, role: "user", content: messageBody, metadata: { channel: "whatsapp", phone: fromNumber, is_owner: true } },
-              { conversation_id: bossConvo.id, role: "assistant", content: response, metadata: { channel: "whatsapp", owner_mode: true } }
+              { conversation_id: bossConvo.id, role: "assistant", content: response, metadata: { channel: "whatsapp", agent: "dev-agent", owner_mode: true } }
             ]);
           }
           
           return new Response(
-            `<?xml version="1.0" encoding="UTF-8"?><Response><Message>👑 ${response}</Message></Response>`,
+            `<?xml version="1.0" encoding="UTF-8"?><Response><Message>🤖 ${response}</Message></Response>`,
             { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
           );
         }
       } catch (error) {
-        console.error("[WhatsApp Maya] Boss mode ai-chat error:", error);
+        console.error("[WhatsApp Maya] Dev Agent error:", error);
       }
       
       return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>👑 Yes boss! How can I help you today?</Message></Response>`,
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>🤖 Hey boss! I'm here but hit a snag processing that. Try again?</Message></Response>`,
         { headers: { ...corsHeaders, "Content-Type": "text/xml" } }
       );
     }
