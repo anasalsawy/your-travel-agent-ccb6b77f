@@ -797,6 +797,9 @@ serve(async (req) => {
     const convo = [...allMessages];
     let rounds = 0;
     let consecutiveErrors = 0;
+    
+    // ACTION LOG — tracks every tool call with result status
+    const actionLog: Array<{ tool: string, args_summary: string, success: boolean, round: number }> = [];
 
     // 20-round autonomous loop with circuit breaker
     while (msg?.tool_calls && rounds < 20 && consecutiveErrors < 3) {
@@ -806,6 +809,30 @@ serve(async (req) => {
       // Execute ALL tool calls in parallel
       const results = await Promise.all(msg.tool_calls.map(async (tc: any) => {
         const result = await processToolCall(supabase, tc);
+        
+        // Build a human-readable summary of the args
+        let argsSummary = "";
+        try {
+          const args = JSON.parse(tc.function.arguments);
+          // Pick the most relevant fields for each tool
+          if (args.table) argsSummary += `${args.operation || "?"} ${args.table}`;
+          else if (args.to) argsSummary += `to: ${args.to}`;
+          else if (args.sql) argsSummary += args.sql.substring(0, 80);
+          else if (args.function_name) argsSummary += args.function_name;
+          else if (args.path) argsSummary += args.path;
+          else if (args.query) argsSummary += args.query.substring(0, 60);
+          else if (args.subject) argsSummary += args.subject.substring(0, 60);
+          else if (args.goal) argsSummary += args.goal.substring(0, 60);
+          else argsSummary = JSON.stringify(args).substring(0, 80);
+        } catch { argsSummary = "?"; }
+        
+        actionLog.push({
+          tool: tc.function.name,
+          args_summary: argsSummary,
+          success: !!result.success,
+          round: rounds,
+        });
+        
         // Track errors for circuit breaker
         if (!result.success) consecutiveErrors++;
         else consecutiveErrors = 0;
@@ -833,7 +860,6 @@ serve(async (req) => {
       
       if (!cont.ok) {
         console.error(`[dev-agent] OpenAI continue error: ${cont.status}`);
-        // Don't crash — return what we have so far
         break;
       }
       data = await cont.json();
@@ -842,7 +868,11 @@ serve(async (req) => {
 
     const finalContent = msg?.content || (rounds > 0 ? `✅ Done. Executed ${rounds} tool round${rounds > 1 ? 's' : ''}.` : "Ready.");
     
-    return new Response(JSON.stringify({ content: finalContent, tool_rounds: rounds }), {
+    return new Response(JSON.stringify({ 
+      content: finalContent, 
+      tool_rounds: rounds,
+      action_log: actionLog,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
