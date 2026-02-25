@@ -1,27 +1,34 @@
 import { useState, useRef, useEffect } from "react";
 import { MobileAdminLayout } from "@/components/mobile-admin/MobileAdminLayout";
 import { supabase } from "@/integrations/supabase/client";
-import { Send, Code, User, Loader2, Sparkles, Trash2 } from "lucide-react";
+import { Send, Code, User, Loader2, Sparkles, Trash2, CheckCircle2, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
+interface ActionLogEntry {
+  tool: string;
+  args_summary: string;
+  success: boolean;
+  round: number;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
+  action_log?: ActionLogEntry[];
 }
-
-// No system prompt — unrestricted like ChatGPT
 
 export default function MobileDevAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "🔥 ULTIMATE AGENT ONLINE — 20 tools armed.\n\n🧠 Memory (3-layer) • 🌍 Web Search • 🖥 Browser • 📞 Calls/SMS/WhatsApp • 💬 Telegram • 📧 Email • 💰 Stripe • ✈️ Flights • 🗂 Database • 🐙 GitHub • 🤖 Claude + Gemini + GPT • 🔊 Voice • 📊 Reports • 🧭 Auto-Planning\n\nI don't just chat. I operate. What do you need done?",
+      content: "🔥 ULTIMATE AGENT ONLINE — 20 tools armed.\n\n🧠 Memory • 🌍 Web Search • 🖥 Browser • 📞 Calls/SMS/WhatsApp • 💬 Telegram • 📧 Email • 💰 Stripe • ✈️ Flights • 🗂 Database • 🐙 GitHub • 🤖 Claude + Gemini + GPT • 🔊 Voice • 📊 Reports • 🧭 Auto-Planning\n\nEvery action is now verified with a proof log. No more guessing.",
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [expandedLogs, setExpandedLogs] = useState<Record<number, boolean>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,12 +36,12 @@ export default function MobileDevAgent() {
   }, [messages]);
 
   const clearChat = () => {
-    setMessages([
-      {
-        role: "assistant",
-        content: "💬 Chat cleared. What's next?",
-      },
-    ]);
+    setMessages([{ role: "assistant", content: "💬 Chat cleared. What's next?" }]);
+    setExpandedLogs({});
+  };
+
+  const toggleLog = (index: number) => {
+    setExpandedLogs(prev => ({ ...prev, [index]: !prev[index] }));
   };
 
   const sendMessage = async () => {
@@ -59,37 +66,46 @@ export default function MobileDevAgent() {
       if (error) throw error;
 
       const assistantContent =
-        data?.content ||
-        data?.response ||
-        (typeof data === "string" ? data : "Done. Check the changes.");
+        data?.content || data?.response || (typeof data === "string" ? data : "Done. Check the changes.");
+      const actionLog: ActionLogEntry[] = data?.action_log || [];
 
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: assistantContent },
+        { role: "assistant", content: assistantContent, action_log: actionLog },
       ]);
+
+      if (actionLog.length > 0) {
+        setExpandedLogs(prev => ({ ...prev, [updatedMessages.length]: true }));
+      }
     } catch (err: any) {
       console.error("Dev agent error:", err);
       toast.error("Failed to reach Dev Agent");
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: `⚠️ Error: ${err.message || "Connection failed. Try again."}`,
-        },
+        { role: "assistant", content: `⚠️ Error: ${err.message || "Connection failed. Try again."}` },
       ]);
     }
 
     setIsLoading(false);
   };
 
+  const toolEmoji: Record<string, string> = {
+    database_crud: "🗂", database_query: "🗂", database_schema: "🗂",
+    send_email: "📧", send_sms: "📱", send_whatsapp: "💬", send_telegram: "💬",
+    make_phone_call: "📞", web_search: "🌍", browse_website: "🖥",
+    github_action: "🐙", create_checkout: "💰", search_flights: "✈️",
+    memory_system: "🧠", rag_search: "🔍", ask_claude: "🤖",
+    multi_model_consult: "🤖", invoke_function: "⚡", plan_and_execute: "🧭",
+    generate_report: "📊", text_to_speech: "🔊",
+  };
+
   return (
     <MobileAdminLayout title="Dev Agent">
       <div className="flex flex-col h-[calc(100vh-8rem)]">
-        {/* Top bar with clear */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border/30">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs text-muted-foreground">20 tools • 20-round autonomous loop</span>
+            <span className="text-xs text-muted-foreground">20 tools • verified action log</span>
           </div>
           <Button variant="ghost" size="sm" onClick={clearChat} className="text-xs gap-1 h-7">
             <Trash2 className="w-3 h-3" />
@@ -97,30 +113,79 @@ export default function MobileDevAgent() {
           </Button>
         </div>
 
-        {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              {msg.role === "assistant" && (
-                <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-1">
-                  <Code className="w-3.5 h-3.5 text-primary" />
+            <div key={i}>
+              <div className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                {msg.role === "assistant" && (
+                  <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-1">
+                    <Code className="w-3.5 h-3.5 text-primary" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-br-md"
+                      : "bg-card border border-border/50 rounded-bl-md"
+                  }`}
+                >
+                  {msg.content}
+                </div>
+                {msg.role === "user" && (
+                  <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 mt-1">
+                    <User className="w-3.5 h-3.5 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+
+              {/* VERIFIED ACTION LOG */}
+              {msg.action_log && msg.action_log.length > 0 && (
+                <div className="ml-9 mt-1.5">
+                  <button
+                    onClick={() => toggleLog(i)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {expandedLogs[i] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    <span className="font-medium">
+                      {msg.action_log.length} verified action{msg.action_log.length > 1 ? "s" : ""}
+                    </span>
+                    <span className="text-green-500">
+                      ({msg.action_log.filter(a => a.success).length} ✓)
+                    </span>
+                    {msg.action_log.some(a => !a.success) && (
+                      <span className="text-destructive">
+                        ({msg.action_log.filter(a => !a.success).length} ✗)
+                      </span>
+                    )}
+                  </button>
+                  
+                  {expandedLogs[i] && (
+                    <div className="mt-1.5 space-y-1 border-l-2 border-border/50 pl-3">
+                      {msg.action_log.map((action, j) => (
+                        <div key={j} className="flex items-start gap-1.5 text-xs">
+                          {action.success ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0 mt-0.5" />
+                          )}
+                          <span className="text-muted-foreground">
+                            {toolEmoji[action.tool] || "🔧"}{" "}
+                            <span className="font-medium text-foreground">{action.tool}</span>
+                            {action.args_summary && (
+                              <span className="text-muted-foreground/70"> — {action.args_summary}</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-md"
-                    : "bg-card border border-border/50 rounded-bl-md"
-                }`}
-              >
-                {msg.content}
-              </div>
-              {msg.role === "user" && (
-                <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 mt-1">
-                  <User className="w-3.5 h-3.5 text-muted-foreground" />
+
+              {/* No actions indicator */}
+              {msg.role === "assistant" && i > 0 && (!msg.action_log || msg.action_log.length === 0) && !msg.content.startsWith("⚠️") && (
+                <div className="ml-9 mt-1 text-xs text-muted-foreground/50 italic">
+                  No tools executed — text-only response
                 </div>
               )}
             </div>
@@ -138,7 +203,6 @@ export default function MobileDevAgent() {
           )}
         </div>
 
-        {/* Input */}
         <div className="px-4 py-3 border-t border-border/50 bg-card/80 backdrop-blur-xl">
           <div className="flex gap-2 items-end">
             <Textarea
@@ -150,7 +214,7 @@ export default function MobileDevAgent() {
                   sendMessage();
                 }
               }}
-              placeholder="Search flights, create voucher, send email, call customer, generate report..."
+              placeholder="Search flights, create voucher, send email, call customer..."
               className="flex-1 min-h-[44px] max-h-[120px] resize-none rounded-xl bg-secondary/50 border-border/30 text-sm"
               rows={1}
             />
