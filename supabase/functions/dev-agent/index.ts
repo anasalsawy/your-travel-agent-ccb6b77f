@@ -511,7 +511,7 @@ async function handleSendEmail(args: any) {
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: args.from || "Maya at Your Travel Agent <maya@your-travel-agent.net>", to: args.to, subject: args.subject, html: args.html }),
+      body: JSON.stringify({ from: "Maya at Your Travel Agent <maya@your-travel-agent.net>", to: args.to, subject: args.subject, html: args.html }),
     });
     const data = await resp.json();
     if (!resp.ok) return { success: false, error: `Resend error: ${JSON.stringify(data)}` };
