@@ -123,11 +123,19 @@ export default function MobileDevAgent() {
   const toolEmoji: Record<string, string> = {
     database_crud: "🗂", database_query: "🗂", database_schema: "🗂",
     send_email: "📧", send_sms: "📱", send_whatsapp: "💬", send_telegram: "💬",
-    make_phone_call: "📞", web_search: "🌍", browse_website: "🖥",
+    make_phone_call: "📞", web_search: "🌍", info_search_web: "🌍",
+    browse_website: "🖥", browser_view: "🖥", browser_navigate: "🖥",
+    browser_click: "🖱", browser_input: "⌨️", browser_scroll_down: "⬇️",
+    browser_scroll_up: "⬆️", browser_press_key: "⌨️", browser_console_exec: "💻",
+    browser_console_view: "💻",
     github_action: "🐙", create_checkout: "💰", search_flights: "✈️",
     memory_system: "🧠", rag_search: "🔍", ask_claude: "🤖",
     multi_model_consult: "🤖", invoke_function: "⚡", plan_and_execute: "🧭",
     generate_report: "📊", text_to_speech: "🔊",
+    file_read: "📖", file_write: "✏️", file_str_replace: "🔄",
+    file_find_in_content: "🔎", file_find_by_name: "📂",
+    shell_exec: "🐚", deploy_trigger: "🚀",
+    message_notify_user: "📢", message_ask_user: "❓",
   };
 
   const stepStatusIcon = (status: PlanStep["status"]) => {
