@@ -344,7 +344,7 @@ const tools = [
     type: "function",
     function: {
       name: "browser_view",
-      description: "View/screenshot the current state of a browser page via Browserbase.",
+      description: "View/screenshot the current state of a browser page via Skyvern AI.",
       parameters: { type: "object", properties: { url: { type: "string", description: "URL to view (optional if already navigated)" } } },
     },
   },
