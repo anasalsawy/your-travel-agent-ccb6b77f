@@ -474,7 +474,7 @@ serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Maya at Your Travel Agent <maya@your-travel-agent.net>",
+            from: "Maya at Your Travel Agent <maya@mail.your-travel-agent.net>",
             to: [ADMIN_EMAIL],
             subject: "🔐 WhatsApp Verification PIN Received",
             html: `

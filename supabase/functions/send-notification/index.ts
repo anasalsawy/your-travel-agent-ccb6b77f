@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const adminEmail = Deno.env.get("ADMIN_EMAIL");
-const FROM_EMAIL = "Maya at Your Travel Agent <maya@your-travel-agent.net>";
+const FROM_EMAIL = "Maya at Your Travel Agent <maya@mail.your-travel-agent.net>";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
