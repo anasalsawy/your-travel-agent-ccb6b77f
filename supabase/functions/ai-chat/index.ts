@@ -3075,7 +3075,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
               "Authorization": `Bearer ${resendApiKey}`,
             },
             body: JSON.stringify({
-              from: "Maya at Your Travel Agent <reservations@your-travel-agent.net>",
+              from: "Maya at Your Travel Agent <maya@your-travel-agent.net>",
               to: [args.to_email],
               subject: args.subject,
               html: htmlContent,
@@ -3245,7 +3245,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${resendApiKey}` },
                     body: JSON.stringify({
-                      from: "Maya at Your Travel Agent <reservations@your-travel-agent.net>",
+                      from: "Maya at Your Travel Agent <maya@your-travel-agent.net>",
                       to: [args.customer_email],
                       subject: `Complete Your Payment - $${amount}`,
                       html: `<div style="font-family: Arial; max-width: 600px; margin: 0 auto;">
@@ -4760,7 +4760,7 @@ async function executeTool(supabase: any, toolName: string, args: any, conversat
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              from: "Maya at Your Travel Agent <reservations@your-travel-agent.net>",
+              from: "Maya at Your Travel Agent <maya@your-travel-agent.net>",
               to: [customerEmail],
               subject: "Update from Your Travel Agent ✈️",
               html: `<p>${personalizedMessage.replace(/\n/g, '<br>')}</p>`,
