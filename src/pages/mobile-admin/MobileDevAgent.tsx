@@ -155,7 +155,7 @@ export default function MobileDevAgent() {
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span className="text-xs text-muted-foreground">
               <Brain className="w-3 h-3 inline mr-1" />
-              Manus loop • 21 tools • 10-round autonomy
+              Manus loop • 39 tools • 10-round autonomy
             </span>
           </div>
           <Button variant="ghost" size="sm" onClick={clearChat} className="text-xs gap-1 h-7">
