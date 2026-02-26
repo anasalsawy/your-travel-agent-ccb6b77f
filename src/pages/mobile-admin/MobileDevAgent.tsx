@@ -34,7 +34,7 @@ export default function MobileDevAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hey boss! 👋 Manus-style agent online.\n\nI now run an autonomous planning loop — for complex tasks I'll create a plan, execute step-by-step (up to 10 rounds), self-reflect, and verify completion.\n\nAll 21 tools loaded. Let's get it done.",
+      content: "Hey boss! 👋 Manus-style agent online.\n\nFull Manus toolset loaded — 39 tools including file ops (read/write/replace/search), browser automation (navigate/click/input/scroll), shell execution, deploy triggers, web search, and all 21 original business tools.\n\nPlanning loop active • 10-round autonomy • No restrictions. Let's get it done.",
     },
   ]);
   const [input, setInput] = useState("");
