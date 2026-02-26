@@ -131,3 +131,6 @@ verify_jwt = false
 
 [functions.agent-roundtable]
 verify_jwt = false
+
+[functions.whatsapp-dev-agent]
+verify_jwt = false
