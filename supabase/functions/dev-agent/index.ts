@@ -920,16 +920,18 @@ async function processToolCall(supabase: any, tc: any) {
         return { success: true, files: matched, count: matched.length };
       }
       
-      // ═══ MANUS BROWSER TOOLS → Browserbase ═══
-      case "browser_view": return await invokeEdgeFunction("browserbase-browse", { url: args.url || "about:blank", action: "screenshot" });
-      case "browser_navigate": return await invokeEdgeFunction("browserbase-browse", { url: args.url, action: "navigate" });
-      case "browser_click": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "click", selector: args.selector, value: `${args.coordinate_x || ""},${args.coordinate_y || ""}` });
-      case "browser_input": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "fill_form", selector: args.selector, value: args.text });
-      case "browser_scroll_down": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body" });
-      case "browser_scroll_up": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body" });
-      case "browser_press_key": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "click", selector: `[key="${args.key}"]` });
-      case "browser_console_exec": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body", value: args.javascript });
-      case "browser_console_view": return { success: true, note: "Console viewing requires active browser session. Use browser_navigate first, then browser_view." };
+      // ═══ MANUS BROWSER TOOLS → Skyvern ═══
+      case "browser_view":
+      case "browser_navigate":
+      case "browser_click":
+      case "browser_input":
+      case "browser_scroll_down":
+      case "browser_scroll_up":
+      case "browser_press_key":
+      case "browser_console_exec":
+      case "browser_console_view":
+      case "browse_website":
+        return await handleSkyvern(name, args);
       
       // ═══ MANUS SHELL → Edge Function Invocation ═══
       case "shell_exec": {
