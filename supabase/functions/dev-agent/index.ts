@@ -855,7 +855,7 @@ async function processToolCall(supabase: any, tc: any) {
       case "multi_model_consult": return await handleMultiModelConsult(args);
       case "web_search": return await handleWebSearch(args);
       case "info_search_web": return await handleWebSearch({ query: args.query, detailed: true });
-      case "browse_website": return await invokeEdgeFunction("browserbase-browse", args);
+      case "browse_website": return await handleSkyvern("browse_website", args);
       case "database_query": return await handleDatabaseQuery(supabase, args.sql);
       case "database_crud": return await handleDatabaseCrud(supabase, args);
       case "database_schema": return await handleDatabaseSchema(supabase, args.table);
