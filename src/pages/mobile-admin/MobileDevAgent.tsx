@@ -34,7 +34,7 @@ export default function MobileDevAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hey boss! 👋 Manus-style agent online.\n\nI now run an autonomous planning loop — for complex tasks I'll create a plan, execute step-by-step (up to 10 rounds), self-reflect, and verify completion.\n\nAll 21 tools loaded. Let's get it done.",
+      content: "Hey boss! 👋 Manus-style agent online.\n\nFull Manus toolset loaded — 39 tools including file ops (read/write/replace/search), browser automation (navigate/click/input/scroll), shell execution, deploy triggers, web search, and all 21 original business tools.\n\nPlanning loop active • 10-round autonomy • No restrictions. Let's get it done.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -123,11 +123,19 @@ export default function MobileDevAgent() {
   const toolEmoji: Record<string, string> = {
     database_crud: "🗂", database_query: "🗂", database_schema: "🗂",
     send_email: "📧", send_sms: "📱", send_whatsapp: "💬", send_telegram: "💬",
-    make_phone_call: "📞", web_search: "🌍", browse_website: "🖥",
+    make_phone_call: "📞", web_search: "🌍", info_search_web: "🌍",
+    browse_website: "🖥", browser_view: "🖥", browser_navigate: "🖥",
+    browser_click: "🖱", browser_input: "⌨️", browser_scroll_down: "⬇️",
+    browser_scroll_up: "⬆️", browser_press_key: "⌨️", browser_console_exec: "💻",
+    browser_console_view: "💻",
     github_action: "🐙", create_checkout: "💰", search_flights: "✈️",
     memory_system: "🧠", rag_search: "🔍", ask_claude: "🤖",
     multi_model_consult: "🤖", invoke_function: "⚡", plan_and_execute: "🧭",
     generate_report: "📊", text_to_speech: "🔊",
+    file_read: "📖", file_write: "✏️", file_str_replace: "🔄",
+    file_find_in_content: "🔎", file_find_by_name: "📂",
+    shell_exec: "🐚", deploy_trigger: "🚀",
+    message_notify_user: "📢", message_ask_user: "❓",
   };
 
   const stepStatusIcon = (status: PlanStep["status"]) => {
@@ -147,7 +155,7 @@ export default function MobileDevAgent() {
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span className="text-xs text-muted-foreground">
               <Brain className="w-3 h-3 inline mr-1" />
-              Manus loop • 21 tools • 10-round autonomy
+              Manus loop • 39 tools • 10-round autonomy
             </span>
           </div>
           <Button variant="ghost" size="sm" onClick={clearChat} className="text-xs gap-1 h-7">

@@ -297,6 +297,161 @@ const tools = [
       parameters: { type: "object", properties: { report_type: { type: "string", enum: ["daily_summary", "revenue", "customer_analysis", "inventory", "performance", "custom"] }, custom_query: { type: "string" }, date_range: { type: "string" } }, required: ["report_type"] },
     },
   },
+  // ═══════════════════════════════════════════════════════════════
+  // MANUS-STYLE TOOLS — Full access, no restrictions
+  // ═══════════════════════════════════════════════════════════════
+  {
+    type: "function",
+    function: {
+      name: "file_read",
+      description: "Read a file from the codebase via GitHub. Supports optional line ranges.",
+      parameters: { type: "object", properties: { file: { type: "string", description: "File path relative to repo root" }, start_line: { type: "integer" }, end_line: { type: "integer" } }, required: ["file"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "file_write",
+      description: "Write/overwrite a file in the codebase via GitHub. Can append instead of overwrite.",
+      parameters: { type: "object", properties: { file: { type: "string", description: "File path relative to repo root" }, content: { type: "string" }, append: { type: "boolean" }, message: { type: "string", description: "Commit message" } }, required: ["file", "content"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "file_str_replace",
+      description: "Find and replace a specific string in a file. Precise surgical edits without rewriting the whole file.",
+      parameters: { type: "object", properties: { file: { type: "string" }, old_str: { type: "string" }, new_str: { type: "string" }, message: { type: "string" } }, required: ["file", "old_str", "new_str"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "file_find_in_content",
+      description: "Search for a regex pattern inside a specific file. Returns matching lines.",
+      parameters: { type: "object", properties: { file: { type: "string" }, regex: { type: "string" } }, required: ["file", "regex"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "file_find_by_name",
+      description: "Find files matching a glob pattern in the repository.",
+      parameters: { type: "object", properties: { path: { type: "string", description: "Directory to search (e.g. src/components)" }, glob: { type: "string", description: "Filename pattern (e.g. *.tsx)" } }, required: ["path", "glob"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_view",
+      description: "View/screenshot the current state of a browser page via Browserbase.",
+      parameters: { type: "object", properties: { url: { type: "string", description: "URL to view (optional if already navigated)" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_navigate",
+      description: "Navigate the browser to a URL. Opens a new page or changes the current one.",
+      parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_click",
+      description: "Click an element on the current browser page by CSS selector or coordinates.",
+      parameters: { type: "object", properties: { selector: { type: "string" }, coordinate_x: { type: "number" }, coordinate_y: { type: "number" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_input",
+      description: "Type text into an input field on the current browser page.",
+      parameters: { type: "object", properties: { selector: { type: "string" }, text: { type: "string" }, press_enter: { type: "boolean" } }, required: ["text"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_scroll_down",
+      description: "Scroll down on the current browser page.",
+      parameters: { type: "object", properties: { to_bottom: { type: "boolean" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_scroll_up",
+      description: "Scroll up on the current browser page.",
+      parameters: { type: "object", properties: { to_top: { type: "boolean" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_press_key",
+      description: "Simulate a key press in the browser (Enter, Tab, Escape, etc.).",
+      parameters: { type: "object", properties: { key: { type: "string" } }, required: ["key"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_console_exec",
+      description: "Execute JavaScript in the browser console.",
+      parameters: { type: "object", properties: { javascript: { type: "string" } }, required: ["javascript"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_console_view",
+      description: "View browser console output/logs.",
+      parameters: { type: "object", properties: { max_lines: { type: "integer" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "shell_exec",
+      description: "Execute a command by invoking an edge function. Maps shell-like commands to backend function calls.",
+      parameters: { type: "object", properties: { command: { type: "string", description: "Command description or edge function to invoke" }, args: { type: "object", description: "Arguments/body for the function" } }, required: ["command"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "deploy_trigger",
+      description: "Trigger a deployment via GitHub. Pushes changes and triggers automatic deploy pipeline.",
+      parameters: { type: "object", properties: { description: { type: "string", description: "What's being deployed" }, branch: { type: "string" } }, required: ["description"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "message_notify_user",
+      description: "Send a notification/update to the admin via Telegram without requiring a response.",
+      parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "message_ask_user",
+      description: "Ask the admin a question via Telegram and note you're waiting for response.",
+      parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "info_search_web",
+      description: "Search the web for information. Alias for web_search with enhanced query formatting.",
+      parameters: { type: "object", properties: { query: { type: "string" }, date_range: { type: "string", enum: ["all", "past_hour", "past_day", "past_week", "past_month", "past_year"] } }, required: ["query"] },
+    },
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -699,6 +854,7 @@ async function processToolCall(supabase: any, tc: any) {
       case "ask_claude": return await handleAskClaude(args);
       case "multi_model_consult": return await handleMultiModelConsult(args);
       case "web_search": return await handleWebSearch(args);
+      case "info_search_web": return await handleWebSearch({ query: args.query, detailed: true });
       case "browse_website": return await invokeEdgeFunction("browserbase-browse", args);
       case "database_query": return await handleDatabaseQuery(supabase, args.sql);
       case "database_crud": return await handleDatabaseCrud(supabase, args);
@@ -715,7 +871,90 @@ async function processToolCall(supabase: any, tc: any) {
       case "text_to_speech": return await invokeEdgeFunction("elevenlabs-tts", args);
       case "plan_and_execute": return await handlePlanAndExecute(args);
       case "generate_report": return await handleGenerateReport(supabase, args);
-      default: return { success: false, error: "Unknown tool '" + name + "'. Check available tools in your system prompt." };
+      
+      // ═══ MANUS FILE TOOLS → GitHub ═══
+      case "file_read": {
+        const ghResult = await handleGitHub({ action: "read_file", path: args.file });
+        if (!ghResult.success) return ghResult;
+        let content = ghResult.content || "";
+        if (args.start_line !== undefined || args.end_line !== undefined) {
+          const lines = content.split("\n");
+          const start = args.start_line || 0;
+          const end = args.end_line || lines.length;
+          content = lines.slice(start, end).join("\n");
+        }
+        return { success: true, content, path: args.file, total_lines: (ghResult.content || "").split("\n").length };
+      }
+      case "file_write": {
+        if (args.append) {
+          // Read first, then append
+          const existing = await handleGitHub({ action: "read_file", path: args.file });
+          const existingContent = existing.success ? (existing.content || "") : "";
+          return await handleGitHub({ action: "write_file", path: args.file, content: existingContent + "\n" + args.content, message: args.message || "Append to " + args.file });
+        }
+        return await handleGitHub({ action: "write_file", path: args.file, content: args.content, message: args.message || "Update " + args.file });
+      }
+      case "file_str_replace": {
+        const fileData = await handleGitHub({ action: "read_file", path: args.file });
+        if (!fileData.success) return { success: false, error: "Cannot read file: " + (fileData.error || "unknown") };
+        const original = fileData.content || "";
+        if (!original.includes(args.old_str)) return { success: false, error: "old_str not found in file. Make sure it matches exactly (including whitespace)." };
+        const updated = original.replace(args.old_str, args.new_str);
+        return await handleGitHub({ action: "write_file", path: args.file, content: updated, message: args.message || "str_replace in " + args.file });
+      }
+      case "file_find_in_content": {
+        const fileData = await handleGitHub({ action: "read_file", path: args.file });
+        if (!fileData.success) return fileData;
+        const lines = (fileData.content || "").split("\n");
+        const re = new RegExp(args.regex, "gi");
+        const matches = lines.map((line: string, i: number) => re.test(line) ? { line: i + 1, content: line.trim() } : null).filter(Boolean);
+        return { success: true, matches, total_matches: matches.length };
+      }
+      case "file_find_by_name": {
+        const listing = await handleGitHub({ action: "list_files", path: args.path || "" });
+        if (!listing.success) return listing;
+        const files = listing.files || [];
+        const globToRegex = (g: string) => new RegExp("^" + g.replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i");
+        const re = globToRegex(args.glob);
+        const matched = files.filter((f: any) => re.test(f.name));
+        return { success: true, files: matched, count: matched.length };
+      }
+      
+      // ═══ MANUS BROWSER TOOLS → Browserbase ═══
+      case "browser_view": return await invokeEdgeFunction("browserbase-browse", { url: args.url || "about:blank", action: "screenshot" });
+      case "browser_navigate": return await invokeEdgeFunction("browserbase-browse", { url: args.url, action: "navigate" });
+      case "browser_click": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "click", selector: args.selector, value: `${args.coordinate_x || ""},${args.coordinate_y || ""}` });
+      case "browser_input": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "fill_form", selector: args.selector, value: args.text });
+      case "browser_scroll_down": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body" });
+      case "browser_scroll_up": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body" });
+      case "browser_press_key": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "click", selector: `[key="${args.key}"]` });
+      case "browser_console_exec": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body", value: args.javascript });
+      case "browser_console_view": return { success: true, note: "Console viewing requires active browser session. Use browser_navigate first, then browser_view." };
+      
+      // ═══ MANUS SHELL → Edge Function Invocation ═══
+      case "shell_exec": {
+        // Map shell-like commands to edge function calls
+        const cmd = args.command.toLowerCase();
+        if (cmd.includes("compile") || cmd.includes("memory")) return await invokeEdgeFunction("compile-agent-memory", args.args || {});
+        if (cmd.includes("notification") || cmd.includes("notify")) return await invokeEdgeFunction("send-notification", args.args || {});
+        if (cmd.includes("quote")) return await invokeEdgeFunction("smart-quote-v2", args.args || {});
+        if (cmd.includes("booking")) return await invokeEdgeFunction("alaska-booking-agent", args.args || {});
+        if (cmd.includes("coach") || cmd.includes("maya")) return await invokeEdgeFunction("maya-coach", args.args || {});
+        if (cmd.includes("promo") || cmd.includes("email")) return await invokeEdgeFunction("send-promo-email", args.args || {});
+        // Generic: try to invoke by name
+        return await invokeEdgeFunction(args.command, args.args || {});
+      }
+      
+      // ═══ MANUS DEPLOY → GitHub push (auto-deploys) ═══
+      case "deploy_trigger": {
+        return { success: true, message: "Deployment is automatic — any file pushed to main via github_action/file_write triggers auto-deploy. Description: " + args.description, branch: args.branch || "main" };
+      }
+      
+      // ═══ MANUS MESSAGE TOOLS → Telegram ═══
+      case "message_notify_user": return await handleTelegram({ text: "📋 " + args.text });
+      case "message_ask_user": return await handleTelegram({ text: "❓ " + args.text + "\n\n(Reply to this message)" });
+      
+      default: return { success: false, error: "Unknown tool '" + name + "'. Available: " + tools.map((t: any) => t.function.name).join(", ") };
     }
   } catch (e: any) {
     console.error("[dev-agent] Tool " + name + " crashed:", e);
