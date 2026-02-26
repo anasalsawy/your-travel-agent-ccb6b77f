@@ -100,7 +100,7 @@ EXAMPLES (BEHAVIOR)
 - “Email this customer a quote” → Draft email + ask approval, then send_email after approval.
 - “Update the price / mark paid / delete something” → Explain exact changes, warn if destructive, ask approval, then run database_crud update/delete.
 
-If anything conflicts with these rules, follow these rules.
+If anything conflicts with these rules, follow these rules.`;
 
 // ═══════════════════════════════════════════════════════════════
 // TOOLS — ALL 21
@@ -319,7 +319,7 @@ async function invokeEdgeFunction(name: string, body?: any, method = "POST") {
 }
 
 async function handleDatabaseQuery(supabase: any, sql: string) {
-  console.log(`[dev-agent] SQL: ${sql.substring(0, 300)}`);
+  console.log("[dev-agent] SQL:", sql.substring(0, 300));
   
   // Detect operation type for smarter fallback
   const isSelect = /^\s*SELECT/i.test(sql);
@@ -329,9 +329,9 @@ async function handleDatabaseQuery(supabase: any, sql: string) {
   
   // Try direct REST API with service role for any SQL
   try {
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/rpc/execute_sql_query`, {
+    const resp = await fetch(SUPABASE_URL + "/rest/v1/rpc/execute_sql_query", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + SUPABASE_SERVICE_ROLE_KEY, apikey: SUPABASE_SERVICE_ROLE_KEY },
       body: JSON.stringify({ query_text: sql }),
     });
     if (resp.ok) return { success: true, data: await resp.json() };
@@ -353,7 +353,7 @@ async function handleDatabaseQuery(supabase: any, sql: string) {
 
 async function handleDatabaseCrud(supabase: any, args: any) {
   const { operation, table, data, filters, select_columns, limit, order_by, ascending } = args;
-  console.log(`[dev-agent] CRUD: ${operation} on ${table}`);
+  console.log("[dev-agent] CRUD:", operation, "on", table);
   try {
     let query: any;
     switch (operation) {
@@ -379,7 +379,7 @@ async function handleDatabaseCrud(supabase: any, args: any) {
         query = supabase.from(table).upsert(data).select();
         break;
       }
-      default: return { success: false, error: `Unknown operation '${operation}'. Use: select, insert, update, delete, upsert.` };
+      default: return { success: false, error: "Unknown operation '" + operation + "'. Use: select, insert, update, delete, upsert." };
     }
     
     // Apply filters
@@ -396,13 +396,13 @@ async function handleDatabaseCrud(supabase: any, args: any) {
     if (operation === "update" || operation === "delete") query = query.select();
     
     const { data: result, error } = await query;
-    if (error) return { success: false, error: `Database error: ${error.message}`, hint: error.hint || undefined, details: error.details || undefined };
+    if (error) return { success: false, error: "Database error: " + error.message, hint: error.hint || undefined, details: error.details || undefined };
     return { success: true, data: result, count: Array.isArray(result) ? result.length : undefined };
-  } catch (e: any) { return { success: false, error: `Unexpected: ${e.message}` }; }
+  } catch (e: any) { return { success: false, error: "Unexpected: " + e.message }; }
 }
 
 async function handleDatabaseSchema(supabase: any, table: string) {
-  console.log(`[dev-agent] Schema: ${table}`);
+  console.log("[dev-agent] Schema:", table);
   try {
     // Get one row to infer columns
     const { data, error } = await supabase.from(table).select("*").limit(1);
@@ -434,10 +434,10 @@ async function handleWebSearch(args: any) {
   try {
     const resp = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "sonar-pro", messages: [{ role: "user", content: args.query }], max_tokens: args.detailed ? 4000 : 1500 }),
     });
-    if (!resp.ok) return { success: false, error: `Perplexity HTTP ${resp.status}` };
+    if (!resp.ok) return { success: false, error: "Perplexity HTTP " + resp.status };
     const data = await resp.json();
     return { success: true, result: data.choices?.[0]?.message?.content, citations: data.citations };
   } catch (e: any) { return { success: false, error: e.message }; }
@@ -452,7 +452,7 @@ async function handleAskClaude(args: any) {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
       body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: args.max_tokens || 4096, system: args.system || "You are a brilliant analyst.", messages: [{ role: "user", content: args.prompt }] }),
     });
-    if (!resp.ok) return { success: false, error: `Claude HTTP ${resp.status}: ${await resp.text()}` };
+    if (!resp.ok) return { success: false, error: "Claude HTTP " + resp.status + ": " + (await resp.text()) };
     const data = await resp.json();
     return { success: true, content: data.content?.[0]?.text || JSON.stringify(data) };
   } catch (e: any) { return { success: false, error: e.message }; }
@@ -468,12 +468,12 @@ async function handleMultiModelConsult(args: any) {
       try {
         const resp = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
-          headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+          headers: { Authorization: "Bearer " + OPENAI_API_KEY, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: args.question }], max_tokens: 2000 }),
         });
         const d = await resp.json();
         results.gpt5 = d.choices?.[0]?.message?.content || "No response";
-      } catch (e: any) { results.gpt5 = `Error: ${e.message}`; }
+      } catch (e: any) { results.gpt5 = "Error: " + e.message; }
     })());
   }
 
@@ -491,12 +491,12 @@ async function handleMultiModelConsult(args: any) {
         if (!key) { results.gemini = "LOVABLE_API_KEY not set"; return; }
         const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
-          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+          headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: [{ role: "user", content: args.question }] }),
         });
         const d = await resp.json();
         results.gemini = d.choices?.[0]?.message?.content || "No response";
-      } catch (e: any) { results.gemini = `Error: ${e.message}`; }
+      } catch (e: any) { results.gemini = "Error: " + e.message; }
     })());
   }
 
@@ -510,11 +510,11 @@ async function handleSendEmail(args: any) {
   try {
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
       body: JSON.stringify({ from: "Maya at Your Travel Agent <maya@your-travel-agent.net>", to: args.to, subject: args.subject, html: args.html }),
     });
     const data = await resp.json();
-    if (!resp.ok) return { success: false, error: `Resend error: ${JSON.stringify(data)}` };
+    if (!resp.ok) return { success: false, error: "Resend error: " + JSON.stringify(data) };
     return { success: true, data };
   } catch (e: any) { return { success: false, error: e.message }; }
 }
@@ -525,13 +525,13 @@ async function handleSMS(args: any) {
   const FROM = Deno.env.get("TWILIO_PHONE_NUMBER");
   if (!SID || !AUTH || !FROM) return { success: false, error: "Twilio not configured (missing SID/AUTH/FROM)" };
   try {
-    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${SID}/Messages.json`, {
+    const resp = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + SID + "/Messages.json", {
       method: "POST",
-      headers: { Authorization: "Basic " + btoa(`${SID}:${AUTH}`), "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { Authorization: "Basic " + btoa(SID + ":" + AUTH), "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ To: args.to, From: FROM, Body: args.body }),
     });
     const data = await resp.json();
-    if (!resp.ok) return { success: false, error: `Twilio: ${data.message || JSON.stringify(data)}` };
+    if (!resp.ok) return { success: false, error: "Twilio: " + (data.message || JSON.stringify(data)) };
     return { success: true, data };
   } catch (e: any) { return { success: false, error: e.message }; }
 }
@@ -542,15 +542,15 @@ async function handleWhatsApp(args: any) {
   const FROM = Deno.env.get("TWILIO_WHATSAPP_NUMBER") || Deno.env.get("TWILIO_PHONE_NUMBER");
   if (!SID || !AUTH || !FROM) return { success: false, error: "Twilio WhatsApp not configured" };
   try {
-    const fromNum = FROM.startsWith("whatsapp:") ? FROM : `whatsapp:${FROM}`;
-    const toNum = args.to.startsWith("whatsapp:") ? args.to : `whatsapp:${args.to}`;
-    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${SID}/Messages.json`, {
+    const fromNum = FROM.startsWith("whatsapp:") ? FROM : "whatsapp:" + FROM;
+    const toNum = args.to.startsWith("whatsapp:") ? args.to : "whatsapp:" + args.to;
+    const resp = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + SID + "/Messages.json", {
       method: "POST",
-      headers: { Authorization: "Basic " + btoa(`${SID}:${AUTH}`), "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { Authorization: "Basic " + btoa(SID + ":" + AUTH), "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ To: toNum, From: fromNum, Body: args.body }),
     });
     const data = await resp.json();
-    if (!resp.ok) return { success: false, error: `Twilio: ${data.message || JSON.stringify(data)}` };
+    if (!resp.ok) return { success: false, error: "Twilio: " + (data.message || JSON.stringify(data)) };
     return { success: true, data };
   } catch (e: any) { return { success: false, error: e.message }; }
 }
@@ -560,13 +560,13 @@ async function handleTelegram(args: any) {
   const ADMIN_CHAT = Deno.env.get("ADMIN_TELEGRAM_CHAT_ID");
   if (!TOKEN) return { success: false, error: "TELEGRAM_BOT_TOKEN not set" };
   try {
-    const resp = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+    const resp = await fetch("https://api.telegram.org/bot" + TOKEN + "/sendMessage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: args.chat_id || ADMIN_CHAT, text: args.text, parse_mode: args.parse_mode || "HTML" }),
     });
     const data = await resp.json();
-    if (!resp.ok) return { success: false, error: `Telegram: ${data.description || JSON.stringify(data)}` };
+    if (!resp.ok) return { success: false, error: "Telegram: " + (data.description || JSON.stringify(data)) };
     return { success: true, data };
   } catch (e: any) { return { success: false, error: e.message }; }
 }
@@ -577,14 +577,14 @@ async function handleGitHub(args: any) {
   const repo = "your-travel-agent";
   const owner = "anashashme";
   const branch = args.branch || "main";
-  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/vnd.github.v3+json" };
+  const headers = { Authorization: "Bearer " + token, "Content-Type": "application/json", Accept: "application/vnd.github.v3+json" };
   try {
     switch (args.action) {
       case "read_file": {
         if (!args.path) return { success: false, error: "Missing 'path' parameter" };
-        const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${args.path}?ref=${branch}`, { headers });
+        const resp = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/contents/" + args.path + "?ref=" + branch, { headers });
         const data = await resp.json();
-        if (!resp.ok) return { success: false, error: `GitHub: ${data.message || 'Not found'}` };
+        if (!resp.ok) return { success: false, error: "GitHub: " + (data.message || "Not found") };
         if (data.content) {
           try {
             return { success: true, content: atob(data.content.replace(/\n/g, '')), path: data.path, sha: data.sha };
@@ -595,9 +595,9 @@ async function handleGitHub(args: any) {
         return { success: false, error: "File has no content" };
       }
       case "list_files": {
-        const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${args.path || ""}?ref=${branch}`, { headers });
+        const resp = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/contents/" + (args.path || "") + "?ref=" + branch, { headers });
         const data = await resp.json();
-        if (!resp.ok) return { success: false, error: `GitHub: ${data.message}` };
+        if (!resp.ok) return { success: false, error: "GitHub: " + data.message };
         return { success: true, files: Array.isArray(data) ? data.map((f: any) => ({ name: f.name, type: f.type, path: f.path })) : data };
       }
       case "write_file": {
@@ -606,31 +606,25 @@ async function handleGitHub(args: any) {
         // Get existing SHA if file exists
         let sha: string | undefined;
         try {
-          const e = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${args.path}?ref=${branch}`, { headers });
+          const e = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/contents/" + args.path + "?ref=" + branch, { headers });
           if (e.ok) { const d = await e.json(); sha = d.sha; }
         } catch {}
-        const body: any = { message: args.message || `Update ${args.path}`, content: btoa(unescape(encodeURIComponent(args.content || ""))), branch };
+        const body: any = { message: args.message || ("Update " + args.path), content: btoa(unescape(encodeURIComponent(args.content || ""))), branch };
         if (sha) body.sha = sha;
-        const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${args.path}`, { method: "PUT", headers, body: JSON.stringify(body) });
+        const resp = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/contents/" + args.path, { method: "PUT", headers, body: JSON.stringify(body) });
         const data = await resp.json();
-        if (!resp.ok) return { success: false, error: `GitHub write failed: ${data.message || JSON.stringify(data)}` };
-        return { success: true, message: `✅ File ${sha ? 'updated' : 'created'}: ${args.path}`, commit: data.commit?.sha?.substring(0, 7) };
+        if (!resp.ok) return { success: false, error: "GitHub write failed: " + (data.message || JSON.stringify(data)) };
+        return { success: true, message: "File " + (sha ? "updated" : "created") + ": " + args.path, commit: data.commit?.sha?.substring(0, 7) };
       }
-      default: return { success: false, error: `Unknown GitHub action '${args.action}'. Use: read_file, write_file, list_files` };
+      default: return { success: false, error: "Unknown GitHub action '" + args.action + "'. Use: read_file, write_file, list_files" };
     }
-  } catch (e: any) { return { success: false, error: `GitHub error: ${e.message}` }; }
+  } catch (e: any) { return { success: false, error: "GitHub error: " + e.message }; }
 }
 
 async function handlePlanAndExecute(args: any) {
+  const prompt = "Break this goal into 3-8 numbered concrete steps. Each step should use exactly one tool.\n\nGoal: " + args.goal + (args.context ? "\nContext: " + args.context : "") + "\n\nAvailable tools: database_crud, database_query, database_schema, web_search, browse_website, send_email, send_sms, send_whatsapp, send_telegram, make_phone_call, search_flights, create_checkout, github_action, memory_system, rag_search, ask_claude, text_to_speech, invoke_function, multi_model_consult, generate_report.\n\nReturn ONLY a numbered list. Be specific about tool parameters.";
   const result = await handleAskClaude({
-    prompt: `Break this goal into 3-8 numbered concrete steps. Each step should use exactly one tool.
-
-Goal: ${args.goal}
-${args.context ? `Context: ${args.context}` : ""}
-
-Available tools: database_crud, database_query, database_schema, web_search, browse_website, send_email, send_sms, send_whatsapp, send_telegram, make_phone_call, search_flights, create_checkout, github_action, memory_system, rag_search, ask_claude, text_to_speech, invoke_function, multi_model_consult, generate_report.
-
-Return ONLY a numbered list. Be specific about tool parameters.`,
+    prompt,
     system: "You are a precise task planner. Return only the numbered plan, no preamble."
   });
   return { success: true, plan: result.content, instruction: "Execute each step now using the appropriate tools. Do NOT ask for confirmation." };
@@ -676,7 +670,7 @@ async function handleGenerateReport(supabase: any, args: any) {
         break;
       }
       default: {
-        results.data = { message: `Use database_crud for custom queries. Requested: ${args.custom_query}` };
+        results.data = { message: "Use database_crud for custom queries. Requested: " + args.custom_query };
       }
     }
   } catch (e: any) { results.error = e.message; }
@@ -693,10 +687,10 @@ async function processToolCall(supabase: any, tc: any) {
   try {
     args = JSON.parse(tc.function.arguments);
   } catch (e) {
-    return { success: false, error: `Invalid JSON in tool arguments: ${tc.function.arguments?.substring(0, 200)}` };
+    return { success: false, error: "Invalid JSON in tool arguments: " + (tc.function.arguments?.substring(0, 200) || "") };
   }
   
-  console.log(`[dev-agent] Tool: ${name}${args.table ? ` (${args.table})` : ''}${args.path ? ` (${args.path})` : ''}`);
+  console.log("[dev-agent] Tool:", name, args.table ? "(" + args.table + ")" : "", args.path ? "(" + args.path + ")" : "");
   
   try {
     switch (name) {
@@ -721,11 +715,11 @@ async function processToolCall(supabase: any, tc: any) {
       case "text_to_speech": return await invokeEdgeFunction("elevenlabs-tts", args);
       case "plan_and_execute": return await handlePlanAndExecute(args);
       case "generate_report": return await handleGenerateReport(supabase, args);
-      default: return { success: false, error: `Unknown tool '${name}'. Check available tools in your system prompt.` };
+      default: return { success: false, error: "Unknown tool '" + name + "'. Check available tools in your system prompt." };
     }
   } catch (e: any) {
-    console.error(`[dev-agent] Tool ${name} crashed:`, e);
-    return { success: false, error: `Tool '${name}' crashed: ${e.message}. Try again or use a different approach.` };
+    console.error("[dev-agent] Tool " + name + " crashed:", e);
+    return { success: false, error: "Tool '" + name + "' crashed: " + e.message + ". Try again or use a different approach." };
   }
 }
 
@@ -747,7 +741,7 @@ serve(async (req) => {
       const memResult = await invokeEdgeFunction("memory-agent", { action: "get_briefing" });
       if (memResult.success && memResult.data?.narrative) {
         const narrative = typeof memResult.data.narrative === 'string' ? memResult.data.narrative : JSON.stringify(memResult.data.narrative);
-        memoryContext = `\n\n## CURRENT BUSINESS MEMORY:\n${narrative.substring(0, 4000)}`;
+        memoryContext = "\n\n## CURRENT BUSINESS MEMORY:\n" + narrative.substring(0, 4000);
       }
     } catch {
       memoryContext = "\n\n## MEMORY: ⚠️ Memory system unavailable. Proceed without historical context.";
@@ -761,7 +755,7 @@ serve(async (req) => {
     // First call — use tool_choice "auto" but the system prompt forces tool use
     let response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      headers: { Authorization: "Bearer " + OPENAI_API_KEY, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4o",
         messages: allMessages,
@@ -774,11 +768,11 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error(`[dev-agent] OpenAI error ${response.status}:`, errText.substring(0, 500));
+      console.error("[dev-agent] OpenAI error " + response.status + ":", errText.substring(0, 500));
       if (response.status === 429) {
-        return new Response(JSON.stringify({ content: "⚠️ Rate limited by OpenAI. Wait a moment and try again." }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ content: "Rate limited by OpenAI. Wait a moment and try again." }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      throw new Error(`OpenAI HTTP ${response.status}`);
+      throw new Error("OpenAI HTTP " + response.status);
     }
 
     let data = await response.json();
@@ -804,8 +798,8 @@ serve(async (req) => {
         try {
           const args = JSON.parse(tc.function.arguments);
           // Pick the most relevant fields for each tool
-          if (args.table) argsSummary += `${args.operation || "?"} ${args.table}`;
-          else if (args.to) argsSummary += `to: ${args.to}`;
+          if (args.table) argsSummary += (args.operation || "?") + " " + args.table;
+          else if (args.to) argsSummary += "to: " + args.to;
           else if (args.sql) argsSummary += args.sql.substring(0, 80);
           else if (args.function_name) argsSummary += args.function_name;
           else if (args.path) argsSummary += args.path;
@@ -836,7 +830,7 @@ serve(async (req) => {
 
       const cont = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
-        headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+        headers: { Authorization: "Bearer " + OPENAI_API_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "gpt-4o",
           messages: convo,
@@ -848,14 +842,14 @@ serve(async (req) => {
       });
       
       if (!cont.ok) {
-        console.error(`[dev-agent] OpenAI continue error: ${cont.status}`);
+        console.error("[dev-agent] OpenAI continue error:", cont.status);
         break;
       }
       data = await cont.json();
       msg = data.choices?.[0]?.message;
     }
 
-    const finalContent = msg?.content || (rounds > 0 ? `✅ Done. Executed ${rounds} tool round${rounds > 1 ? 's' : ''}.` : "Ready.");
+    const finalContent = msg?.content || (rounds > 0 ? "Done. Executed " + rounds + " tool round" + (rounds > 1 ? "s" : "") + "." : "Ready.");
     
     return new Response(JSON.stringify({ 
       content: finalContent, 
@@ -866,7 +860,7 @@ serve(async (req) => {
     });
   } catch (e: any) {
     console.error("[dev-agent] Fatal:", e);
-    return new Response(JSON.stringify({ content: `⚠️ Agent error: ${e.message}. Try again.` }), {
+    return new Response(JSON.stringify({ content: "Agent error: " + e.message + ". Try again." }), {
       status: 200, // Return 200 so frontend doesn't show generic error
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
