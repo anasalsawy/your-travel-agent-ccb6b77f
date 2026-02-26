@@ -854,6 +854,7 @@ async function processToolCall(supabase: any, tc: any) {
       case "ask_claude": return await handleAskClaude(args);
       case "multi_model_consult": return await handleMultiModelConsult(args);
       case "web_search": return await handleWebSearch(args);
+      case "info_search_web": return await handleWebSearch({ query: args.query, detailed: true });
       case "browse_website": return await invokeEdgeFunction("browserbase-browse", args);
       case "database_query": return await handleDatabaseQuery(supabase, args.sql);
       case "database_crud": return await handleDatabaseCrud(supabase, args);
@@ -870,7 +871,90 @@ async function processToolCall(supabase: any, tc: any) {
       case "text_to_speech": return await invokeEdgeFunction("elevenlabs-tts", args);
       case "plan_and_execute": return await handlePlanAndExecute(args);
       case "generate_report": return await handleGenerateReport(supabase, args);
-      default: return { success: false, error: "Unknown tool '" + name + "'. Check available tools in your system prompt." };
+      
+      // ═══ MANUS FILE TOOLS → GitHub ═══
+      case "file_read": {
+        const ghResult = await handleGitHub({ action: "read_file", path: args.file });
+        if (!ghResult.success) return ghResult;
+        let content = ghResult.content || "";
+        if (args.start_line !== undefined || args.end_line !== undefined) {
+          const lines = content.split("\n");
+          const start = args.start_line || 0;
+          const end = args.end_line || lines.length;
+          content = lines.slice(start, end).join("\n");
+        }
+        return { success: true, content, path: args.file, total_lines: (ghResult.content || "").split("\n").length };
+      }
+      case "file_write": {
+        if (args.append) {
+          // Read first, then append
+          const existing = await handleGitHub({ action: "read_file", path: args.file });
+          const existingContent = existing.success ? (existing.content || "") : "";
+          return await handleGitHub({ action: "write_file", path: args.file, content: existingContent + "\n" + args.content, message: args.message || "Append to " + args.file });
+        }
+        return await handleGitHub({ action: "write_file", path: args.file, content: args.content, message: args.message || "Update " + args.file });
+      }
+      case "file_str_replace": {
+        const fileData = await handleGitHub({ action: "read_file", path: args.file });
+        if (!fileData.success) return { success: false, error: "Cannot read file: " + (fileData.error || "unknown") };
+        const original = fileData.content || "";
+        if (!original.includes(args.old_str)) return { success: false, error: "old_str not found in file. Make sure it matches exactly (including whitespace)." };
+        const updated = original.replace(args.old_str, args.new_str);
+        return await handleGitHub({ action: "write_file", path: args.file, content: updated, message: args.message || "str_replace in " + args.file });
+      }
+      case "file_find_in_content": {
+        const fileData = await handleGitHub({ action: "read_file", path: args.file });
+        if (!fileData.success) return fileData;
+        const lines = (fileData.content || "").split("\n");
+        const re = new RegExp(args.regex, "gi");
+        const matches = lines.map((line: string, i: number) => re.test(line) ? { line: i + 1, content: line.trim() } : null).filter(Boolean);
+        return { success: true, matches, total_matches: matches.length };
+      }
+      case "file_find_by_name": {
+        const listing = await handleGitHub({ action: "list_files", path: args.path || "" });
+        if (!listing.success) return listing;
+        const files = listing.files || [];
+        const globToRegex = (g: string) => new RegExp("^" + g.replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i");
+        const re = globToRegex(args.glob);
+        const matched = files.filter((f: any) => re.test(f.name));
+        return { success: true, files: matched, count: matched.length };
+      }
+      
+      // ═══ MANUS BROWSER TOOLS → Browserbase ═══
+      case "browser_view": return await invokeEdgeFunction("browserbase-browse", { url: args.url || "about:blank", action: "screenshot" });
+      case "browser_navigate": return await invokeEdgeFunction("browserbase-browse", { url: args.url, action: "navigate" });
+      case "browser_click": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "click", selector: args.selector, value: `${args.coordinate_x || ""},${args.coordinate_y || ""}` });
+      case "browser_input": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "fill_form", selector: args.selector, value: args.text });
+      case "browser_scroll_down": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body" });
+      case "browser_scroll_up": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body" });
+      case "browser_press_key": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "click", selector: `[key="${args.key}"]` });
+      case "browser_console_exec": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body", value: args.javascript });
+      case "browser_console_view": return { success: true, note: "Console viewing requires active browser session. Use browser_navigate first, then browser_view." };
+      
+      // ═══ MANUS SHELL → Edge Function Invocation ═══
+      case "shell_exec": {
+        // Map shell-like commands to edge function calls
+        const cmd = args.command.toLowerCase();
+        if (cmd.includes("compile") || cmd.includes("memory")) return await invokeEdgeFunction("compile-agent-memory", args.args || {});
+        if (cmd.includes("notification") || cmd.includes("notify")) return await invokeEdgeFunction("send-notification", args.args || {});
+        if (cmd.includes("quote")) return await invokeEdgeFunction("smart-quote-v2", args.args || {});
+        if (cmd.includes("booking")) return await invokeEdgeFunction("alaska-booking-agent", args.args || {});
+        if (cmd.includes("coach") || cmd.includes("maya")) return await invokeEdgeFunction("maya-coach", args.args || {});
+        if (cmd.includes("promo") || cmd.includes("email")) return await invokeEdgeFunction("send-promo-email", args.args || {});
+        // Generic: try to invoke by name
+        return await invokeEdgeFunction(args.command, args.args || {});
+      }
+      
+      // ═══ MANUS DEPLOY → GitHub push (auto-deploys) ═══
+      case "deploy_trigger": {
+        return { success: true, message: "Deployment is automatic — any file pushed to main via github_action/file_write triggers auto-deploy. Description: " + args.description, branch: args.branch || "main" };
+      }
+      
+      // ═══ MANUS MESSAGE TOOLS → Telegram ═══
+      case "message_notify_user": return await handleTelegram({ text: "📋 " + args.text });
+      case "message_ask_user": return await handleTelegram({ text: "❓ " + args.text + "\n\n(Reply to this message)" });
+      
+      default: return { success: false, error: "Unknown tool '" + name + "'. Available: " + tools.map((t: any) => t.function.name).join(", ") };
     }
   } catch (e: any) {
     console.error("[dev-agent] Tool " + name + " crashed:", e);
