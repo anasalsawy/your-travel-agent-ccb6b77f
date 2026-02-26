@@ -261,8 +261,8 @@ const tools = [
     type: "function",
     function: {
       name: "create_checkout",
-      description: "Create Stripe checkout/payment link.",
-      parameters: { type: "object", properties: { type: { type: "string" }, amount: { type: "number" }, description: { type: "string" }, customerEmail: { type: "string" }, voucherId: { type: "string" }, ticketRequestId: { type: "string" } }, required: ["type", "amount", "description", "customerEmail"] },
+      description: "Create Stripe checkout/payment link. IMPORTANT: amount is in DOLLARS (e.g. 255 for $255), NOT cents. The checkout function converts to cents automatically.",
+      parameters: { type: "object", properties: { type: { type: "string" }, amount: { type: "number", description: "Amount in USD dollars (NOT cents). Example: 255 for $255." }, description: { type: "string" }, customerEmail: { type: "string" }, voucherId: { type: "string" }, ticketRequestId: { type: "string" } }, required: ["type", "amount", "description", "customerEmail"] },
     },
   },
   {
