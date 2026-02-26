@@ -160,7 +160,7 @@ const tools = [
     type: "function",
     function: {
       name: "browse_website",
-      description: "Browser automation: navigate, screenshot, extract, click, fill forms.",
+      description: "Browser automation via Skyvern AI: navigate, screenshot, extract, click, fill forms on any website.",
       parameters: { type: "object", properties: { url: { type: "string" }, action: { type: "string", enum: ["navigate", "screenshot", "extract_text", "click", "fill_form"] }, selector: { type: "string" }, value: { type: "string" } }, required: ["url"] },
     },
   },
@@ -344,7 +344,7 @@ const tools = [
     type: "function",
     function: {
       name: "browser_view",
-      description: "View/screenshot the current state of a browser page via Browserbase.",
+      description: "View/screenshot the current state of a browser page via Skyvern AI.",
       parameters: { type: "object", properties: { url: { type: "string", description: "URL to view (optional if already navigated)" } } },
     },
   },
@@ -833,8 +833,97 @@ async function handleGenerateReport(supabase: any, args: any) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SKYVERN BROWSER AUTOMATION — Replaces Browserbase
+// ═══════════════════════════════════════════════════════════════
+
+async function handleSkyvern(toolName: string, args: any) {
+  const apiKey = Deno.env.get("SKYVERN_API_KEY");
+  if (!apiKey) return { success: false, error: "SKYVERN_API_KEY not set" };
+
+  const SKYVERN_API = "https://api.skyvern.com/v1";
+  const hdrs = { "x-api-key": apiKey, "Content-Type": "application/json" };
+
+  try {
+    let url = args.url || "";
+    let goal = "";
+
+    switch (toolName) {
+      case "browse_website": {
+        url = args.url || "";
+        const actionMap: Record<string, string> = {
+          navigate: "Navigate to this page and describe what you see.",
+          screenshot: "Take a screenshot and describe the current page state.",
+          extract_text: args.selector ? "Extract text from element: " + args.selector : "Extract all visible text from the page.",
+          click: "Click on the element: " + (args.selector || "the main button"),
+          fill_form: "Fill the form field '" + (args.selector || "input") + "' with: " + (args.value || ""),
+        };
+        goal = actionMap[args.action || "navigate"] || "Navigate and describe the page.";
+        break;
+      }
+      case "browser_navigate":
+        url = args.url || ""; goal = "Navigate to this page and describe visible content — forms, buttons, links, key content."; break;
+      case "browser_view":
+        url = args.url || ""; goal = "Describe the current page state — layout, text, forms, buttons, images, interactive elements."; break;
+      case "browser_click":
+        goal = args.selector ? "Click on the element matching: " + args.selector : "Click at coordinates (" + (args.coordinate_x || 0) + ", " + (args.coordinate_y || 0) + ")."; break;
+      case "browser_input":
+        goal = "Find the input" + (args.selector ? " matching: " + args.selector : "") + " and type: " + args.text + (args.press_enter ? ". Then press Enter." : "."); break;
+      case "browser_scroll_down":
+        goal = args.to_bottom ? "Scroll to the bottom and describe what you see." : "Scroll down one viewport and describe new content."; break;
+      case "browser_scroll_up":
+        goal = args.to_top ? "Scroll to the top and describe what you see." : "Scroll up one viewport and describe new content."; break;
+      case "browser_press_key":
+        goal = "Press the '" + args.key + "' key and describe what happens."; break;
+      case "browser_console_exec":
+        goal = "Execute this JavaScript in the console: " + args.javascript + ". Report the output."; break;
+      case "browser_console_view":
+        goal = "Check the browser console for logs, errors, or warnings and report them."; break;
+      default:
+        goal = "Navigate to the page and describe what you see.";
+    }
+
+    const taskBody: any = { prompt: goal, engine: "skyvern-2.0", max_steps: 10 };
+    if (url) taskBody.url = url;
+
+    const createResp = await fetch(SKYVERN_API + "/run/tasks", {
+      method: "POST", headers: hdrs, body: JSON.stringify(taskBody),
+    });
+    if (!createResp.ok) {
+      const errText = await createResp.text();
+      return { success: false, error: "Skyvern API " + createResp.status + ": " + errText.substring(0, 500) };
+    }
+
+    const taskData = await createResp.json();
+    const taskId = taskData.task_id || taskData.id;
+    if (!taskId) return { success: true, data: taskData, note: "Task created — no task_id returned." };
+
+    // Poll for completion (up to 120s, 5s intervals)
+    let status = "running";
+    let result: any = null;
+    for (let i = 0; i < 24; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const pollResp = await fetch(SKYVERN_API + "/tasks/" + taskId, { headers: hdrs });
+      if (!pollResp.ok) { console.log("[skyvern] Poll error"); continue; }
+      result = await pollResp.json();
+      status = result.status || "unknown";
+      if (["completed", "failed", "terminated", "canceled"].includes(status)) break;
+    }
+
+    if (status === "completed") {
+      return { success: true, task_id: taskId, status, extracted_data: result.extracted_information || result.extracted_data, output: result.output || "Task completed." };
+    } else if (status === "failed" || status === "terminated") {
+      return { success: false, task_id: taskId, status, error: result.failure_reason || "Task failed.", extracted_data: result.extracted_information };
+    }
+    return { success: true, task_id: taskId, status, note: "Task still running. Poll with task_id: " + taskId };
+  } catch (e: any) {
+    return { success: false, error: "Skyvern error: " + e.message };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOOL ROUTER — with safe JSON parsing
 // ═══════════════════════════════════════════════════════════════
+
 
 async function processToolCall(supabase: any, tc: any) {
   const name = tc.function.name;
@@ -855,7 +944,7 @@ async function processToolCall(supabase: any, tc: any) {
       case "multi_model_consult": return await handleMultiModelConsult(args);
       case "web_search": return await handleWebSearch(args);
       case "info_search_web": return await handleWebSearch({ query: args.query, detailed: true });
-      case "browse_website": return await invokeEdgeFunction("browserbase-browse", args);
+      case "browse_website": return await handleSkyvern("browse_website", args);
       case "database_query": return await handleDatabaseQuery(supabase, args.sql);
       case "database_crud": return await handleDatabaseCrud(supabase, args);
       case "database_schema": return await handleDatabaseSchema(supabase, args.table);
@@ -920,16 +1009,18 @@ async function processToolCall(supabase: any, tc: any) {
         return { success: true, files: matched, count: matched.length };
       }
       
-      // ═══ MANUS BROWSER TOOLS → Browserbase ═══
-      case "browser_view": return await invokeEdgeFunction("browserbase-browse", { url: args.url || "about:blank", action: "screenshot" });
-      case "browser_navigate": return await invokeEdgeFunction("browserbase-browse", { url: args.url, action: "navigate" });
-      case "browser_click": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "click", selector: args.selector, value: `${args.coordinate_x || ""},${args.coordinate_y || ""}` });
-      case "browser_input": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "fill_form", selector: args.selector, value: args.text });
-      case "browser_scroll_down": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body" });
-      case "browser_scroll_up": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body" });
-      case "browser_press_key": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "click", selector: `[key="${args.key}"]` });
-      case "browser_console_exec": return await invokeEdgeFunction("browserbase-browse", { url: "", action: "extract_text", selector: "body", value: args.javascript });
-      case "browser_console_view": return { success: true, note: "Console viewing requires active browser session. Use browser_navigate first, then browser_view." };
+      // ═══ MANUS BROWSER TOOLS → Skyvern ═══
+      case "browser_view":
+      case "browser_navigate":
+      case "browser_click":
+      case "browser_input":
+      case "browser_scroll_down":
+      case "browser_scroll_up":
+      case "browser_press_key":
+      case "browser_console_exec":
+      case "browser_console_view":
+      case "browse_website":
+        return await handleSkyvern(name, args);
       
       // ═══ MANUS SHELL → Edge Function Invocation ═══
       case "shell_exec": {
