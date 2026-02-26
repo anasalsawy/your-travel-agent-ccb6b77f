@@ -724,7 +724,54 @@ async function processToolCall(supabase: any, tc: any) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MAIN HANDLER — 20-round loop with hardened error handling
+// MANUS-STYLE PLANNING ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+const PLANNING_INJECTION = `
+## AUTONOMOUS EXECUTION MODE (MANUS-STYLE)
+You operate in an iterative agent loop. For every request:
+
+1. PLAN FIRST: Before using any tool, output a brief numbered plan (3-8 steps).
+   Format each step as: "Step N: [action] using [tool]"
+   
+2. EXECUTE STEP BY STEP: After planning, execute each step using tools.
+   - Call multiple tools in parallel when they're independent.
+   - After each tool result, assess: did it succeed? Do I need to adjust?
+   
+3. SELF-REFLECT after each round:
+   - What steps are done? What's remaining?
+   - Did any step fail? How do I recover?
+   - Am I making progress toward the goal?
+   
+4. COMPLETION CHECK: After all steps are done, verify the result.
+   - If the goal is fully achieved, summarize what was done.
+   - If something is incomplete, continue with remaining steps.
+   
+5. NEVER give up after a single failure. Try alternative approaches.
+   - Tool failed? Try a different tool or parameter.
+   - Data not found? Broaden the search.
+   - Permission denied? Explain what's needed.
+
+You have up to 10 autonomous rounds. Use them wisely — batch parallel operations.
+`;
+
+function detectTaskComplexity(userMessage: string): "simple" | "complex" {
+  const complexIndicators = [
+    /\band\b.*\band\b/i, // multiple "and"s
+    /(?:then|after that|also|next|finally)/i,
+    /(?:create|build|generate|setup|configure|deploy|migrate)/i,
+    /(?:compare|analyze|report|audit|review)/i,
+    /(?:all|every|each|batch|bulk)/i,
+    /\b\d+\b.*\bstep/i,
+  ];
+  const isLong = userMessage.length > 200;
+  const hasMultipleQuestions = (userMessage.match(/\?/g) || []).length > 1;
+  const matchesComplex = complexIndicators.some(r => r.test(userMessage));
+  return (isLong || hasMultipleQuestions || matchesComplex) ? "complex" : "simple";
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN HANDLER — 10-round Manus-style autonomous loop
 // ═══════════════════════════════════════════════════════════════
 
 serve(async (req) => {
@@ -734,6 +781,11 @@ serve(async (req) => {
     const { messages, max_tokens, temperature } = await req.json();
     if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Detect complexity from the last user message
+    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
+    const complexity = lastUserMsg ? detectTaskComplexity(lastUserMsg.content) : "simple";
+    const maxRounds = complexity === "complex" ? 10 : 5;
 
     // Auto-inject memory (graceful degradation)
     let memoryContext = "";
@@ -747,12 +799,15 @@ serve(async (req) => {
       memoryContext = "\n\n## MEMORY: ⚠️ Memory system unavailable. Proceed without historical context.";
     }
 
+    // Inject planning mode for complex tasks
+    const planningContext = complexity === "complex" ? PLANNING_INJECTION : "\n\n## MODE: Quick task. Execute efficiently, verify result.";
+
     const allMessages = [
-      { role: "system", content: SYSTEM_PROMPT + memoryContext },
+      { role: "system", content: SYSTEM_PROMPT + memoryContext + planningContext },
       ...messages,
     ];
 
-    // First call — use tool_choice "auto" but the system prompt forces tool use
+    // First call
     let response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: "Bearer " + OPENAI_API_KEY, "Content-Type": "application/json" },
@@ -760,7 +815,7 @@ serve(async (req) => {
         model: "gpt-4o",
         messages: allMessages,
         max_completion_tokens: max_tokens || 16384,
-        temperature: temperature ?? 0.5, // Lower temp = more reliable tool use
+        temperature: temperature ?? 0.5,
         tools,
         tool_choice: "auto",
       }),
@@ -781,13 +836,38 @@ serve(async (req) => {
     let rounds = 0;
     let consecutiveErrors = 0;
     
-    // ACTION LOG — tracks every tool call with result status
-    const actionLog: Array<{ tool: string, args_summary: string, success: boolean, round: number }> = [];
+    // ACTION LOG — tracks every tool call with result status + step tracking
+    const actionLog: Array<{ tool: string, args_summary: string, success: boolean, round: number, step?: number }> = [];
+    
+    // PLAN TRACKING — extracted from agent's first response
+    let planSteps: Array<{ step: number, description: string, status: "todo" | "in_progress" | "done" | "failed" }> = [];
+    
+    // Extract plan from first response if present
+    function extractPlan(content: string) {
+      const stepPattern = /(?:Step\s*)?(\d+)[.:)\-]\s*(.+)/gm;
+      const steps: typeof planSteps = [];
+      let match;
+      while ((match = stepPattern.exec(content)) !== null) {
+        steps.push({ step: parseInt(match[1]), description: match[2].trim(), status: "todo" });
+      }
+      return steps.length >= 2 ? steps : [];
+    }
+    
+    // If the first response has a plan + tool calls, extract it
+    if (msg?.content) {
+      const extracted = extractPlan(msg.content);
+      if (extracted.length > 0) planSteps = extracted;
+    }
 
-    // 3-round max loop — agent asks permission before acting, not autonomous
-    while (msg?.tool_calls && rounds < 3 && consecutiveErrors < 3) {
+    // Manus-style autonomous loop — up to maxRounds
+    while (msg?.tool_calls && rounds < maxRounds && consecutiveErrors < 4) {
       rounds++;
       convo.push(msg);
+      
+      // Mark current step as in_progress based on round
+      if (planSteps.length > 0 && rounds <= planSteps.length) {
+        planSteps[rounds - 1].status = "in_progress";
+      }
       
       // Execute ALL tool calls in parallel
       const results = await Promise.all(msg.tool_calls.map(async (tc: any) => {
@@ -797,7 +877,6 @@ serve(async (req) => {
         let argsSummary = "";
         try {
           const args = JSON.parse(tc.function.arguments);
-          // Pick the most relevant fields for each tool
           if (args.table) argsSummary += (args.operation || "?") + " " + args.table;
           else if (args.to) argsSummary += "to: " + args.to;
           else if (args.sql) argsSummary += args.sql.substring(0, 80);
@@ -814,19 +893,36 @@ serve(async (req) => {
           args_summary: argsSummary,
           success: !!result.success,
           round: rounds,
+          step: planSteps.length > 0 ? Math.min(rounds, planSteps.length) : undefined,
         });
         
         // Track errors for circuit breaker
         if (!result.success) consecutiveErrors++;
         else consecutiveErrors = 0;
         
-        // Truncate huge results to prevent context overflow
+        // Truncate huge results
         const resultStr = JSON.stringify(result);
         const truncated = resultStr.length > 15000 ? resultStr.substring(0, 15000) + '...(truncated)' : resultStr;
         
         return { tool_call_id: tc.id, role: "tool", content: truncated };
       }));
       convo.push(...results);
+      
+      // Mark completed steps
+      if (planSteps.length > 0 && rounds <= planSteps.length) {
+        const allSucceeded = results.every((r: any) => {
+          try { const d = JSON.parse(r.content); return d.success !== false; } catch { return true; }
+        });
+        planSteps[rounds - 1].status = allSucceeded ? "done" : "failed";
+      }
+
+      // Inject self-reflection prompt for complex tasks every 3 rounds
+      if (complexity === "complex" && rounds % 3 === 0 && rounds < maxRounds) {
+        const progressSummary = planSteps.length > 0
+          ? `\n\n[SELF-REFLECTION — Round ${rounds}/${maxRounds}]\nPlan progress: ${planSteps.map(s => `Step ${s.step}: ${s.status}`).join(", ")}\nActions so far: ${actionLog.length} tool calls (${actionLog.filter(a => a.success).length} succeeded)\nContinue with remaining steps or adjust approach if needed.`
+          : `\n\n[SELF-REFLECTION — Round ${rounds}/${maxRounds}]\nCompleted ${actionLog.length} actions. Assess: is the goal achieved? If not, continue.`;
+        convo.push({ role: "user", content: progressSummary });
+      }
 
       const cont = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -847,21 +943,33 @@ serve(async (req) => {
       }
       data = await cont.json();
       msg = data.choices?.[0]?.message;
+      
+      // Extract plan from later responses if we don't have one yet
+      if (planSteps.length === 0 && msg?.content) {
+        const extracted = extractPlan(msg.content);
+        if (extracted.length > 0) planSteps = extracted;
+      }
     }
 
     const finalContent = msg?.content || (rounds > 0 ? "Done. Executed " + rounds + " tool round" + (rounds > 1 ? "s" : "") + "." : "Ready.");
     
+    // Mark remaining steps
+    planSteps.forEach(s => { if (s.status === "todo" || s.status === "in_progress") s.status = rounds >= maxRounds ? "failed" : s.status; });
+    
     return new Response(JSON.stringify({ 
       content: finalContent, 
       tool_rounds: rounds,
+      max_rounds: maxRounds,
+      complexity,
       action_log: actionLog,
+      plan_steps: planSteps.length > 0 ? planSteps : undefined,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
     console.error("[dev-agent] Fatal:", e);
     return new Response(JSON.stringify({ content: "Agent error: " + e.message + ". Try again." }), {
-      status: 200, // Return 200 so frontend doesn't show generic error
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
