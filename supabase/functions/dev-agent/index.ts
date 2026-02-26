@@ -304,18 +304,18 @@ const tools = [
 // ═══════════════════════════════════════════════════════════════
 
 async function invokeEdgeFunction(name: string, body?: any, method = "POST") {
-  console.log(`[dev-agent] Invoke: ${name}`);
+  console.log("[dev-agent] Invoke:", name);
   try {
-    const resp = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+    const resp = await fetch(SUPABASE_URL + "/functions/v1/" + name, {
       method,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + SUPABASE_SERVICE_ROLE_KEY, apikey: SUPABASE_SERVICE_ROLE_KEY },
       body: body ? JSON.stringify(body) : undefined,
     });
     const text = await resp.text();
     let data; try { data = JSON.parse(text); } catch { data = text; }
-    if (!resp.ok) return { success: false, error: `HTTP ${resp.status}: ${typeof data === 'string' ? data.substring(0, 500) : JSON.stringify(data).substring(0, 500)}` };
+    if (!resp.ok) return { success: false, error: "HTTP " + resp.status + ": " + (typeof data === "string" ? data.substring(0, 500) : JSON.stringify(data).substring(0, 500)) };
     return { success: true, data };
-  } catch (e: any) { return { success: false, error: `Network error: ${e.message}` }; }
+  } catch (e: any) { return { success: false, error: "Network error: " + e.message }; }
 }
 
 async function handleDatabaseQuery(supabase: any, sql: string) {
