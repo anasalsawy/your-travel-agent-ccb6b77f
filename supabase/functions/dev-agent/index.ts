@@ -160,7 +160,7 @@ const tools = [
     type: "function",
     function: {
       name: "browse_website",
-      description: "Browser automation: navigate, screenshot, extract, click, fill forms.",
+      description: "Browser automation via Skyvern AI: navigate, screenshot, extract, click, fill forms on any website.",
       parameters: { type: "object", properties: { url: { type: "string" }, action: { type: "string", enum: ["navigate", "screenshot", "extract_text", "click", "fill_form"] }, selector: { type: "string" }, value: { type: "string" } }, required: ["url"] },
     },
   },
