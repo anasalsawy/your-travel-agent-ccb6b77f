@@ -9,8 +9,10 @@ import {
   Head,
   Heading,
   Html,
+  Img,
   Link,
   Preview,
+  Section,
   Text,
 } from 'npm:@react-email/components@0.0.22'
 
@@ -21,6 +23,8 @@ interface EmailChangeEmailProps {
   confirmationUrl: string
 }
 
+const LOGO_URL = 'https://wpwdxtyufpewdyffxlgo.supabase.co/storage/v1/object/public/email-assets/logo.png'
+
 export const EmailChangeEmail = ({
   siteName,
   email,
@@ -29,30 +33,27 @@ export const EmailChangeEmail = ({
 }: EmailChangeEmailProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Confirm your email change for {siteName}</Preview>
+    <Preview>Confirm your new email for {siteName}</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Confirm your email change</Heading>
+        <Section style={logoSection}>
+          <Img src={LOGO_URL} width="48" height="48" alt={siteName} style={logoImg} />
+        </Section>
+        <Heading style={h1}>Confirm your new email</Heading>
         <Text style={text}>
-          You requested to change your email address for {siteName} from{' '}
-          <Link href={`mailto:${email}`} style={link}>
-            {email}
-          </Link>{' '}
-          to{' '}
-          <Link href={`mailto:${newEmail}`} style={link}>
-            {newEmail}
-          </Link>
-          .
+          You asked to change your {siteName} email from{' '}
+          <Link href={`mailto:${email}`} style={link}>{email}</Link>
+          {' '}to{' '}
+          <Link href={`mailto:${newEmail}`} style={link}>{newEmail}</Link>.
         </Text>
-        <Text style={text}>
-          Click the button below to confirm this change:
-        </Text>
-        <Button style={button} href={confirmationUrl}>
-          Confirm Email Change
-        </Button>
+        <Text style={text}>Tap below to confirm:</Text>
+        <Section style={buttonSection}>
+          <Button style={button} href={confirmationUrl}>
+            Confirm Email Change
+          </Button>
+        </Section>
         <Text style={footer}>
-          If you didn't request this change, please secure your account
-          immediately.
+          Didn't request this? Please secure your account right away.
         </Text>
       </Container>
     </Body>
@@ -61,27 +62,32 @@ export const EmailChangeEmail = ({
 
 export default EmailChangeEmail
 
-const main = { backgroundColor: '#ffffff', fontFamily: 'Arial, sans-serif' }
-const container = { padding: '20px 25px' }
+const main = { backgroundColor: '#ffffff', fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif" }
+const container = { padding: '40px 24px', maxWidth: '480px', margin: '0 auto' }
+const logoSection = { textAlign: 'center' as const, marginBottom: '24px' }
+const logoImg = { display: 'inline-block', borderRadius: '12px' }
 const h1 = {
-  fontSize: '22px',
+  fontFamily: "'Syne', 'Inter', Arial, sans-serif",
+  fontSize: '24px',
   fontWeight: 'bold' as const,
-  color: '#000000',
-  margin: '0 0 20px',
+  color: '#0A0F1C',
+  margin: '0 0 16px',
 }
 const text = {
-  fontSize: '14px',
-  color: '#55575d',
-  lineHeight: '1.5',
-  margin: '0 0 25px',
+  fontSize: '15px',
+  color: '#555B6E',
+  lineHeight: '1.6',
+  margin: '0 0 20px',
 }
-const link = { color: 'inherit', textDecoration: 'underline' }
+const link = { color: '#3B82F6', textDecoration: 'underline' }
+const buttonSection = { textAlign: 'center' as const, margin: '28px 0' }
 const button = {
-  backgroundColor: '#000000',
+  backgroundColor: '#3B82F6',
   color: '#ffffff',
-  fontSize: '14px',
-  borderRadius: '8px',
-  padding: '12px 20px',
+  fontSize: '15px',
+  fontWeight: '600' as const,
+  borderRadius: '12px',
+  padding: '14px 28px',
   textDecoration: 'none',
 }
-const footer = { fontSize: '12px', color: '#999999', margin: '30px 0 0' }
+const footer = { fontSize: '12px', color: '#9CA3AF', margin: '32px 0 0' }
