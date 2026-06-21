@@ -24,12 +24,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Vapi rejects sessionId when combined with assistantId. For memory, we
+    // pass previousChatId on follow-up turns (client persists it).
     const body: Record<string, unknown> = {
       assistantId: VAPI_ASSISTANT_ID,
       input,
     };
     if (previousChatId) body.previousChatId = previousChatId;
-    else if (sessionId) body.sessionId = sessionId;
+
 
     const vapiRes = await fetch('https://api.vapi.ai/chat', {
       method: 'POST',
