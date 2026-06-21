@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, Plane, Car, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User, ArrowRight, Ticket, CheckCircle } from "lucide-react";
+import { Send, Loader2, Plane, Car, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User, ArrowRight, CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,16 +30,6 @@ const getOrCreateSessionId = (): string => {
   return newId;
 };
 
-// Voucher type from database
-type Voucher = {
-  id: string;
-  airline: string;
-  title: string;
-  face_value: number;
-  sale_price: number;
-  discount_percent: number;
-};
-
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -56,22 +46,7 @@ const Index = () => {
   const [hasStarted, setHasStarted] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [vouchers, setVouchers] = useState<Voucher[]>([]);
 
-  // Fetch real vouchers from database
-  useEffect(() => {
-    const fetchVouchers = async () => {
-      const { data } = await supabase
-        .from("vouchers")
-        .select("id, airline, title, face_value, sale_price, discount_percent")
-        .eq("status", "available")
-        .order("face_value", { ascending: false })
-        .limit(4);
-      
-      if (data) setVouchers(data);
-    };
-    fetchVouchers();
-  }, []);
 
   const voice = useVoiceChat({
     onError: (error) => console.error("Voice error:", error),
