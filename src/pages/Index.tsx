@@ -345,7 +345,10 @@ const Index = () => {
               </div>
               <div className="flex items-center gap-3">
                 <Button variant="ghost" size="sm" asChild>
-                  <Link to="/vouchers">Vouchers</Link>
+                  <Link to="/request-ticket">Flights</Link>
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/car-rental">Car Rental</Link>
                 </Button>
                 {user ? (
                   <>
