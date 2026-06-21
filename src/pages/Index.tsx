@@ -545,48 +545,7 @@ const Index = () => {
             </div>
           </section>
 
-          {/* Chat with Maya Section - Bottom */}
-          <section className="py-16 bg-gradient-to-b from-muted/30 to-background">
-            <div className="container mx-auto px-4">
-              <div className="max-w-2xl mx-auto text-center">
-                {/* Maya Avatar */}
-                <div className="relative inline-flex mb-4">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center text-primary-foreground text-2xl font-bold shadow-xl shadow-primary/30">
-                    M
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-3 border-background flex items-center justify-center">
-                    <Zap className="w-3 h-3 text-white" />
-                  </div>
-                </div>
-
-                <h2 className="text-2xl md:text-3xl font-display font-bold mb-3">
-                  Chat with Maya
-                </h2>
-                <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
-                  Have questions? Our AI travel agent can help you find deals, get quotes, and answer any questions.
-                </p>
-
-                <Button 
-                  size="lg" 
-                  onClick={() => startConversation()}
-                  disabled={isInitializing}
-                  className="rounded-full px-8"
-                >
-                  {isInitializing ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Loading…
-                    </>
-                  ) : (
-                    <>
-                      <MessageSquare className="w-5 h-5 mr-2" />
-                      Start Chatting
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </section>
+          {/* Chat with Maya section hidden for now */}
         </main>
 
         {/* Footer */}
