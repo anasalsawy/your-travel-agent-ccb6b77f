@@ -230,7 +230,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+          <div className="grid sm:grid-cols-3 gap-4 mb-10">
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/request-ticket")}>
               <Plane className="w-8 h-8 text-accent mb-3" />
               <h3 className="font-semibold mb-1">Request Ticket</h3>
@@ -240,11 +240,6 @@ export default function DashboardPage() {
               <Car className="w-8 h-8 text-primary mb-3" />
               <h3 className="font-semibold mb-1">Rent a Car</h3>
               <p className="text-sm text-muted-foreground">Get a car rental quote</p>
-            </div>
-            <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/")}>
-              <MessageSquare className="w-8 h-8 text-success mb-3" />
-              <h3 className="font-semibold mb-1">Chat with Maya</h3>
-              <p className="text-sm text-muted-foreground">AI-powered travel deals</p>
             </div>
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/faq")}>
               <User className="w-8 h-8 text-warning mb-3" />
