@@ -87,7 +87,7 @@ export function ChatWidget() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // CRITICAL: Load conversation history when chat opens
   useEffect(() => {

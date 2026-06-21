@@ -51,7 +51,7 @@ const Index = () => {
   const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [voiceEnabled] = useState(true);
   const [hasStarted, setHasStarted] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
