@@ -594,7 +594,7 @@ const Index = () => {
           <div className="container mx-auto px-4 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
             <Link to="/faq" className="hover:text-foreground transition-colors">FAQ</Link>
             <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
-            <Link to="/vouchers" className="hover:text-foreground transition-colors">Vouchers</Link>
+            <Link to="/car-rental" className="hover:text-foreground transition-colors">Car Rental</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
             <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
             <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
