@@ -1,20 +1,20 @@
-import { Search, CreditCard, Mail } from "lucide-react";
+import { Send, Search, Plane } from "lucide-react";
 
 const steps = [
   {
+    icon: Send,
+    title: "Submit Your Request",
+    description: "Tell us where you want to go, your dates, and your budget.",
+  },
+  {
     icon: Search,
-    title: "Browse & Select",
-    description: "Find verified vouchers from top airlines at discounted prices.",
+    title: "Get the Best Quote",
+    description: "Our travel experts hunt down the best deals and send you a quote within 24 hours.",
   },
   {
-    icon: CreditCard,
-    title: "Secure Checkout",
-    description: "Pay safely with card or Bitcoin. All transactions protected.",
-  },
-  {
-    icon: Mail,
-    title: "Instant Delivery",
-    description: "Receive voucher codes and redemption instructions via email.",
+    icon: Plane,
+    title: "Book & Save",
+    description: "Accept the quote, pay securely, and we take care of the rest.",
   },
 ];
 
@@ -27,7 +27,7 @@ export function HowItWorks() {
             How It Works
           </h2>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Get your discounted travel vouchers in three simple steps
+            Get your discounted flights and rentals in three simple steps
           </p>
         </div>
 
@@ -42,18 +42,18 @@ export function HowItWorks() {
               {index < steps.length - 1 && (
                 <div className="hidden md:block absolute top-16 left-[60%] w-[80%] h-px bg-gradient-to-r from-primary/50 to-transparent" />
               )}
-              
+
               <div className="glass-card p-8 text-center hover-lift">
                 {/* Step number */}
                 <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center text-sm font-bold text-primary-foreground">
                   {index + 1}
                 </div>
-                
+
                 {/* Icon */}
                 <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                   <step.icon className="w-8 h-8 text-primary" />
                 </div>
-                
+
                 <h3 className="font-display text-xl font-semibold mb-3">
                   {step.title}
                 </h3>

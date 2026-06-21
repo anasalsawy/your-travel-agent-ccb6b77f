@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Ticket, Plane, Car } from "lucide-react";
+import { ArrowRight, Plane, Car } from "lucide-react";
 
 export function HeroSection() {
   return (
@@ -9,13 +9,13 @@ export function HeroSection() {
       <div className="absolute inset-0 bg-hero-pattern" />
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse-glow" />
       <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: '1s' }} />
-      
+
       <div className="container mx-auto px-4 relative z-10">
         <div className="max-w-4xl mx-auto text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-8 animate-fade-in">
             <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-            <span className="text-sm font-medium text-primary">Verified & Trusted Since 2020</span>
+            <span className="text-sm font-medium text-primary">Trusted Travel Concierge Since 2020</span>
           </div>
 
           {/* Main heading */}
@@ -26,23 +26,17 @@ export function HeroSection() {
 
           {/* Subheading */}
           <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            Flights, car rentals, and travel credits — all at unbeatable prices. 
+            Custom flight quotes and rental cars at unbeatable prices.
             Tell us what you need and we handle the rest.
           </p>
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-slide-up flex-wrap" style={{ animationDelay: '0.4s' }}>
             <Button variant="hero" size="xl" asChild>
-              <Link to="/vouchers">
-                <Ticket className="w-5 h-5" />
-                Browse Vouchers
-                <ArrowRight className="w-5 h-5" />
-              </Link>
-            </Button>
-            <Button variant="heroOutline" size="xl" asChild>
               <Link to="/request-ticket">
                 <Plane className="w-5 h-5" />
                 Request a Flight
+                <ArrowRight className="w-5 h-5" />
               </Link>
             </Button>
             <Button variant="heroOutline" size="xl" asChild>
@@ -56,8 +50,8 @@ export function HeroSection() {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-8 mt-16 max-w-lg mx-auto animate-slide-up" style={{ animationDelay: '0.6s' }}>
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-display font-bold text-gradient">500+</div>
-              <div className="text-sm text-muted-foreground">Vouchers Sold</div>
+              <div className="text-3xl md:text-4xl font-display font-bold text-gradient">10K+</div>
+              <div className="text-sm text-muted-foreground">Happy Travelers</div>
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-display font-bold text-gradient">Big</div>
@@ -65,7 +59,7 @@ export function HeroSection() {
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-display font-bold text-gradient">24h</div>
-              <div className="text-sm text-muted-foreground">Fast Delivery</div>
+              <div className="text-sm text-muted-foreground">Quote Turnaround</div>
             </div>
           </div>
         </div>

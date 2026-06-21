@@ -7,7 +7,7 @@ export function EscrowPromoSection() {
     {
       icon: Shield,
       title: "100% Buyer Protection",
-      description: "Your funds are held securely until you verify your voucher works",
+      description: "Your funds are held securely until your booking is confirmed and you're satisfied",
     },
     {
       icon: Lock,
@@ -17,7 +17,7 @@ export function EscrowPromoSection() {
     {
       icon: BadgeCheck,
       title: "Inspection Period",
-      description: "Test your voucher before payment is released to the seller",
+      description: "Verify your booking details before payment is released",
     },
   ];
 
@@ -31,14 +31,14 @@ export function EscrowPromoSection() {
     {
       step: 2,
       icon: Clock,
-      title: "We Deliver Your Voucher",
-      description: "You receive your travel voucher with all details and instructions",
+      title: "We Deliver Your Booking",
+      description: "You receive your flight or rental confirmation with all details",
     },
     {
       step: 3,
       icon: CheckCircle,
       title: "You Verify It Works",
-      description: "Test the voucher, check the balance, make sure everything is correct",
+      description: "Check your booking, make sure everything is correct",
     },
     {
       step: 4,
@@ -144,8 +144,8 @@ export function EscrowPromoSection() {
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button asChild size="xl" className="bg-[#00A651] hover:bg-[#00A651]/90 text-white gap-2 shadow-lg shadow-[#00A651]/30">
-              <Link to="/vouchers">
-                Browse Vouchers with Escrow Protection
+              <Link to="/request-ticket">
+                Book with Escrow Protection
                 <ArrowRight className="w-5 h-5" />
               </Link>
             </Button>
