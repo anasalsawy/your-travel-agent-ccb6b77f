@@ -48,7 +48,7 @@ export default function Contact() {
           <div className="text-center mb-16">
             <h1 className="font-display text-4xl md:text-5xl font-bold mb-6">Contact Us</h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Have questions about a voucher, need help with an order, or want to learn more about our services? We're here to help.
+              Have questions about a booking, need help with an order, or want to learn more about our services? We're here to help.
             </p>
           </div>
 
@@ -163,7 +163,7 @@ export default function Contact() {
                     </div>
                     <div>
                       <h4 className="font-medium text-sm">Order Support</h4>
-                      <p className="text-xs text-muted-foreground">Questions about your voucher purchase or ticket request</p>
+                      <p className="text-xs text-muted-foreground">Questions about your flight or rental booking</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -171,8 +171,8 @@ export default function Contact() {
                       <Shield className="w-4 h-4 text-success" />
                     </div>
                     <div>
-                      <h4 className="font-medium text-sm">Verification Help</h4>
-                      <p className="text-xs text-muted-foreground">Need help verifying a voucher or seller</p>
+                      <h4 className="font-medium text-sm">Quote Help</h4>
+                      <p className="text-xs text-muted-foreground">Need help refining a quote or understanding your options</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">

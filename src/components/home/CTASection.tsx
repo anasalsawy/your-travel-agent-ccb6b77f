@@ -8,7 +8,7 @@ export function CTASection() {
       {/* Background effect */}
       <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl" />
-      
+
       <div className="container mx-auto px-4 relative z-10">
         <div className="glass-card p-10 md:p-16 text-center max-w-4xl mx-auto">
           <h2 className="font-display text-3xl md:text-4xl lg:text-5xl font-bold mb-6">
@@ -19,15 +19,10 @@ export function CTASection() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
             <Button variant="hero" size="xl" asChild>
-              <Link to="/vouchers">
-                Browse All Vouchers
-                <ArrowRight className="w-5 h-5" />
-              </Link>
-            </Button>
-            <Button variant="glass" size="xl" asChild>
               <Link to="/request-ticket">
                 <Plane className="w-5 h-5" />
                 Request a Flight
+                <ArrowRight className="w-5 h-5" />
               </Link>
             </Button>
             <Button variant="glass" size="xl" asChild>

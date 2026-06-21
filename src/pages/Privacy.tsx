@@ -12,7 +12,7 @@ export default function Privacy() {
             <section>
               <h2 className="font-display text-2xl font-semibold mb-4">1. Introduction</h2>
               <p className="text-muted-foreground leading-relaxed">
-                Your Travel Agent ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and use our services to purchase travel vouchers or request flight tickets.
+                Your Travel Agent ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and use our services to request flight quotes, rental cars, and other travel bookings.
               </p>
             </section>
 
@@ -48,7 +48,7 @@ export default function Privacy() {
                 We use the information we collect to:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-                <li>Process and fulfill your voucher purchases and ticket requests</li>
+                <li>Process and fulfill your flight quotes, car rental requests, and bookings</li>
                 <li>Communicate with you about your orders and provide customer support</li>
                 <li>Send you promotional offers and updates (with your consent)</li>
                 <li>Improve our website and services</li>

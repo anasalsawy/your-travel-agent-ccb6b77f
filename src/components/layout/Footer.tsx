@@ -15,7 +15,7 @@ export function Footer() {
               <span className="font-display font-bold text-lg">Your Travel Agent</span>
             </Link>
             <p className="text-muted-foreground text-sm mb-4">
-              Your trusted source for verified travel vouchers and discounted flight tickets.
+              Your trusted travel concierge for discounted flights and rental cars worldwide.
             </p>
             <FacebookLink />
           </div>
@@ -24,11 +24,6 @@ export function Footer() {
           <div>
             <h4 className="font-display font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2">
-              <li>
-                <Link to="/vouchers" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Browse Vouchers
-                </Link>
-              </li>
               <li>
                 <Link to="/request-ticket" className="text-sm text-muted-foreground hover:text-primary transition-colors">
                   Request a Flight
@@ -107,7 +102,7 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} Your Travel Agent. All rights reserved.
           </p>
-          <p className="text-xs text-muted-foreground">Travel vouchers are subject to airline terms and conditions.</p>
+          <p className="text-xs text-muted-foreground">All bookings are subject to airline and supplier terms and conditions.</p>
         </div>
       </div>
     </footer>

@@ -13,7 +13,7 @@ export default function RefundPolicy() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
               <p className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Important:</strong> Due to the nature of travel vouchers and flight tickets, refund eligibility varies by product type. Please read this policy carefully before making a purchase.
+                <strong className="text-foreground">Important:</strong> Refund eligibility for flights and rentals depends on the airline or supplier's fare rules. Please read this policy carefully before booking.
               </p>
             </div>
           </div>
@@ -22,45 +22,13 @@ export default function RefundPolicy() {
             <section>
               <h2 className="font-display text-2xl font-semibold mb-4">1. General Refund Policy</h2>
               <p className="text-muted-foreground leading-relaxed">
-                At Your Travel Agent, we strive to ensure customer satisfaction with every transaction. However, due to the unique nature of travel vouchers and airline tickets, our refund policy differs based on the type of purchase. We are committed to treating each refund request fairly and transparently.
+                At Your Travel Agent, we strive to ensure customer satisfaction with every transaction. Refund eligibility differs based on the type of booking and the rules of the underlying airline or rental supplier. We treat every refund request fairly and transparently.
               </p>
             </section>
 
             <section>
-              <h2 className="font-display text-2xl font-semibold mb-4">2. Travel Voucher Purchases</h2>
-              
-              <h3 className="font-display text-xl font-medium mb-3">Eligibility for Refund</h3>
-              <p className="text-muted-foreground leading-relaxed mb-4">
-                You may be eligible for a refund on voucher purchases in the following circumstances:
-              </p>
-              <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-                <li><strong>Invalid Voucher:</strong> If the voucher balance is less than stated at time of purchase</li>
-                <li><strong>Non-Delivery:</strong> If the voucher is not delivered within the stated timeframe</li>
-                <li><strong>Expired Voucher:</strong> If the voucher was expired at the time of sale (not after purchase)</li>
-                <li><strong>Fraudulent Listing:</strong> If the voucher was obtained fraudulently or is unusable</li>
-              </ul>
+              <h2 className="font-display text-2xl font-semibold mb-4">2. Flight Ticket Requests</h2>
 
-              <h3 className="font-display text-xl font-medium mb-3 mt-6">Non-Refundable Situations</h3>
-              <p className="text-muted-foreground leading-relaxed mb-4">
-                Refunds are generally NOT available when:
-              </p>
-              <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-                <li>You change your mind after purchase</li>
-                <li>The voucher expires after your purchase date</li>
-                <li>The airline changes their terms or policies</li>
-                <li>You are unable to use the voucher for personal reasons</li>
-                <li>The voucher has already been partially or fully redeemed</li>
-              </ul>
-
-              <h3 className="font-display text-xl font-medium mb-3 mt-6">Refund Amount</h3>
-              <p className="text-muted-foreground leading-relaxed">
-                Approved refunds will be processed for the full purchase amount minus any applicable processing fees (typically 3-5% for credit card transactions). Refunds are issued to the original payment method.
-              </p>
-            </section>
-
-            <section>
-              <h2 className="font-display text-2xl font-semibold mb-4">3. Flight Ticket Requests</h2>
-              
               <h3 className="font-display text-xl font-medium mb-3">Before Ticketing</h3>
               <p className="text-muted-foreground leading-relaxed mb-4">
                 If you cancel your ticket request before we issue the ticket:
@@ -84,15 +52,27 @@ export default function RefundPolicy() {
             </section>
 
             <section>
-              <h2 className="font-display text-2xl font-semibold mb-4">4. Escrow Transactions</h2>
+              <h2 className="font-display text-2xl font-semibold mb-4">3. Car Rental Bookings</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                For marketplace transactions using our escrow service:
+                Car rental cancellations follow the supplier's policy on your confirmation. In general:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-                <li>Funds are held until buyer confirms receipt and satisfaction</li>
+                <li>Most rentals can be cancelled free of charge up to 24-48 hours before pickup</li>
+                <li>Late cancellations or no-shows may incur a fee or full charge depending on the supplier</li>
+                <li>We'll always quote the cancellation terms upfront so you know what you're agreeing to</li>
+              </ul>
+            </section>
+
+            <section>
+              <h2 className="font-display text-2xl font-semibold mb-4">4. Escrow Transactions</h2>
+              <p className="text-muted-foreground leading-relaxed mb-4">
+                For bookings paid via our Escrow.com option:
+              </p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
+                <li>Funds are held until you confirm receipt and satisfaction with the booking</li>
                 <li>Disputes must be raised within 48 hours of delivery confirmation</li>
                 <li>Our dispute resolution team will review evidence from both parties</li>
-                <li>If the buyer's claim is validated, a full refund will be issued</li>
+                <li>If your claim is validated, a full refund will be issued</li>
                 <li>Fraudulent claims will result in account suspension</li>
               </ul>
             </section>
@@ -100,7 +80,7 @@ export default function RefundPolicy() {
             <section>
               <h2 className="font-display text-2xl font-semibold mb-4">5. PayPal Buyer Protection</h2>
               <p className="text-muted-foreground leading-relaxed">
-                Purchases made via PayPal are covered under PayPal's Buyer Protection program. If you do not receive your voucher or it is significantly not as described, you may file a claim directly with PayPal within 180 days of payment.
+                Purchases made via PayPal are covered under PayPal's Buyer Protection program. If you do not receive your booking or it is significantly not as described, you may file a claim directly with PayPal within 180 days of payment.
               </p>
             </section>
 
@@ -110,7 +90,7 @@ export default function RefundPolicy() {
                 To request a refund:
               </p>
               <ol className="list-decimal list-inside text-muted-foreground space-y-2 ml-4">
-                <li>Contact our support team via WhatsApp, Telegram, or the contact form within 7 days of purchase</li>
+                <li>Contact our support team via WhatsApp, Telegram, or the contact form within 7 days of booking</li>
                 <li>Provide your order number and reason for the refund request</li>
                 <li>Include any supporting documentation (screenshots, emails, etc.)</li>
                 <li>Our team will review your request within 2-3 business days</li>

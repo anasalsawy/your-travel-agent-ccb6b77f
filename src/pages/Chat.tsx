@@ -29,7 +29,7 @@ const Chat = () => {
   const [sessionId] = useState(() => crypto.randomUUID());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
   const voice = useVoiceChat({

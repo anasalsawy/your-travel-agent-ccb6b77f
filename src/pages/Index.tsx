@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, Plane, Car, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User, ArrowRight, Ticket, CheckCircle } from "lucide-react";
+import { Send, Loader2, Plane, Car, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User, ArrowRight, CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,16 +30,6 @@ const getOrCreateSessionId = (): string => {
   return newId;
 };
 
-// Voucher type from database
-type Voucher = {
-  id: string;
-  airline: string;
-  title: string;
-  face_value: number;
-  sale_price: number;
-  discount_percent: number;
-};
-
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -51,27 +41,12 @@ const Index = () => {
   const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [voiceEnabled] = useState(true);
   const [hasStarted, setHasStarted] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [vouchers, setVouchers] = useState<Voucher[]>([]);
 
-  // Fetch real vouchers from database
-  useEffect(() => {
-    const fetchVouchers = async () => {
-      const { data } = await supabase
-        .from("vouchers")
-        .select("id, airline, title, face_value, sale_price, discount_percent")
-        .eq("status", "available")
-        .order("face_value", { ascending: false })
-        .limit(4);
-      
-      if (data) setVouchers(data);
-    };
-    fetchVouchers();
-  }, []);
 
   const voice = useVoiceChat({
     onError: (error) => console.error("Voice error:", error),
@@ -370,7 +345,10 @@ const Index = () => {
               </div>
               <div className="flex items-center gap-3">
                 <Button variant="ghost" size="sm" asChild>
-                  <Link to="/vouchers">Vouchers</Link>
+                  <Link to="/request-ticket">Flights</Link>
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/car-rental">Car Rental</Link>
                 </Button>
                 {user ? (
                   <>
@@ -402,17 +380,17 @@ const Index = () => {
             <div className="container mx-auto px-4">
               <div className="max-w-4xl mx-auto text-center">
                 <h1 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold text-foreground mb-4">
-                  Fly for Less with <span className="text-success">Verified Vouchers</span>
+                  Fly for Less with <span className="text-success">Your Personal Travel Agent</span>
                 </h1>
                 <p className="text-lg text-muted-foreground mb-6 max-w-2xl mx-auto">
-                  Verified airline vouchers and discounted flight tickets. Lowest prices guaranteed — find a better deal anywhere and we'll beat it.
+                  Custom flight quotes and rental cars at unbeatable prices. Find a better deal anywhere and we'll beat it.
                 </p>
 
                 {/* Trust Badges */}
                 <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
                   <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20">
                     <Shield className="w-4 h-4 text-success" />
-                    <span className="font-bold text-success">Verified & Trusted</span>
+                    <span className="font-bold text-success">Trusted Concierge</span>
                   </div>
                   <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
                     <CheckCircle className="w-4 h-4 text-primary" />
@@ -426,29 +404,18 @@ const Index = () => {
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
-                  <Button 
-                    size="lg" 
+                  <Button
+                    size="lg"
                     asChild
                     className="rounded-full px-8 shadow-xl shadow-primary/20"
-                  >
-                    <Link to="/vouchers">
-                      <Ticket className="w-5 h-5 mr-2" />
-                      Browse Vouchers
-                    </Link>
-                  </Button>
-                  <Button 
-                    size="lg" 
-                    variant="outline"
-                    asChild
-                    className="rounded-full px-8"
                   >
                     <Link to="/request-ticket">
                       <Plane className="w-5 h-5 mr-2" />
                       Request a Flight
                     </Link>
                   </Button>
-                  <Button 
-                    size="lg" 
+                  <Button
+                    size="lg"
                     variant="outline"
                     asChild
                     className="rounded-full px-8"
@@ -463,69 +430,6 @@ const Index = () => {
             </div>
           </section>
 
-          {/* Featured Vouchers Section */}
-          <section className="py-16 bg-muted/30">
-            <div className="container mx-auto px-4">
-              <div className="text-center mb-10">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20 mb-4">
-                  <Ticket className="w-4 h-4 text-success" />
-                  <span className="text-sm font-bold text-success">DEEPLY DISCOUNTED TRAVEL CREDITS</span>
-                </div>
-                <h2 className="text-2xl md:text-3xl font-display font-bold mb-2">
-                  Airline Vouchers at Unbeatable Prices
-                </h2>
-                <p className="text-muted-foreground max-w-lg mx-auto mb-4">
-                  Verified travel credits at deep discounts. Use them for any flight booking.
-                </p>
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                  <Shield className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-semibold text-primary">Lowest Price Guaranteed — Find a lower price? We'll beat it!</span>
-                </div>
-              </div>
-
-              {/* Voucher Cards */}
-              <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto mb-8">
-                {vouchers.length > 0 ? vouchers.map((voucher) => (
-                  <div key={voucher.id} className="glass-card p-6 hover-lift">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-sm font-bold text-primary mb-2">
-                          {voucher.airline.substring(0, 2).toUpperCase()}
-                        </div>
-                        <h3 className="font-semibold text-foreground">{voucher.airline}</h3>
-                        <p className="text-sm text-muted-foreground">{voucher.title}</p>
-                      </div>
-                      <span className="discount-badge">-{Math.round(voucher.discount_percent)}%</span>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground line-through">
-                        ${Number(voucher.face_value).toLocaleString()}
-                      </p>
-                      <p className="text-2xl font-bold text-foreground">
-                        ${Number(voucher.sale_price).toLocaleString()}
-                      </p>
-                      <p className="text-sm text-green-500 font-medium">
-                        Save ${(Number(voucher.face_value) - Number(voucher.sale_price)).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                )) : (
-                  <div className="col-span-2 text-center py-8 text-muted-foreground">
-                    <p>No vouchers available at the moment. Chat with Maya for flight deals!</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="text-center">
-                <Button variant="outline" size="lg" asChild>
-                  <Link to="/vouchers">
-                    Browse All Vouchers
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </section>
 
           {/* Car Rental Section */}
           <section className="py-16 relative overflow-hidden">
@@ -690,7 +594,7 @@ const Index = () => {
           <div className="container mx-auto px-4 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
             <Link to="/faq" className="hover:text-foreground transition-colors">FAQ</Link>
             <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
-            <Link to="/vouchers" className="hover:text-foreground transition-colors">Vouchers</Link>
+            <Link to="/car-rental" className="hover:text-foreground transition-colors">Car Rental</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
             <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
             <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>

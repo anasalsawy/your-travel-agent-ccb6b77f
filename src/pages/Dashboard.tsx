@@ -22,14 +22,13 @@ import { CarRentalDetail } from "@/components/dashboard/CarRentalDetail";
 import { Car } from "lucide-react";
 
 
-type Order = Tables<"orders"> & { vouchers: Tables<"vouchers"> | null };
+type Order = Tables<"orders">;
 type TicketRequest = Tables<"ticket_requests">;
 type CarRentalRequest = Tables<"car_rental_requests">;
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
   const [requests, setRequests] = useState<TicketRequest[]>([]);
   const [carRentals, setCarRentals] = useState<CarRentalRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,14 +57,8 @@ export default function DashboardPage() {
     
     if (profileData) setProfile(profileData);
 
-    // Fetch orders
-    const { data: ordersData } = await supabase
-      .from("orders")
-      .select("*, vouchers(*)")
-      .eq("user_id", session.user.id)
-      .order("created_at", { ascending: false });
-    
-    if (ordersData) setOrders(ordersData as Order[]);
+    // (voucher orders removed from public dashboard)
+
 
     // Fetch ticket requests
     const { data: requestsData } = await supabase
@@ -232,21 +225,16 @@ export default function DashboardPage() {
               Welcome back, <span className="text-gradient">{profile?.full_name || "Traveler"}</span>
             </h1>
             <p className="text-muted-foreground">
-              Manage your voucher orders, ticket requests, and car rentals
+              Manage your ticket requests and car rentals
             </p>
           </div>
 
           {/* Quick Actions */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
-            <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/vouchers")}>
-              <Package className="w-8 h-8 text-primary mb-3" />
-              <h3 className="font-semibold mb-1">Browse Vouchers</h3>
-              <p className="text-sm text-muted-foreground">Find discounted airline credits</p>
-            </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/request-ticket")}>
               <Plane className="w-8 h-8 text-accent mb-3" />
               <h3 className="font-semibold mb-1">Request Ticket</h3>
-              <p className="text-sm text-muted-foreground">Get a personalized quote</p>
+              <p className="text-sm text-muted-foreground">Get a personalized flight quote</p>
             </div>
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/car-rental")}>
               <Car className="w-8 h-8 text-primary mb-3" />
@@ -267,78 +255,12 @@ export default function DashboardPage() {
 
 
           {/* Tabs */}
-          <Tabs defaultValue="orders" className="space-y-6 mt-8">
+          <Tabs defaultValue="requests" className="space-y-6 mt-8">
             <TabsList className="bg-card border border-border">
-              <TabsTrigger value="orders">Voucher Orders ({orders.length})</TabsTrigger>
               <TabsTrigger value="requests">Ticket Requests ({requests.length})</TabsTrigger>
               <TabsTrigger value="rentals">Car Rentals ({carRentals.length})</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="orders">
-              {orders.length === 0 ? (
-                <div className="glass-card p-12 text-center">
-                  <Package className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="font-semibold text-lg mb-2">No orders yet</h3>
-                  <p className="text-muted-foreground mb-6">Browse our vouchers and save on your next flight!</p>
-                  <Button variant="hero" onClick={() => navigate("/vouchers")}>
-                    Browse Vouchers
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {orders.map((order) => (
-                    <div key={order.id} className="glass-card p-6">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-lg font-bold text-primary">
-                            {order.vouchers?.airline?.substring(0, 2).toUpperCase() || "??"}
-                          </div>
-                          <div>
-                            <h3 className="font-semibold">{order.vouchers?.title || "Voucher"}</h3>
-                            <p className="text-sm text-muted-foreground">{order.vouchers?.airline}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex flex-wrap items-center gap-4">
-                          <div className="text-right">
-                            <div className="font-bold">{formatCurrency(Number(order.amount_paid))}</div>
-                            <div className="text-xs text-muted-foreground">{getPaymentMethodLabel(order.payment_method)}</div>
-                          </div>
-                          <Badge className={getStatusColor(order.payment_status || "pending")}>
-                            {getStatusLabel(order.payment_status || "pending")}
-                          </Badge>
-                          <Badge className={getStatusColor(order.order_status || "pending")}>
-                            {getStatusLabel(order.order_status || "pending")}
-                          </Badge>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          {formatDate(order.created_at)}
-                        </div>
-                      </div>
-
-                      {order.admin_notes && (
-                        <div className="mt-4 p-4 rounded-lg bg-primary/10 border border-primary/20">
-                          <p className="text-sm font-medium text-primary">Note from Admin:</p>
-                          <p className="text-sm text-muted-foreground">{order.admin_notes}</p>
-                        </div>
-                      )}
-
-                      {order.delivery_info && (
-                        <div className="mt-4 p-4 rounded-lg bg-success/10 border border-success/20">
-                          <p className="text-sm font-medium text-success">Delivery Info:</p>
-                          <p className="text-sm text-muted-foreground">{order.delivery_info}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
 
             <TabsContent value="requests">
               {selectedRequest ? (

@@ -1,22 +1,22 @@
-import { Shield, Lock, Zap, HeadphonesIcon, BadgeCheck } from "lucide-react";
+import { Shield, Zap, HeadphonesIcon, BadgeCheck } from "lucide-react";
 
 const trustItems = [
   {
     icon: Shield,
-    title: "Verified Balances",
-    description: "Every voucher balance is verified directly with the airline before listing.",
+    title: "Best Price Guarantee",
+    description: "Find a lower price elsewhere and we'll beat it — that's our promise to you.",
     color: "text-success",
   },
   {
     icon: BadgeCheck,
     title: "Escrow Protection",
-    description: "Pay with Escrow.com for 100% buyer protection on every purchase.",
+    description: "Pay with Escrow.com for 100% buyer protection on every booking.",
     color: "text-[#00A651]",
   },
   {
     icon: Zap,
-    title: "Fast Delivery",
-    description: "Most vouchers delivered within 24 hours. Some within minutes.",
+    title: "Fast Quotes",
+    description: "Most flight and rental quotes delivered within 24 hours.",
     color: "text-warning",
   },
   {
@@ -35,11 +35,11 @@ export function TrustSection() {
         <div className="glass-card p-6 md:p-8 mb-16 text-center max-w-4xl mx-auto">
           <div className="flex items-center justify-center gap-3 mb-4">
             <Shield className="w-6 h-6 text-success" />
-            <span className="font-display text-xl font-semibold">Verified & Compliant</span>
+            <span className="font-display text-xl font-semibold">Trusted & Transparent</span>
           </div>
           <p className="text-muted-foreground text-sm max-w-2xl mx-auto">
-            All vouchers undergo rigorous verification. We only list authentic airline credits 
-            with confirmed balances and valid expiration dates.
+            Every booking is handled by real travel experts with full transparency on pricing,
+            airline rules, and your protection options.
           </p>
         </div>
 

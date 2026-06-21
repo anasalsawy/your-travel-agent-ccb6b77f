@@ -4,11 +4,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
-import Vouchers from "./pages/Vouchers";
-import VoucherDetail from "./pages/VoucherDetail";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
-import Checkout from "./pages/Checkout";
+
 import FAQ from "./pages/FAQ";
 import Admin from "./pages/Admin";
 import AdminDiagnostics from "./pages/AdminDiagnostics";
@@ -65,11 +63,11 @@ const App = () => (
             <Route path="/mobile-admin/login" element={<Navigate to="/m/login" replace />} />
             <Route path="/mobile-admin/*" element={<Navigate to="/m" replace />} />
             {/* Website routes */}
-            <Route path="/vouchers" element={<Vouchers />} />
-            <Route path="/vouchers/:id" element={<VoucherDetail />} />
+            <Route path="/vouchers" element={<Navigate to="/" replace />} />
+            <Route path="/vouchers/:id" element={<Navigate to="/" replace />} />
+            <Route path="/checkout/voucher/:id" element={<Navigate to="/" replace />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/checkout/voucher/:id" element={<Checkout />} />
             <Route path="/faq" element={<FAQ />} />
             <Route path="/request-ticket" element={<RequestTicket />} />
             <Route path="/car-rental" element={<CarRental />} />

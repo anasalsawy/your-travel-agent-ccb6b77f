@@ -3,32 +3,32 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 const faqs = [
   {
-    question: "What are travel vouchers vs gift cards?",
-    answer: "Travel vouchers are airline-issued credits typically from cancelled flights or compensation. Gift cards are prepaid cards that can be used like cash. Both can be used to book flights, but vouchers often have specific terms and expiration dates."
+    question: "What services do you offer?",
+    answer: "We're a personal travel concierge. We find discounted flight tickets and rental cars for you, handle the booking from start to finish, and guarantee the lowest price — if you find a better deal elsewhere, we'll beat it."
   },
   {
-    question: "How do you verify voucher balances?",
-    answer: "We verify every voucher balance directly with the airline through customer service calls, online balance checks, or official verification portals. Only vouchers with confirmed balances are listed for sale."
+    question: "How does the flight quote process work?",
+    answer: "Submit your travel details through our request form. Our agents will search for the best available options and send you a personalized quote within 24-48 hours. You only pay if you accept the quote."
   },
   {
-    question: "How long does delivery take?",
-    answer: "Most vouchers are delivered within 24 hours via email. Some can be delivered within minutes. The specific delivery timeframe is shown on each voucher listing."
+    question: "How long does it take to get a quote?",
+    answer: "Most quotes are sent within 24 hours. Urgent or last-minute trips can usually be handled faster — just let us know in your request."
   },
   {
     question: "What's your refund policy?",
-    answer: "If a voucher doesn't work as described, we offer a full refund. Please report any issues within 48 hours of delivery. Refunds are processed within 3-5 business days."
+    answer: "Refund eligibility depends on the airline or rental supplier's fare rules. Before ticketing or booking, you can cancel for a full refund minus any processing fees. After ticketing, standard airline policies apply."
   },
   {
     question: "What if my flight is cancelled or changed?",
-    answer: "Once the voucher is redeemed with the airline, their standard policies apply. We recommend purchasing travel insurance for protection against flight changes."
+    answer: "Once a ticket is issued, the airline's standard policies apply. We recommend travel insurance for protection against schedule changes and we're happy to help you re-book through the airline."
   },
   {
-    question: "Can I pay with Bitcoin?",
-    answer: "Yes! We accept Bitcoin payments. Simply select Bitcoin at checkout, send the exact amount to the provided address, and submit your transaction proof. We'll verify and process your order within a few hours."
+    question: "What payment methods do you accept?",
+    answer: "We accept credit/debit cards, PayPal, bank transfer, and Bitcoin. For extra protection on larger transactions, you can also pay through Escrow.com."
   },
   {
-    question: "How do ticket requests work?",
-    answer: "Submit your travel details through our request form. Our agents will search for the best available options and send you a personalized quote within 24-48 hours. You only pay if you accept the quote."
+    question: "Do you handle car rentals worldwide?",
+    answer: "Yes. Tell us your pickup city, dates, and car preferences and we'll find the best rental deal available — from compact city cars to luxury SUVs."
   },
 ];
 

@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { Shield, Users, Plane, Award, CheckCircle, Globe } from "lucide-react";
+import { Shield, Users, Plane, Award, Car, Globe } from "lucide-react";
 import logo from "@/assets/logo-black-gold-shield.png";
 
 export default function About() {
@@ -14,7 +14,7 @@ export default function About() {
             </div>
             <h1 className="font-display text-4xl md:text-5xl font-bold mb-6">About Your Travel Agent</h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              We're on a mission to make travel more affordable by connecting travelers with verified, discounted airline vouchers and providing expert ticket booking services.
+              We're on a mission to make travel more affordable by combining old-school concierge service with smart pricing — so you can fly and drive for less, without the hassle.
             </p>
           </div>
 
@@ -23,13 +23,13 @@ export default function About() {
             <section className="mb-12">
               <h2 className="font-display text-2xl font-semibold mb-4">Our Story</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                Your Travel Agent was founded with a simple observation: millions of dollars in airline vouchers and travel credits go unused every year. Whether from cancelled flights, compensation for delays, or unused gift cards, these valuable credits often expire before travelers can use them.
+                Your Travel Agent was founded on a simple idea: booking travel shouldn't feel like a second job. Comparing dozens of sites, hunting for promo codes, and second-guessing every price wastes hours and rarely lands the real best deal.
               </p>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                We created a trusted marketplace where travelers can purchase verified vouchers at significant discounts, while sellers can recover value from credits they can't use themselves. Our platform brings transparency, security, and savings to the travel industry.
+                We built a personal concierge service where a real travel expert — backed by smart tooling and our AI assistant Maya — does the searching for you. You share your trip, we send back the best quote we can find, and you decide.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                Today, we've helped thousands of travelers save on their flights while providing a secure platform for voucher transactions. Our dedicated team works around the clock to verify balances, facilitate secure payments, and ensure every customer has a smooth experience.
+                Today we help travelers around the world save on flights and rental cars while making the booking experience feel personal again.
               </p>
             </section>
           </div>
@@ -44,7 +44,7 @@ export default function About() {
                 </div>
                 <h3 className="font-display font-semibold mb-2">Trust & Security</h3>
                 <p className="text-sm text-muted-foreground">
-                  Every voucher is verified before listing. Secure payments with escrow protection for your peace of mind.
+                  Transparent pricing, secure payments, and optional Escrow.com protection on every booking.
                 </p>
               </div>
               <div className="glass-card p-6 text-center">
@@ -53,7 +53,7 @@ export default function About() {
                 </div>
                 <h3 className="font-display font-semibold mb-2">Real Savings</h3>
                 <p className="text-sm text-muted-foreground">
-                  Our customers save up to 70% on airline credits. We negotiate the best deals so you fly for less.
+                  Lowest price guarantee — find a better deal anywhere and we'll beat it.
                 </p>
               </div>
               <div className="glass-card p-6 text-center">
@@ -62,7 +62,7 @@ export default function About() {
                 </div>
                 <h3 className="font-display font-semibold mb-2">Customer First</h3>
                 <p className="text-sm text-muted-foreground">
-                  Our support team is available to assist you through every step of your purchase or booking.
+                  Our support team is available to help you through every step of your trip.
                 </p>
               </div>
             </div>
@@ -78,9 +78,9 @@ export default function About() {
                     <Plane className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-display font-semibold mb-2">Verified Travel Vouchers</h3>
+                    <h3 className="font-display font-semibold mb-2">Custom Flight Quotes</h3>
                     <p className="text-sm text-muted-foreground">
-                      Browse our marketplace of verified airline vouchers, flight credits, and gift cards from major carriers worldwide. Every listing is verified for balance and validity.
+                      Submit a request and our travel experts will find you the best deal. We handle complex itineraries, group bookings, and last-minute travel.
                     </p>
                   </div>
                 </div>
@@ -88,12 +88,12 @@ export default function About() {
               <div className="glass-card p-6">
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Globe className="w-5 h-5 text-success" />
+                    <Car className="w-5 h-5 text-success" />
                   </div>
                   <div>
-                    <h3 className="font-display font-semibold mb-2">Custom Ticket Requests</h3>
+                    <h3 className="font-display font-semibold mb-2">Car Rentals</h3>
                     <p className="text-sm text-muted-foreground">
-                      Need a specific flight? Submit a ticket request and our travel experts will find you the best deal. We handle complex itineraries, group bookings, and last-minute travel.
+                      From compact city cars to luxury SUVs — we shop suppliers worldwide to find you the best price.
                     </p>
                   </div>
                 </div>
@@ -106,7 +106,7 @@ export default function About() {
                   <div>
                     <h3 className="font-display font-semibold mb-2">Escrow Protection</h3>
                     <p className="text-sm text-muted-foreground">
-                      Our secure escrow system holds funds until you confirm receipt. Buy and sell with confidence knowing your transaction is protected.
+                      Optional Escrow.com payment protection holds your funds until your booking is confirmed and you're satisfied.
                     </p>
                   </div>
                 </div>
@@ -114,12 +114,12 @@ export default function About() {
               <div className="glass-card p-6">
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <CheckCircle className="w-5 h-5 text-warning" />
+                    <Globe className="w-5 h-5 text-warning" />
                   </div>
                   <div>
-                    <h3 className="font-display font-semibold mb-2">Seller Marketplace</h3>
+                    <h3 className="font-display font-semibold mb-2">Maya AI Assistant</h3>
                     <p className="text-sm text-muted-foreground">
-                      Have unused vouchers? Join our verified seller network and recover value from credits you can't use. We handle verification and secure payments.
+                      Our AI travel agent is available 24/7 to answer questions, suggest destinations, and help you prep your request.
                     </p>
                   </div>
                 </div>
@@ -154,14 +154,14 @@ export default function About() {
           <div className="text-center">
             <h2 className="font-display text-2xl font-semibold mb-4">Ready to Save on Travel?</h2>
             <p className="text-muted-foreground mb-6">
-              Browse our verified vouchers or submit a ticket request today.
+              Submit a flight request or rental quote today.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a href="/vouchers" className="inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors">
-                Browse Vouchers
+              <a href="/request-ticket" className="inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors">
+                Request a Flight
               </a>
-              <a href="/request-ticket" className="inline-flex items-center justify-center px-6 py-3 border border-border rounded-lg font-medium hover:bg-muted transition-colors">
-                Request a Ticket
+              <a href="/car-rental" className="inline-flex items-center justify-center px-6 py-3 border border-border rounded-lg font-medium hover:bg-muted transition-colors">
+                Rent a Car
               </a>
             </div>
           </div>
