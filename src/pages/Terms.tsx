@@ -19,13 +19,13 @@ export default function Terms() {
             <section>
               <h2 className="font-display text-2xl font-semibold mb-4">2. Description of Services</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                Your Travel Agent provides a platform for:
+                Your Travel Agent provides a personal travel concierge service for:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-                <li>Purchasing verified travel vouchers, airline credits, and gift cards at discounted prices</li>
-                <li>Requesting custom flight ticket bookings through our concierge service</li>
-                <li>Connecting buyers with verified sellers in our marketplace</li>
-                <li>Escrow protection services for secure transactions</li>
+                <li>Custom flight ticket quotes and bookings</li>
+                <li>Car rental quotes and bookings worldwide</li>
+                <li>Optional Escrow.com payment protection on transactions</li>
+                <li>AI-assisted travel planning through our Maya assistant</li>
               </ul>
             </section>
 
@@ -49,28 +49,22 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="font-display text-2xl font-semibold mb-4">4. Voucher Purchases</h2>
-              <h3 className="font-display text-xl font-medium mb-3">Verification</h3>
+              <h2 className="font-display text-2xl font-semibold mb-4">4. Airline & Supplier Terms</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                We verify voucher balances before listing them for sale. However, vouchers are subject to airline terms and conditions that may affect their usability.
-              </p>
-
-              <h3 className="font-display text-xl font-medium mb-3">Airline Terms</h3>
-              <p className="text-muted-foreground leading-relaxed mb-4">
-                All vouchers and credits are subject to the issuing airline's terms, including:
+                All flights and rental bookings are subject to the issuing airline's or supplier's terms, including:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-                <li>Expiration dates and validity periods</li>
+                <li>Fare rules and refundability</li>
                 <li>Booking restrictions and blackout dates</li>
-                <li>Transferability limitations</li>
-                <li>Redemption requirements</li>
+                <li>Change and cancellation fees</li>
+                <li>Baggage, insurance, and other ancillary charges</li>
               </ul>
-
-              <h3 className="font-display text-xl font-medium mb-3 mt-6">No Guarantee</h3>
+              <h3 className="font-display text-xl font-medium mb-3 mt-6">No Guarantee on Third Parties</h3>
               <p className="text-muted-foreground leading-relaxed">
-                We do not guarantee that airlines will honor vouchers in all circumstances. Airlines may change their policies at any time without notice.
+                We do not control airline or rental supplier policies and cannot guarantee they will honor every change request. Suppliers may change their policies at any time without notice.
               </p>
             </section>
+
 
             <section>
               <h2 className="font-display text-2xl font-semibold mb-4">5. Ticket Request Services</h2>
@@ -135,11 +129,11 @@ export default function Terms() {
                 <li>Attempt to circumvent security measures</li>
                 <li>Submit false or misleading information</li>
                 <li>Engage in fraudulent transactions</li>
-                <li>Resell vouchers purchased through our platform without authorization</li>
                 <li>Interfere with the proper functioning of our website</li>
                 <li>Harvest or collect user data without consent</li>
               </ul>
             </section>
+
 
             <section>
               <h2 className="font-display text-2xl font-semibold mb-4">10. Intellectual Property</h2>
@@ -163,19 +157,6 @@ export default function Terms() {
               </p>
             </section>
 
-            <section>
-              <h2 className="font-display text-2xl font-semibold mb-4">12. Seller Terms</h2>
-              <p className="text-muted-foreground leading-relaxed mb-4">
-                If you register as a seller on our marketplace:
-              </p>
-              <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-                <li>You warrant that all vouchers listed are valid and legitimately obtained</li>
-                <li>You agree to our verification process</li>
-                <li>You accept our commission structure and payment terms</li>
-                <li>You are responsible for accurate listing information</li>
-                <li>Fraudulent listings will result in immediate account termination</li>
-              </ul>
-            </section>
 
             <section>
               <h2 className="font-display text-2xl font-semibold mb-4">13. Force Majeure</h2>
