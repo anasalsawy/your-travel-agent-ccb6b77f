@@ -198,7 +198,7 @@ const Index = () => {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vapi-chat`,
         {
           method: "POST",
           headers: {
@@ -206,74 +206,23 @@ const Index = () => {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({
-            messages: [...messages, userMessage].map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
+            input: messageText,
             sessionId,
-            conversationId,
+            previousChatId: conversationId,
           }),
         }
       );
 
-      const newConvId = response.headers.get("X-Conversation-Id");
-      if (newConvId) {
-        setConversationId(newConvId);
-      }
-
-      if (!response.ok || !response.body) {
+      if (!response.ok) {
         throw new Error("Failed to get response");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let textBuffer = "";
-      let firstChunkReceived = false;
+      const data = await response.json();
+      if (data?.chatId) setConversationId(data.chatId);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        textBuffer += decoder.decode(value, { stream: true });
-
-        let newlineIndex: number;
-        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
-          let line = textBuffer.slice(0, newlineIndex);
-          textBuffer = textBuffer.slice(newlineIndex + 1);
-
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              if (!firstChunkReceived) {
-                firstChunkReceived = true;
-                stopThinkingPhases();
-                setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-              }
-
-              assistantContent += content;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  role: "assistant",
-                  content: assistantContent,
-                };
-                return updated;
-              });
-            }
-          } catch {
-            textBuffer = line + "\n" + textBuffer;
-            break;
-          }
-        }
-      }
+      assistantContent = data?.text || "Sorry, I couldn't generate a response.";
+      stopThinkingPhases();
+      setMessages((prev) => [...prev, { role: "assistant", content: assistantContent }]);
 
       if (speakResponse && voiceEnabled && assistantContent) {
         await voice.speakText(assistantContent);
