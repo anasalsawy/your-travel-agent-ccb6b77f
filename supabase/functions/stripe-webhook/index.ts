@@ -121,6 +121,25 @@ serve(async (req) => {
         }
 
         logStep("Ticket request updated", { ticketRequestId });
+      } else if (type === "duffel_flight" && metadata.booking_id) {
+        logStep("Duffel flight payment completed, issuing ticket", { booking_id: metadata.booking_id });
+        try {
+          const bookRes = await fetch(
+            (Deno.env.get("SUPABASE_URL") ?? "") + "/functions/v1/duffel-book",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""),
+              },
+              body: JSON.stringify({ booking_id: metadata.booking_id }),
+            }
+          );
+          const bookJson = await bookRes.json();
+          logStep("duffel-book response", { ok: bookRes.ok, body: bookJson });
+        } catch (e) {
+          logStep("duffel-book invocation failed", { error: String(e) });
+        }
       }
 
     } else if (event.type === "charge.refunded") {

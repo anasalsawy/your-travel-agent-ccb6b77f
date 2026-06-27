@@ -17,6 +17,14 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.chat]
     verify_jwt = false
+  [functions.duffel-search]
+    verify_jwt = false
+  [functions.duffel-offer]
+    verify_jwt = false
+  [functions.duffel-create-checkout]
+    verify_jwt = false
+  [functions.duffel-book]
+    verify_jwt = false
   [functions.claude-agent]
     verify_jwt = false
   [functions.claude-quote]
