@@ -19,6 +19,7 @@ import RefundPolicy from "./pages/RefundPolicy";
 import RequestTicket from "./pages/RequestTicket";
 import CarRental from "./pages/CarRental";
 import Flights from "./pages/Flights";
+import MyFlights from "./pages/MyFlights";
 import QuotePreview from "./pages/QuotePreview";
 import Promo from "./pages/Promo";
 import VoiceProxy from "./pages/VoiceProxy";
@@ -72,6 +73,7 @@ const App = () => (
             <Route path="/faq" element={<FAQ />} />
             <Route path="/request-ticket" element={<RequestTicket />} />
             <Route path="/flights" element={<Flights />} />
+            <Route path="/my-flights" element={<MyFlights />} />
             <Route path="/car-rental" element={<CarRental />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/diagnostics" element={<AdminDiagnostics />} />
