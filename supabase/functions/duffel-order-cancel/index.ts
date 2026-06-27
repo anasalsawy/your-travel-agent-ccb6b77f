@@ -75,7 +75,7 @@ serve(async (req) => {
       }
       await supabase.from("duffel_bookings").update({
         status: "cancelled",
-        cancellation: j.data,
+        error: "Cancelled. Refund: " + (j.data?.refund_amount || "0") + " " + (j.data?.refund_currency || ""),
       }).eq("id", booking_id);
       return new Response(JSON.stringify({ cancellation: j.data }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
