@@ -48,7 +48,8 @@ export function Header() {
   };
 
   const navLinks = [
-    { href: "/request-ticket", label: "Flights" },
+    { href: "/flights", label: "Search Flights" },
+    { href: "/request-ticket", label: "Custom Quote" },
     { href: "/car-rental", label: "Car Rental" },
     { href: "/faq", label: "FAQ" },
   ];

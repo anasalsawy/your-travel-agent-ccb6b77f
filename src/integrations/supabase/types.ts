@@ -586,6 +586,69 @@ export type Database = {
         }
         Relationships: []
       }
+      duffel_bookings: {
+        Row: {
+          booking_reference: string | null
+          contact_email: string
+          contact_phone: string | null
+          created_at: string
+          customer_amount: number
+          customer_currency: string
+          duffel_order: Json | null
+          duffel_order_id: string | null
+          error: string | null
+          id: string
+          offer_id: string
+          passengers: Json
+          status: string
+          stripe_session_id: string | null
+          updated_at: string
+          user_id: string | null
+          wholesale_amount: number
+          wholesale_currency: string
+        }
+        Insert: {
+          booking_reference?: string | null
+          contact_email: string
+          contact_phone?: string | null
+          created_at?: string
+          customer_amount: number
+          customer_currency: string
+          duffel_order?: Json | null
+          duffel_order_id?: string | null
+          error?: string | null
+          id?: string
+          offer_id: string
+          passengers: Json
+          status?: string
+          stripe_session_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+          wholesale_amount: number
+          wholesale_currency: string
+        }
+        Update: {
+          booking_reference?: string | null
+          contact_email?: string
+          contact_phone?: string | null
+          created_at?: string
+          customer_amount?: number
+          customer_currency?: string
+          duffel_order?: Json | null
+          duffel_order_id?: string | null
+          error?: string | null
+          id?: string
+          offer_id?: string
+          passengers?: Json
+          status?: string
+          stripe_session_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+          wholesale_amount?: number
+          wholesale_currency?: string
+        }
+        Relationships: []
+      }
       gift_cards: {
         Row: {
           airline: string
