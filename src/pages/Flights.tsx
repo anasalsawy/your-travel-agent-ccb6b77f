@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plane, ArrowRight, Search } from "lucide-react";
 import { format } from "date-fns";
+import { AirportAutocomplete } from "@/components/flights/AirportAutocomplete";
 
 interface Segment {
   origin: string;
@@ -158,13 +159,11 @@ export default function Flights() {
           <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div className="md:col-span-1">
               <Label htmlFor="origin">From</Label>
-              <Input id="origin" placeholder="LAX" maxLength={3} value={origin}
-                onChange={(e) => setOrigin(e.target.value.toUpperCase())} required />
+              <AirportAutocomplete id="origin" value={origin} onChange={setOrigin} placeholder="LAX or Los Angeles" />
             </div>
             <div className="md:col-span-1">
               <Label htmlFor="dest">To</Label>
-              <Input id="dest" placeholder="HNL" maxLength={3} value={destination}
-                onChange={(e) => setDestination(e.target.value.toUpperCase())} required />
+              <AirportAutocomplete id="dest" value={destination} onChange={setDestination} placeholder="HNL or Honolulu" />
             </div>
             <div className="md:col-span-1">
               <Label htmlFor="dep">Departure</Label>
