@@ -25,6 +25,8 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.duffel-book]
     verify_jwt = false
+  [functions.duffel-probe]
+    verify_jwt = false
   [functions.claude-agent]
     verify_jwt = false
   [functions.claude-quote]
