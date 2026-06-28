@@ -28,6 +28,7 @@ serve(async (req) => {
       departure_date,
       return_date,
       adults = 1,
+      passengers: passengersInput,
       cabin_class = "economy",
     } = body;
 
@@ -49,7 +50,9 @@ serve(async (req) => {
       });
     }
 
-    const passengers = Array.from({ length: Number(adults) }, () => ({ type: "adult" }));
+    const passengers = Array.isArray(passengersInput) && passengersInput.length > 0
+      ? passengersInput
+      : Array.from({ length: Number(adults) }, () => ({ type: "adult" }));
 
     const orReqRes = await fetch("https://api.duffel.com/air/offer_requests?return_offers=true", {
       method: "POST",

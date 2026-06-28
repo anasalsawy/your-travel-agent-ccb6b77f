@@ -58,6 +58,10 @@ serve(async (req) => {
     const offer = offerJson.data;
 
     // Map stored passengers to offer.passengers (by index)
+    console.log("[duffel-book] offer passengers:", JSON.stringify(offer.passengers));
+    if (!offer.passengers || offer.passengers.length !== (booking.passengers as any[]).length) {
+      throw new Error("Passenger count mismatch. offer.passengers=" + JSON.stringify(offer.passengers) + " booking has " + (booking.passengers as any[]).length);
+    }
     const passengers = (booking.passengers as any[]).map((p, i) => ({
       id: offer.passengers[i].id,
       type: offer.passengers[i].type,
