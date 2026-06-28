@@ -1,0 +1,246 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Your Travel Agent — Duffel Wrapper",
+    "version": "1.0.0",
+    "description": "Server-side wrapper around Duffel for Flights, Stays (Hotels), and Cars. Search and quote are safe; booking and cancellation require user_approved=true. The Duffel access token is held server-side only."
+  },
+  "servers": [
+    { "url": "https://wpwdxtyufpewdyffxlgo.supabase.co/functions/v1", "description": "Lovable Cloud Edge Functions" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "supabaseAnon": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Supabase anon JWT. Send as Authorization: Bearer <token>."
+      }
+    },
+    "schemas": {
+      "Error": { "type": "object", "properties": { "error": { "type": "string" }, "detail": {} } }
+    }
+  },
+  "security": [{ "supabaseAnon": [] }],
+  "paths": {
+    "/duffel-search": {
+      "post": {
+        "operationId": "flightsSearch",
+        "summary": "Search flight offers",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["origin", "destination", "departure_date", "adults"],
+          "properties": {
+            "origin": { "type": "string", "description": "IATA code, e.g. JFK" },
+            "destination": { "type": "string" },
+            "departure_date": { "type": "string", "format": "date" },
+            "return_date": { "type": "string", "format": "date" },
+            "adults": { "type": "integer", "minimum": 1 },
+            "cabin_class": { "type": "string", "enum": ["economy", "premium_economy", "business", "first"] }
+          } } } } },
+        "responses": { "200": { "description": "Offers with markup applied" } }
+      }
+    },
+    "/duffel-offer": {
+      "post": {
+        "operationId": "flightsOffer",
+        "summary": "Get full details for one flight offer",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["offer_id"], "properties": { "offer_id": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Offer detail" } }
+      }
+    },
+    "/duffel-seat-maps": {
+      "post": {
+        "operationId": "flightsSeatMaps",
+        "summary": "Seat maps for an offer",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["offer_id"], "properties": { "offer_id": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Seat maps" } }
+      }
+    },
+    "/duffel-create-checkout": {
+      "post": {
+        "operationId": "flightsCreateCheckout",
+        "summary": "Create Stripe checkout for a flight offer (booking happens via webhook on payment success — requires explicit user purchase)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["offer_id", "passengers", "user_approved"],
+          "properties": {
+            "offer_id": { "type": "string" },
+            "passengers": { "type": "array", "items": { "type": "object" } },
+            "user_approved": { "type": "boolean", "enum": [true] }
+          } } } } },
+        "responses": { "200": { "description": "Stripe checkout url" } }
+      }
+    },
+    "/duffel-order-get": {
+      "post": {
+        "operationId": "flightsGetOrder",
+        "summary": "Fetch a flight order",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["order_id"], "properties": { "order_id": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Order" } }
+      }
+    },
+    "/duffel-order-cancel": {
+      "post": {
+        "operationId": "flightsCancelOrder",
+        "summary": "Quote or confirm cancellation of a flight order",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["order_id", "step"],
+          "properties": {
+            "order_id": { "type": "string" },
+            "step": { "type": "string", "enum": ["quote", "confirm"] },
+            "user_approved": { "type": "boolean", "description": "Required true when step=confirm" }
+          } } } } },
+        "responses": { "200": { "description": "Cancellation quote or confirmation" } }
+      }
+    },
+    "/duffel-places": {
+      "post": {
+        "operationId": "placesAutocomplete",
+        "summary": "Airport / city autocomplete",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["query"], "properties": { "query": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Suggestions" } }
+      }
+    },
+
+    "/duffel-stays-search": {
+      "post": {
+        "operationId": "staysSearch",
+        "summary": "Search hotels (Duffel Stays)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["check_in_date", "check_out_date"],
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" },
+            "radius_km": { "type": "number", "default": 5 },
+            "accommodation_ids": { "type": "array", "items": { "type": "string" } },
+            "check_in_date": { "type": "string", "format": "date" },
+            "check_out_date": { "type": "string", "format": "date" },
+            "rooms": { "type": "integer", "default": 1 },
+            "adults": { "type": "integer", "default": 2 },
+            "currency": { "type": "string", "default": "USD" }
+          } } } } },
+        "responses": { "200": { "description": "Properties" } }
+      }
+    },
+    "/duffel-stays-rates": {
+      "post": {
+        "operationId": "staysRates",
+        "summary": "Fetch all rates for a stay search result",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["search_result_id"], "properties": { "search_result_id": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Rates" } }
+      }
+    },
+    "/duffel-stays-quote": {
+      "post": {
+        "operationId": "staysQuote",
+        "summary": "Price-lock a stay rate",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["rate_id"], "properties": { "rate_id": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Quote" } }
+      }
+    },
+    "/duffel-stays-book": {
+      "post": {
+        "operationId": "staysBook",
+        "summary": "Book a hotel quote (requires user_approved=true)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["quote_id", "guests", "email", "phone_number", "user_approved"],
+          "properties": {
+            "quote_id": { "type": "string" },
+            "guests": { "type": "array", "items": { "type": "object", "properties": {
+              "given_name": { "type": "string" }, "family_name": { "type": "string" }, "born_on": { "type": "string", "format": "date" }
+            } } },
+            "email": { "type": "string", "format": "email" },
+            "phone_number": { "type": "string" },
+            "accommodation_special_requests": { "type": "string" },
+            "user_approved": { "type": "boolean", "enum": [true] }
+          } } } } },
+        "responses": { "200": { "description": "Booking" } }
+      }
+    },
+    "/duffel-stays-booking": {
+      "post": {
+        "operationId": "staysBookingGetOrCancel",
+        "summary": "Get a stay booking, or cancel it when cancel=true and user_approved=true",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["booking_id"],
+          "properties": {
+            "booking_id": { "type": "string" },
+            "cancel": { "type": "boolean" },
+            "user_approved": { "type": "boolean" }
+          } } } } },
+        "responses": { "200": { "description": "Booking or cancellation result" } }
+      }
+    },
+
+    "/duffel-cars-search": {
+      "post": {
+        "operationId": "carsSearch",
+        "summary": "Search car rentals",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["pickup_location", "pickup_datetime", "dropoff_datetime"],
+          "properties": {
+            "pickup_location": { "type": "string", "description": "IATA / city code or Duffel place id" },
+            "dropoff_location": { "type": "string" },
+            "pickup_datetime": { "type": "string", "format": "date-time" },
+            "dropoff_datetime": { "type": "string", "format": "date-time" },
+            "driver_age": { "type": "integer", "default": 30 },
+            "currency": { "type": "string", "default": "USD" },
+            "prepaid_only": { "type": "boolean", "default": true }
+          } } } } },
+        "responses": { "200": { "description": "Car offers" } }
+      }
+    },
+    "/duffel-cars-quote": {
+      "post": {
+        "operationId": "carsQuote",
+        "summary": "Quote one car offer",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["offer_id"], "properties": { "offer_id": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Quote" } }
+      }
+    },
+    "/duffel-cars-book": {
+      "post": {
+        "operationId": "carsBook",
+        "summary": "Book a car offer (requires user_approved=true)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["offer_id", "driver", "user_approved"],
+          "properties": {
+            "offer_id": { "type": "string" },
+            "driver": { "type": "object", "properties": {
+              "given_name": { "type": "string" }, "family_name": { "type": "string" }, "born_on": { "type": "string", "format": "date" },
+              "email": { "type": "string" }, "phone_number": { "type": "string" }
+            } },
+            "user_approved": { "type": "boolean", "enum": [true] }
+          } } } } },
+        "responses": { "200": { "description": "Booking" } }
+      }
+    },
+    "/duffel-cars-cancel": {
+      "post": {
+        "operationId": "carsCancel",
+        "summary": "Cancel a car booking (requires user_approved=true)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["booking_id", "user_approved"],
+          "properties": {
+            "booking_id": { "type": "string" },
+            "user_approved": { "type": "boolean", "enum": [true] }
+          } } } } },
+        "responses": { "200": { "description": "Cancellation" } }
+      }
+    },
+    "/duffel-cars-booking": {
+      "post": {
+        "operationId": "carsGetBooking",
+        "summary": "Get a car booking",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object",
+          "required": ["booking_id"], "properties": { "booking_id": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Booking" } }
+      }
+    }
+  }
+}
