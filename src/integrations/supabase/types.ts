@@ -264,6 +264,13 @@ export type Database = {
             referencedRelation: "sellers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "bids_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "sellers_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       booking_queue: {
@@ -1540,6 +1547,13 @@ export type Database = {
             referencedRelation: "sellers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "seller_reviews_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "sellers_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       sellers: {
@@ -1878,6 +1892,33 @@ export type Database = {
           messages: Json | null
           phone: string | null
           session_id: string | null
+        }
+        Relationships: []
+      }
+      sellers_public: {
+        Row: {
+          business_name: string | null
+          created_at: string | null
+          description: string | null
+          id: string | null
+          logo_url: string | null
+          website: string | null
+        }
+        Insert: {
+          business_name?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          logo_url?: string | null
+          website?: string | null
+        }
+        Update: {
+          business_name?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          logo_url?: string | null
+          website?: string | null
         }
         Relationships: []
       }
