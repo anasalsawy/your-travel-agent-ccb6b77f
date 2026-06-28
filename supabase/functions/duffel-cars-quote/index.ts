@@ -7,41 +7,47 @@ const corsHeaders = {
 const DUFFEL_TOKEN = Deno.env.get("DUFFEL_API_TOKEN");
 const CARS_BASE = "https://api.duffel.com/cars";
 
+// Body: { rate_id } (back-compat: offer_id)
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
     if (!DUFFEL_TOKEN) throw new Error("DUFFEL_API_TOKEN not set");
-    const { offer_id } = await req.json();
-    if (!offer_id) {
-      return new Response(JSON.stringify({ error: "offer_id required" }),
+    const b = await req.json();
+    const rate_id = b.rate_id || b.offer_id;
+    if (!rate_id) {
+      return new Response(JSON.stringify({ error: "rate_id required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const r = await fetch(CARS_BASE + "/offers/" + offer_id, {
+    const r = await fetch(CARS_BASE + "/quotes", {
+      method: "POST",
       headers: {
         "Authorization": "Bearer " + DUFFEL_TOKEN,
         "Duffel-Version": "v2",
+        "Content-Type": "application/json",
         "Accept": "application/json",
       },
+      body: JSON.stringify({ data: { rate_id } }),
     });
     const j = await r.json();
     if (!r.ok) {
-      return new Response(JSON.stringify({ error: "Duffel cars quote failed", detail: j }),
+      return new Response(JSON.stringify({ error: "Duffel cars quote failed", status: r.status, detail: j }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const o = j.data || j;
+    const q = j.data || j;
     return new Response(JSON.stringify({
-      id: o.id,
-      supplier: o.supplier?.name,
-      car_type: o.vehicle?.category,
-      model: o.vehicle?.model,
-      total_amount: o.total_amount,
-      total_currency: o.total_currency,
-      payment_type: o.payment_type,
-      cancellation: o.cancellation_policy,
-      pickup_location: o.pickup_location,
-      dropoff_location: o.dropoff_location,
-      includes: o.included || o.includes,
-      expires_at: o.expires_at,
+      quote_id: q.id,
+      car: q.car,
+      supplier: q.supplier,
+      total_amount: q.total_amount,
+      total_currency: q.total_currency,
+      base_amount: q.base_amount,
+      base_currency: q.base_currency,
+      payment_type: q.payment_type,
+      conditions: q.conditions,
+      charges: q.charges,
+      pickup_location: q.pickup_location,
+      dropoff_location: q.dropoff_location,
+      expires_at: q.expires_at,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
