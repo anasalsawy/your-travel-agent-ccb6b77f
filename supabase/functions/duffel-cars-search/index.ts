@@ -83,7 +83,7 @@ serve(async (req) => {
       },
     };
 
-    const r = await fetch(CARS_BASE + "/searches", {
+    const r = await fetch(CARS_BASE + "/search", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + DUFFEL_TOKEN,
