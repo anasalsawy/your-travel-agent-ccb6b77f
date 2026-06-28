@@ -93,7 +93,8 @@ serve(async (req) => {
       },
       body: JSON.stringify(payload),
     });
-    const j = await r.json();
+    const text = await r.text();
+    let j: any; try { j = JSON.parse(text); } catch { j = { raw: text }; }
     if (!r.ok) {
       return new Response(JSON.stringify({ error: "Duffel cars search failed", status: r.status, detail: j, sent: payload.data }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
