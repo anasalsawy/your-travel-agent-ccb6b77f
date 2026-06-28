@@ -137,7 +137,6 @@ export default function AdminDuffelCard() {
                 paymentIntentClientToken={clientKey}
                 onSuccessfulPayment={onCardSaved}
                 onFailedPayment={(e: any) => toast.error("Card save failed: " + (e?.message || "unknown"))}
-                // @ts-expect-error component supports save-card flow
                 successPaymentRedirectURL={null}
               />
               <Button variant="outline" onClick={() => { setShowForm(false); setClientKey(null); }} disabled={submitting}>Cancel</Button>
