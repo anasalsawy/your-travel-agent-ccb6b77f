@@ -68,6 +68,48 @@ export type Database = {
           },
         ]
       }
+      admin_duffel_cards: {
+        Row: {
+          brand: string | null
+          created_at: string
+          created_by: string | null
+          duffel_card_id: string
+          exp_month: number | null
+          exp_year: number | null
+          id: string
+          is_default: boolean
+          is_test: boolean
+          label: string
+          last4: string | null
+        }
+        Insert: {
+          brand?: string | null
+          created_at?: string
+          created_by?: string | null
+          duffel_card_id: string
+          exp_month?: number | null
+          exp_year?: number | null
+          id?: string
+          is_default?: boolean
+          is_test?: boolean
+          label: string
+          last4?: string | null
+        }
+        Update: {
+          brand?: string | null
+          created_at?: string
+          created_by?: string | null
+          duffel_card_id?: string
+          exp_month?: number | null
+          exp_year?: number | null
+          id?: string
+          is_default?: boolean
+          is_test?: boolean
+          label?: string
+          last4?: string | null
+        }
+        Relationships: []
+      }
       agent_memory_cache: {
         Row: {
           compiled_at: string

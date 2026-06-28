@@ -23,6 +23,7 @@ import MyFlights from "./pages/MyFlights";
 import QuotePreview from "./pages/QuotePreview";
 import Promo from "./pages/Promo";
 import VoiceProxy from "./pages/VoiceProxy";
+import AdminDuffelCard from "./pages/AdminDuffelCard";
 import { lazy, Suspense } from "react";
 
 const MobileLogin = lazy(() => import("./pages/mobile-admin/MobileLogin"));
@@ -77,6 +78,7 @@ const App = () => (
             <Route path="/car-rental" element={<CarRental />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/diagnostics" element={<AdminDiagnostics />} />
+            <Route path="/admin/duffel-card" element={<AdminDuffelCard />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/about" element={<About />} />

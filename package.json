@@ -16,6 +16,7 @@
     "@capacitor/core": "^8.1.0",
     "@capacitor/ios": "^8.1.0",
     "@capacitor/push-notifications": "^8.0.1",
+    "@duffel/components": "^3.17.0",
     "@elevenlabs/react": "^0.12.3",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/syne": "^5.2.7",
