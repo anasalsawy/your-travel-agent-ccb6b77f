@@ -27,6 +27,14 @@ Rules:
 4. Admin approval gates for risky actions
 5. Audit trail and reconciliation views
 
+## Completed Checkpoints
+- Added autonomous continuity docs and env baseline.
+- Added provider router shared utility.
+- Added `flight-search-router` function to orchestrate provider selection and fallback.
+- Added `trawex-flight-search` function scaffold with official API request pattern.
+- Updated flights UI to route searches through `flight-search-router`.
+- Added DB migration baseline for `approval_requests` and `booking_action_audit`.
+
 ## Recovery After Refresh
 Prompt to assistant:
 "Continue autonomous mode from latest docs/AGENT_MEMORY.md in your-travel-agent-ccb6b77f and yta-assistant-travel-memory."

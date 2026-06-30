@@ -79,7 +79,7 @@ export default function Flights() {
     setSearched(true);
     setOffers([]);
     try {
-      const { data, error } = await supabase.functions.invoke("duffel-search", {
+      const { data, error } = await supabase.functions.invoke("flight-search-router", {
         body: {
           origin: origin.trim().toUpperCase(),
           destination: destination.trim().toUpperCase(),
