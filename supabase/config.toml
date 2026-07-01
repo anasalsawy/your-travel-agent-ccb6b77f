@@ -103,3 +103,5 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.whatsapp-maya]
     verify_jwt = false
+  [functions.dual-lobe-demo]
+    verify_jwt = false
