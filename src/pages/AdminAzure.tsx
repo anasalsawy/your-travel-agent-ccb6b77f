@@ -67,6 +67,7 @@ export default function AdminAzure() {
   const [method, setMethod] = useState("GET");
   const [path, setPath] = useState(PRESETS[0].path);
   const [body, setBody] = useState("");
+  const [service, setService] = useState<"management" | "ai">("management");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<any>(null);
   const navigate = useNavigate();
@@ -94,7 +95,7 @@ export default function AdminAzure() {
         catch { toast({ title: "Invalid JSON body", variant: "destructive" }); setRunning(false); return; }
       }
       const { data, error } = await supabase.functions.invoke("azure-rest", {
-        body: { method, path, body: parsedBody },
+        body: { method, path, body: parsedBody, service },
       });
       if (error) throw error;
       setResult(data);
@@ -113,6 +114,7 @@ export default function AdminAzure() {
     setMethod(p.method);
     setPath(p.path);
     setBody(p.body ?? "");
+    setService(p.service ?? "management");
   };
 
   if (loading) {
