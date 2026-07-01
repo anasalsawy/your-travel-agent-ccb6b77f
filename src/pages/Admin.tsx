@@ -22,6 +22,7 @@ import { AdminBookingQueue } from "@/components/admin/AdminBookingQueue";
 import { AdminConversations } from "@/components/admin/AdminConversations";
 import { AdminPromoEmails } from "@/components/admin/AdminPromoEmails";
 import { AdminCarRentals } from "@/components/admin/AdminCarRentals";
+import { AdminBookingAgent } from "@/components/admin/AdminBookingAgent";
 import { lazy, Suspense } from "react";
 const VoiceProxyContent = lazy(() => import("@/components/admin/AdminVoiceProxy"));
 
@@ -124,6 +125,10 @@ export default function AdminPage() {
                 <Car className="w-4 h-4" />
                 Car Rentals
               </TabsTrigger>
+              <TabsTrigger value="booking-agent" className="gap-2">
+                <Zap className="w-4 h-4" />
+                Booking Agent
+              </TabsTrigger>
               {isAdmin && (
                 <>
                   <TabsTrigger value="conversations" className="gap-2">
@@ -204,6 +209,10 @@ export default function AdminPage() {
 
             <TabsContent value="car-rentals">
               <AdminCarRentals />
+            </TabsContent>
+
+            <TabsContent value="booking-agent">
+              <AdminBookingAgent />
             </TabsContent>
 
             {isAdmin && (

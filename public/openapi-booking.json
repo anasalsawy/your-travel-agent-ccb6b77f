@@ -1,0 +1,78 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Your Travel Agent — Booking Tools",
+    "version": "1.0.0",
+    "description": "Provider-agnostic booking API for flights, hotels, and cars. Currently backed by Duffel; Trawex adapter is stubbed and will activate transparently once credentials are provisioned. Designed to be registered as tools in Azure AI Foundry."
+  },
+  "servers": [
+    { "url": "https://wpwdxtyufpewdyffxlgo.supabase.co/functions/v1" }
+  ],
+  "paths": {
+    "/booking": {
+      "post": {
+        "operationId": "booking",
+        "summary": "Search, create, cancel, modify, or retrieve a booking for flights/hotels/cars.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BookingRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result from the underlying provider.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BookingResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BookingRequest": {
+        "type": "object",
+        "required": ["action", "product"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["search", "create", "cancel", "modify", "get"],
+            "description": "Operation to perform."
+          },
+          "product": {
+            "type": "string",
+            "enum": ["flights", "hotels", "cars"],
+            "description": "Which product line the request targets."
+          },
+          "provider": {
+            "type": "string",
+            "enum": ["duffel", "trawex"],
+            "description": "Optional override. Omit to use the default adapter for this product."
+          },
+          "params": {
+            "type": "object",
+            "description": "Provider-shaped parameters. See product-specific notes below.",
+            "additionalProperties": true
+          }
+        }
+      },
+      "BookingResponse": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string" },
+          "action":   { "type": "string" },
+          "product":  { "type": "string" },
+          "status":   { "type": "integer" },
+          "ok":       { "type": "boolean" },
+          "data":     { "description": "Raw provider payload." }
+        }
+      }
+    }
+  }
+}
