@@ -3,13 +3,14 @@ import { MobileAdminLayout } from "@/components/mobile-admin/MobileAdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Phone, PhoneCall, CreditCard, TrendingUp, Mail, Package, Shield, Users,
-  Building2, Settings, Bell, LogOut, ChevronRight, Mic, Code, LayoutGrid
+  Building2, Settings, Bell, LogOut, ChevronRight, Mic, Code, LayoutGrid, Plane
 } from "lucide-react";
 
 const sections = [
   {
     title: "Full Admin Panel",
     items: [
+      { label: "Booking Agent (Flights · Hotels · Cars)", icon: Plane, path: "/m/booking-agent", highlight: true },
       { label: "Open Full Admin Panel", icon: LayoutGrid, path: "/m/admin", highlight: true },
     ],
   },
