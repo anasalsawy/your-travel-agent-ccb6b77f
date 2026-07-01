@@ -146,11 +146,18 @@ export default function AdminAzure() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-[110px_1fr] gap-2">
+              <div className="grid grid-cols-[110px_140px_1fr] gap-2">
                 <Select value={method} onValueChange={setMethod}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {["GET","POST","PUT","PATCH","DELETE"].map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={service} onValueChange={(v) => setService(v as any)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="management">Management</SelectItem>
+                    <SelectItem value="ai">AI Foundry</SelectItem>
                   </SelectContent>
                 </Select>
                 <Input value={path} onChange={e => setPath(e.target.value)} placeholder="/subscriptions/{sub}/resourceGroups?api-version=2021-04-01" />
