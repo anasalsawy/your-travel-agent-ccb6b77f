@@ -245,6 +245,36 @@ export type Database = {
           },
         ]
       }
+      azure_agent_threads: {
+        Row: {
+          assistant_id: string
+          channel: string
+          created_at: string
+          external_id: string
+          id: string
+          last_message_at: string
+          thread_id: string
+        }
+        Insert: {
+          assistant_id: string
+          channel: string
+          created_at?: string
+          external_id: string
+          id?: string
+          last_message_at?: string
+          thread_id: string
+        }
+        Update: {
+          assistant_id?: string
+          channel?: string
+          created_at?: string
+          external_id?: string
+          id?: string
+          last_message_at?: string
+          thread_id?: string
+        }
+        Relationships: []
+      }
       bids: {
         Row: {
           amount: number
