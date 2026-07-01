@@ -275,6 +275,33 @@ export type Database = {
         }
         Relationships: []
       }
+      azure_assistants: {
+        Row: {
+          assistant_id: string
+          instructions: string | null
+          model: string
+          name: string | null
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          assistant_id: string
+          instructions?: string | null
+          model: string
+          name?: string | null
+          role: string
+          updated_at?: string
+        }
+        Update: {
+          assistant_id?: string
+          instructions?: string | null
+          model?: string
+          name?: string | null
+          role?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bids: {
         Row: {
           amount: number
