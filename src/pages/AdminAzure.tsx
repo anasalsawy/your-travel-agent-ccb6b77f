@@ -15,6 +15,7 @@ type Preset = {
   method: string;
   path: string;
   body?: string;
+  service?: "management" | "ai";
 };
 
 const PRESETS: Preset[] = [
@@ -28,6 +29,36 @@ const PRESETS: Preset[] = [
     path: "/subscriptions/{sub}/resourceGroups/my-rg?api-version=2021-04-01",
     body: JSON.stringify({ location: "eastus" }, null, 2),
   },
+  { label: "— AI Foundry: List agents", method: "GET", path: "/assistants?api-version=v1", service: "ai" },
+  {
+    label: "— AI Foundry: Create agent",
+    method: "POST",
+    path: "/assistants?api-version=v1",
+    service: "ai",
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      name: "Booking Delegate",
+      instructions: "You are a booking-ops delegate for Your Travel Agent. Use provided tools to search/book.",
+      tools: [],
+    }, null, 2),
+  },
+  {
+    label: "— AI Foundry: Update agent (edit path)",
+    method: "POST",
+    path: "/assistants/asst_XXXX?api-version=v1",
+    service: "ai",
+    body: JSON.stringify({ instructions: "Updated instructions here" }, null, 2),
+  },
+  { label: "— AI Foundry: Delete agent (edit path)", method: "DELETE", path: "/assistants/asst_XXXX?api-version=v1", service: "ai" },
+  { label: "— AI Foundry: Create thread", method: "POST", path: "/threads?api-version=v1", service: "ai", body: "{}" },
+  {
+    label: "— AI Foundry: Run agent on thread (edit ids)",
+    method: "POST",
+    path: "/threads/thread_XXXX/runs?api-version=v1",
+    service: "ai",
+    body: JSON.stringify({ assistant_id: "asst_XXXX" }, null, 2),
+  },
+  { label: "— AI Foundry: List thread messages (edit id)", method: "GET", path: "/threads/thread_XXXX/messages?api-version=v1", service: "ai" },
 ];
 
 export default function AdminAzure() {
@@ -36,6 +67,7 @@ export default function AdminAzure() {
   const [method, setMethod] = useState("GET");
   const [path, setPath] = useState(PRESETS[0].path);
   const [body, setBody] = useState("");
+  const [service, setService] = useState<"management" | "ai">("management");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<any>(null);
   const navigate = useNavigate();
@@ -63,7 +95,7 @@ export default function AdminAzure() {
         catch { toast({ title: "Invalid JSON body", variant: "destructive" }); setRunning(false); return; }
       }
       const { data, error } = await supabase.functions.invoke("azure-rest", {
-        body: { method, path, body: parsedBody },
+        body: { method, path, body: parsedBody, service },
       });
       if (error) throw error;
       setResult(data);
@@ -82,6 +114,7 @@ export default function AdminAzure() {
     setMethod(p.method);
     setPath(p.path);
     setBody(p.body ?? "");
+    setService(p.service ?? "management");
   };
 
   if (loading) {
@@ -113,11 +146,18 @@ export default function AdminAzure() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-[110px_1fr] gap-2">
+              <div className="grid grid-cols-[110px_140px_1fr] gap-2">
                 <Select value={method} onValueChange={setMethod}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {["GET","POST","PUT","PATCH","DELETE"].map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={service} onValueChange={(v) => setService(v as any)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="management">Management</SelectItem>
+                    <SelectItem value="ai">AI Foundry</SelectItem>
                   </SelectContent>
                 </Select>
                 <Input value={path} onChange={e => setPath(e.target.value)} placeholder="/subscriptions/{sub}/resourceGroups?api-version=2021-04-01" />
