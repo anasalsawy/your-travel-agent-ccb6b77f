@@ -31,12 +31,56 @@ export interface BookingAdapter {
   get(product: Product, params: Record<string, unknown>): Promise<unknown>;
 }
 
+// Minimal IATA → coords for common airports so agents can pass 3-letter codes.
+const IATA_COORDS: Record<string, { latitude: number; longitude: number }> = {
+  CAI: { latitude: 30.1219, longitude: 31.4056 },
+  DXB: { latitude: 25.2532, longitude: 55.3657 },
+  SHJ: { latitude: 25.3286, longitude: 55.5172 },
+  IAH: { latitude: 29.9902, longitude: -95.3368 },
+  JFK: { latitude: 40.6413, longitude: -73.7781 },
+  LHR: { latitude: 51.4700, longitude: -0.4543 },
+  DOH: { latitude: 25.2731, longitude: 51.6080 },
+  MCT: { latitude: 23.5933, longitude: 58.2844 },
+};
+function resolveLoc(v: unknown) {
+  if (typeof v === "string" && IATA_COORDS[v.toUpperCase()]) return IATA_COORDS[v.toUpperCase()];
+  if (v && typeof v === "object") return v;
+  return v;
+}
+function normHotels(p: Record<string, unknown>) {
+  const out: Record<string, unknown> = { ...p };
+  if (p.check_in && !p.check_in_date) out.check_in_date = p.check_in;
+  if (p.check_out && !p.check_out_date) out.check_out_date = p.check_out;
+  if (typeof p.location === "string" && IATA_COORDS[(p.location as string).toUpperCase()]) {
+    const c = IATA_COORDS[(p.location as string).toUpperCase()];
+    out.latitude = c.latitude; out.longitude = c.longitude;
+    delete out.location;
+  }
+  if (typeof p.guests === "number") {
+    out.guests = Array.from({ length: p.guests as number }, () => ({ type: "adult" }));
+  }
+  return out;
+}
+function normCars(p: Record<string, unknown>) {
+  const out: Record<string, unknown> = { ...p };
+  out.pickup_location = resolveLoc(p.pickup_location);
+  out.dropoff_location = resolveLoc(p.dropoff_location);
+  const split = (v: unknown) => {
+    if (typeof v !== "string") return null;
+    if (v.includes("T")) { const [d, t] = v.split("T"); return { date: d, time: (t || "10:00").slice(0, 5) }; }
+    return { date: v, time: "10:00" };
+  };
+  if (!p.pickup_time) { const s = split(p.pickup_date); if (s) { out.pickup_date = s.date; out.pickup_time = s.time; } }
+  if (!p.dropoff_time) { const s = split(p.dropoff_date); if (s) { out.dropoff_date = s.date; out.dropoff_time = s.time; } }
+  return out;
+}
+
 export const duffelAdapter: BookingAdapter = {
   name: "duffel",
   async search(product, params) {
     if (product === "flights") return callInternal("duffel-search", params);
-    if (product === "hotels")  return callInternal("duffel-stays-search", params);
-    if (product === "cars")    return callInternal("duffel-cars-search", params);
+    if (product === "hotels")  return callInternal("duffel-stays-search", normHotels(params));
+    if (product === "cars")    return callInternal("duffel-cars-search", normCars(params));
     throw new Error("unknown product");
   },
   async create(product, params) {
