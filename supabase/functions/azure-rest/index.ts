@@ -42,11 +42,14 @@ async function getToken(resource: string): Promise<string> {
 // Resolve resource base for a target URL
 function resourceFor(url: string): string {
   if (url.includes("graph.microsoft.com")) return "https://graph.microsoft.com";
+  if (url.includes("services.ai.azure.com") || url.includes("ai.azure.com"))
+    return "https://ai.azure.com";
   if (url.includes("cognitiveservices.azure.com") || url.includes("openai.azure.com"))
     return "https://cognitiveservices.azure.com";
-  if (url.includes("ai.azure.com")) return "https://ai.azure.com";
   return "https://management.azure.com";
 }
+
+const AI_PROJECT = Deno.env.get("AZURE_AI_PROJECT_ENDPOINT") ?? "";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
