@@ -105,3 +105,7 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.dual-lobe-demo]
     verify_jwt = false
+  [functions.azure-agent-run]
+    verify_jwt = false
+  [functions.azure-bootstrap-rbac]
+    verify_jwt = false

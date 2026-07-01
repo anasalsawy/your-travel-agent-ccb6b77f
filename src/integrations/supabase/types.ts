@@ -245,6 +245,63 @@ export type Database = {
           },
         ]
       }
+      azure_agent_threads: {
+        Row: {
+          assistant_id: string
+          channel: string
+          created_at: string
+          external_id: string
+          id: string
+          last_message_at: string
+          thread_id: string
+        }
+        Insert: {
+          assistant_id: string
+          channel: string
+          created_at?: string
+          external_id: string
+          id?: string
+          last_message_at?: string
+          thread_id: string
+        }
+        Update: {
+          assistant_id?: string
+          channel?: string
+          created_at?: string
+          external_id?: string
+          id?: string
+          last_message_at?: string
+          thread_id?: string
+        }
+        Relationships: []
+      }
+      azure_assistants: {
+        Row: {
+          assistant_id: string
+          instructions: string | null
+          model: string
+          name: string | null
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          assistant_id: string
+          instructions?: string | null
+          model: string
+          name?: string | null
+          role: string
+          updated_at?: string
+        }
+        Update: {
+          assistant_id?: string
+          instructions?: string | null
+          model?: string
+          name?: string | null
+          role?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bids: {
         Row: {
           amount: number
