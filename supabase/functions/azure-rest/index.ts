@@ -97,6 +97,7 @@ Deno.serve(async (req) => {
       url,            // OR full URL (overrides path)
       body: reqBody,
       apiVersion,     // optional override for management default
+      service,        // "management" (default) | "ai" (Azure AI Foundry project)
     } = body ?? {};
 
     let target: string;
@@ -105,9 +106,21 @@ Deno.serve(async (req) => {
     } else if (path) {
       let p: string = path.startsWith("/") ? path : "/" + path;
       p = p.replace("{subscriptionId}", SUBSCRIPTION).replace("{sub}", SUBSCRIPTION);
-      target = "https://management.azure.com" + p;
-      if (apiVersion && !target.includes("api-version=")) {
-        target += (target.includes("?") ? "&" : "?") + "api-version=" + apiVersion;
+      if (service === "ai") {
+        if (!AI_PROJECT) {
+          return new Response(JSON.stringify({ error: "AZURE_AI_PROJECT_ENDPOINT not configured" }), {
+            status: 400, headers: { ...corsHeaders, "content-type": "application/json" },
+          });
+        }
+        target = AI_PROJECT.replace(/\/$/, "") + p;
+        if (!target.includes("api-version=")) {
+          target += (target.includes("?") ? "&" : "?") + "api-version=" + (apiVersion ?? "v1");
+        }
+      } else {
+        target = "https://management.azure.com" + p;
+        if (apiVersion && !target.includes("api-version=")) {
+          target += (target.includes("?") ? "&" : "?") + "api-version=" + apiVersion;
+        }
       }
     } else {
       return new Response(JSON.stringify({ error: "path or url required" }), {
