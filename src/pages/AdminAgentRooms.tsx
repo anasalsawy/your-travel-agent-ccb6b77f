@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader2, Send, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { VapiLivePanel } from "@/components/agents/VapiLivePanel";
 
 type Room = "builders" | "shoppers";
 type RoomRow = { id: string; room: Room; title: string | null; updated_at: string };
@@ -135,6 +136,7 @@ function RoomView({ room }: { room: Room }) {
 
       <Card className="flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <VapiLivePanel roomId={activeId} />
           {messages.length === 0 && (
             <div className="text-center text-sm text-muted-foreground py-8">
               {room === "builders"
