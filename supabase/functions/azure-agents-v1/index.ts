@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
           const rows = await pr.json();
           profile = Array.isArray(rows) ? rows[0] ?? null : null;
         } catch { /* ignore */ }
-          {
+        const VAPI_TOOLS = [
             type: "function",
             function: {
               name: "vapi_call",
