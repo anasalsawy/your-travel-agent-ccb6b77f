@@ -189,22 +189,51 @@ async function runOnce(agentName: string, conversationId: string, userMessage: s
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  const t0 = Date.now();
+  let runRow: string | null = null;
+  let agentName = "", message = "", channel = "war-room", externalId = "war-room", source = "unknown";
   try {
     const body = await req.json();
-    const agentName = String(body.agentName ?? "").trim();
-    const message = String(body.message ?? "").trim();
-    const channel = String(body.channel ?? "war-room");
-    const externalId = String(body.externalId ?? "war-room");
+    agentName = String(body.agentName ?? "").trim();
+    message = String(body.message ?? "").trim();
+    channel = String(body.channel ?? "war-room");
+    externalId = String(body.externalId ?? "war-room");
+    source = String(body.source ?? "unknown");
     if (!agentName) return j({ ok: false, error: "agentName required" }, 400);
     if (!ROSTER[agentName]) return j({ ok: false, error: "unknown agent: " + agentName }, 400);
     if (!message) return j({ ok: false, error: "message required" }, 400);
 
+    const ins = await sb.from("foundry_runs").insert({
+      agent_name: agentName, source, channel, external_id: externalId,
+      request_message: message.slice(0, 4000), status: "started",
+    }).select("id").single();
+    runRow = ins.data?.id ?? null;
+
     const conversationId = await ensureConversation(agentName, channel, externalId);
     const out = await runOnce(agentName, conversationId, message);
-    return j({ ok: true, text: out.text, steps: out.steps, conversationId, responseId: out.responseId, agentName });
+
+    if (runRow) {
+      await sb.from("foundry_runs").update({
+        conversation_id: conversationId,
+        response_id: out.responseId,
+        final_text: (out.text ?? "").slice(0, 4000),
+        steps: out.steps,
+        status: "completed",
+        ended_at: new Date().toISOString(),
+        duration_ms: Date.now() - t0,
+      }).eq("id", runRow);
+    }
+    return j({ ok: true, text: out.text, steps: out.steps, conversationId, responseId: out.responseId, agentName, runId: runRow });
   } catch (e) {
-    console.error("foundry-agent-run:", e);
-    return j({ ok: false, error: (e as Error).message }, 500);
+    const msg = (e as Error).message;
+    console.error("foundry-agent-run:", msg);
+    if (runRow) {
+      await sb.from("foundry_runs").update({
+        status: "failed", error: msg.slice(0, 4000),
+        ended_at: new Date().toISOString(), duration_ms: Date.now() - t0,
+      }).eq("id", runRow);
+    }
+    return j({ ok: false, error: msg, runId: runRow }, 500);
   }
 });
 

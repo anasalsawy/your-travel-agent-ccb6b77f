@@ -189,7 +189,7 @@ async function tick() {
       const r = await fetch(SB_URL + "/functions/v1/foundry-agent-run", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
-        body: JSON.stringify({ agentName: nextName, channel: "war-room", externalId: "war-room", message }),
+        body: JSON.stringify({ agentName: nextName, channel: "war-room", externalId: "war-room", message, source: "cron-tick" }),
       });
       const jr = await r.json();
       // If the agent didn't post via war_room_post but returned final text, mirror it.
