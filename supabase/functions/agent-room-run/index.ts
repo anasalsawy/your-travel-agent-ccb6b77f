@@ -127,17 +127,31 @@ Deno.serve(async (req) => {
       room_id: rid, agent_name: "You", role: "user", content: text,
     });
 
-    // Fire the workflow agent via Foundry Responses API (per-agent endpoint)
+    // Get or create a Foundry conversation for this room (persists multi-turn history)
+    const { data: roomRow } = await sb.from("agent_rooms").select("azure_conversation_id").eq("id", rid).maybeSingle();
+    let convId = roomRow?.azure_conversation_id as string | undefined;
+    if (!convId) {
+      try {
+        const conv = await azRaw("POST", "/openai/v1/conversations", {});
+        convId = conv?.id;
+        if (convId) await sb.from("agent_rooms").update({ azure_conversation_id: convId }).eq("id", rid);
+      } catch (e) {
+        await sb.from("agent_room_messages").insert({
+          room_id: rid, agent_name: "system", role: "error", content: "conversation create: " + (e as Error).message,
+        });
+      }
+    }
+
+    // Fire the workflow agent via Foundry Responses API (agent_reference in body)
     const body: any = {
-      input: [{ role: "user", content: text }],
+      input: text,
+      agent_reference: { name: orch, type: "agent_reference" },
     };
-    // Reuse previous_response_id for continuity
-    const { data: last } = await sb.from("agent_rooms").select("azure_response_id").eq("id", rid).maybeSingle();
-    if (last?.azure_response_id) body.previous_response_id = last.azure_response_id;
+    if (convId) body.conversation = convId;
 
     let resp: any;
     try {
-      resp = await az("POST", "/agents/" + encodeURIComponent(orch) + "/responses", body);
+      resp = await azRaw("POST", "/openai/v1/responses", body);
     } catch (e) {
       const err = (e as Error).message;
       await sb.from("agent_room_messages").insert({
