@@ -111,3 +111,11 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.azure-bootstrap-rbac]
     verify_jwt = false
+  [functions.vapi-webhook]
+    verify_jwt = false
+  [functions.vapi-call-start]
+    verify_jwt = false
+  [functions.vapi-call-inject]
+    verify_jwt = false
+  [functions.vapi-call-hangup]
+    verify_jwt = false
