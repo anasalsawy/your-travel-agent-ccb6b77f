@@ -317,18 +317,66 @@ const BOOKING_TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "lookup_reservation",
-    description: "Look up any reservation (Duffel or internal) by PNR, order id, email, or phone.",
+    name: "find_customer_booking",
+    description: "Search OUR internal database for any customer's booking or ticket request. Works across every booking we made, regardless of which admin/agent placed it. Provide at least one filter. Matches partial passenger names, emails, phones, PNRs, Duffel order ids, or Stripe session ids.",
     parameters: {
       type: "object",
       properties: {
-        pnr: { type: "string" },
-        order_id: { type: "string" },
-        email: { type: "string" },
-        phone: { type: "string" },
+        name: { type: "string", description: "Passenger name — partial ok, case-insensitive." },
+        email: { type: "string", description: "Contact email — partial ok." },
+        phone: { type: "string", description: "Contact phone — partial ok." },
+        pnr: { type: "string", description: "Airline PNR / booking reference." },
+        order_id: { type: "string", description: "Duffel order id, e.g. ord_xxx." },
+        stripe_session_id: { type: "string" },
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 20 },
       },
     },
-    execute: async (a) => callFn("lookup-reservation", a),
+    execute: async (a) => {
+      const limit = a.limit ?? 20;
+      const results: Record<string, unknown> = {};
+      {
+        let q = sb.from("duffel_bookings")
+          .select("id, offer_id, duffel_order_id, booking_reference, status, contact_email, contact_phone, passengers, customer_amount, customer_currency, created_at")
+          .order("created_at", { ascending: false }).limit(limit);
+        const ors: string[] = [];
+        if (a.email) ors.push("contact_email.ilike.%" + a.email + "%");
+        if (a.phone) ors.push("contact_phone.ilike.%" + a.phone + "%");
+        if (a.pnr) ors.push("booking_reference.ilike.%" + a.pnr.toUpperCase() + "%");
+        if (a.order_id) ors.push("duffel_order_id.eq." + a.order_id);
+        if (a.stripe_session_id) ors.push("stripe_session_id.eq." + a.stripe_session_id);
+        if (a.name) ors.push("passengers::text.ilike.%" + a.name + "%");
+        if (ors.length) q = q.or(ors.join(","));
+        const { data, error } = await q;
+        results.duffel_bookings = error ? { error: error.message } : (data ?? []);
+      }
+      {
+        let q = sb.from("ticket_requests")
+          .select("id, origin, destination, departure_date, return_date, passengers, contact_email, contact_phone, status, quoted_price, issued_ticket_info, created_at")
+          .order("created_at", { ascending: false }).limit(limit);
+        const ors: string[] = [];
+        if (a.email) ors.push("contact_email.ilike.%" + a.email + "%");
+        if (a.phone) ors.push("contact_phone.ilike.%" + a.phone + "%");
+        if (a.pnr) ors.push("issued_ticket_info.ilike.%" + a.pnr + "%");
+        if (a.stripe_session_id) ors.push("stripe_session_id.eq." + a.stripe_session_id);
+        if (a.name) ors.push("special_notes.ilike.%" + a.name + "%");
+        if (ors.length) q = q.or(ors.join(","));
+        const { data, error } = await q;
+        results.ticket_requests = error ? { error: error.message } : (data ?? []);
+      }
+      return { ok: true, ...results };
+    },
+  },
+  {
+    name: "lookup_alaska_reservation",
+    description: "Look up an Alaska Airlines reservation via automated browser (Skyvern). Alaska-only. Needs airline PNR + passenger last name. Takes ~60-90s. Do NOT use for other airlines.",
+    parameters: {
+      type: "object", required: ["pnr", "last_name"],
+      properties: {
+        pnr: { type: "string", description: "Alaska confirmation code, 6 chars" },
+        last_name: { type: "string", description: "Passenger last name as on the booking" },
+      },
+    },
+    execute: async (a) => callFn("lookup-reservation", { pnr: a.pnr, last_name: a.last_name, airline: "alaska" }),
   },
   {
     name: "create_stripe_payment_link",
