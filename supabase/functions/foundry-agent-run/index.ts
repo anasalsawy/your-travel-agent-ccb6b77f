@@ -144,7 +144,7 @@ async function ensureThread(agentName: string, channel: string, externalId: stri
 
 async function runOnce(agentName: string, agentId: string, threadId: string, userMessage: string) {
   await az("POST", "/threads/" + threadId + "/messages", { role: "user", content: userMessage });
-  let run = await az("POST", "/threads/" + threadId + "/runs", { assistant_id: agentId });
+  let run = await az("POST", "/threads/" + threadId + "/runs", { agent_id: agentId, assistant_id: agentId });
   const steps: any[] = [];
   const started = Date.now();
   while (true) {
