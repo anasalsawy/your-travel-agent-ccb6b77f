@@ -1777,6 +1777,42 @@ export type Database = {
         }
         Relationships: []
       }
+      shopper_profile: {
+        Row: {
+          bill_to: Json
+          budget_daily_cap_usd: number | null
+          id: number
+          notes: string | null
+          payment_brand: string | null
+          payment_last4: string | null
+          payment_ref: string | null
+          ship_to: Json
+          updated_at: string
+        }
+        Insert: {
+          bill_to?: Json
+          budget_daily_cap_usd?: number | null
+          id?: number
+          notes?: string | null
+          payment_brand?: string | null
+          payment_last4?: string | null
+          payment_ref?: string | null
+          ship_to?: Json
+          updated_at?: string
+        }
+        Update: {
+          bill_to?: Json
+          budget_daily_cap_usd?: number | null
+          id?: number
+          notes?: string | null
+          payment_brand?: string | null
+          payment_last4?: string | null
+          payment_ref?: string | null
+          ship_to?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       site_settings: {
         Row: {
           id: string
