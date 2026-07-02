@@ -2,7 +2,6 @@ const TENANT = Deno.env.get("AZURE_TENANT_ID")!;
 const CID = Deno.env.get("AZURE_CLIENT_ID")!;
 const SEC = Deno.env.get("AZURE_CLIENT_SECRET")!;
 const EP = (Deno.env.get("AZURE_AI_PROJECT_ENDPOINT") ?? "").replace(/\/$/, "");
-
 async function tok() {
   const r = await fetch("https://login.microsoftonline.com/" + TENANT + "/oauth2/v2.0/token", {
     method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -10,55 +9,36 @@ async function tok() {
   });
   return (await r.json()).access_token as string;
 }
-
 Deno.serve(async () => {
   const results: any[] = [];
   const t = await tok();
-  const hit = async (label: string, method: string, fullPath: string, body?: unknown) => {
-    const url = EP + fullPath;
+  const hit = async (label: string, body: unknown) => {
     try {
-      const r = await fetch(url, {
-        method,
+      const r = await fetch(EP + "/openai/v1/responses", {
+        method: "POST",
         headers: { Authorization: "Bearer " + t, "content-type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined,
+        body: JSON.stringify(body),
       });
       const txt = await r.text();
-      results.push({ label, method, fullPath, status: r.status, body, resp: txt.slice(0, 500) });
-      return { status: r.status, txt };
-    } catch (e) { results.push({ label, error: (e as Error).message }); return { status: 0, txt: "" }; }
+      results.push({ label, status: r.status, body, resp: txt.slice(0, 600) });
+    } catch (e) { results.push({ label, error: (e as Error).message }); }
   };
-
   const N = "BUILDEROFAGENTS";
-
-  // Responses API — Azure hint said "Use /v1 path instead"
-  await hit("responses-v1", "POST", "/openai/v1/responses", { model: N, input: "ping" });
-  await hit("responses-v1-agent", "POST", "/openai/v1/responses", { agent: { name: N }, input: "ping" });
-  await hit("responses-v1-agent_id", "POST", "/openai/v1/responses", { agent_id: N, input: "ping" });
-  await hit("responses-v1-extra_body", "POST", "/openai/v1/responses", { input: "ping", extra_body: { agent_id: N } });
-
-  // Chat completions v1
-  await hit("chat-v1", "POST", "/openai/v1/chat/completions", { model: N, messages: [{role:"user",content:"ping"}] });
-
-  // Conversations flow
-  const conv = await hit("create-conv", "POST", "/conversations?api-version=v1", {});
-  let convId = ""; try { convId = JSON.parse(conv.txt).id; } catch {}
-  if (convId) {
-    await hit("conv-messages", "POST", "/conversations/"+convId+"/messages?api-version=v1", { role: "user", content: "ping" });
-    await hit("conv-runs-assist", "POST", "/conversations/"+convId+"/runs?api-version=v1", { assistant_id: N });
-    await hit("conv-runs-agent", "POST", "/conversations/"+convId+"/runs?api-version=v1", { agent_id: N });
-    await hit("conv-responses", "POST", "/openai/v1/responses", { conversation: convId, agent_id: N, input: "ping" });
-    await hit("conv-responses-model", "POST", "/openai/v1/responses", { conversation: convId, model: N, input: "ping" });
+  const M = "gpt-5.3-codex";
+  const types = ["agent_reference","azure_ai_agent","foundry_agent","project_agent","agent","named_agent","prompt_agent","ai_foundry_agent","microsoft.agent","microsoft.foundry_agent"];
+  for (const type of types) {
+    await hit("agent.type="+type, { model: M, input: "ping", agent: { type, name: N } });
   }
-
-  // Discover via OpenAPI
-  await hit("v1-root", "GET", "/openai/v1");
-  await hit("v1-models", "GET", "/openai/v1/models");
-  await hit("agent-versions", "GET", "/agents/"+N+"/versions?api-version=v1");
-  await hit("agent-tools", "GET", "/agents/"+N+"/tools?api-version=v1");
-
-  // Try foundry runtime "prompts" endpoint
-  await hit("run-agent-prompt", "POST", "/agents/"+N+"/run?api-version=v1", { input: "ping" });
-  await hit("execute", "POST", "/agents/"+N+"/execute?api-version=v1", { input: "ping" });
-
-  return new Response(JSON.stringify({ endpoint: EP, results }, null, 2), { headers: { "content-type": "application/json" } });
+  // Try id instead of name
+  for (const type of ["agent_reference","azure_ai_agent","foundry_agent"]) {
+    await hit("agent.id="+type, { model: M, input: "ping", agent: { type, id: N } });
+  }
+  // Try no model, with agent.type
+  await hit("no-model agent_reference", { input: "ping", agent: { type: "agent_reference", name: N } });
+  // Try tools style
+  await hit("tools.azure_agent", { model: M, input: "ping", tools: [{ type: "azure_ai_agent", name: N }] });
+  // Try Foundry doc suggestion 'prompt'
+  await hit("prompt.reference", { model: M, input: "ping", prompt: { id: N } });
+  await hit("prompt.name", { model: M, input: "ping", prompt: { name: N } });
+  return new Response(JSON.stringify({ results }, null, 2), { headers: { "content-type": "application/json" } });
 });
