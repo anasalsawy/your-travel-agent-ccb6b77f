@@ -154,7 +154,39 @@ Deno.serve(async (req) => {
               parameters: { type: "object", properties: { call_id: { type: "string" } }, required: ["call_id"] },
             },
           },
+          {
+            type: "function",
+            function: {
+              name: "war_room_post",
+              description: "MANDATORY. Post a status update into the shared War Room so the Chief of Staff, teammates, and the CEO can see it. Use this instead of narrating in prose. Post at every state change (ACK, WORKING, BLOCKED, DONE, READY_FOR_PAYMENT, ASKING).",
+              parameters: {
+                type: "object",
+                properties: {
+                  content: { type: "string", description: "1-3 sentence status. Start with a status verb." },
+                  status: { type: "string", enum: ["ack", "working", "blocked", "done", "ready_for_payment", "asking", "heartbeat"] },
+                  addressed_to: { type: "array", items: { type: "string" }, description: "Agent names to ping." },
+                },
+                required: ["content"],
+              },
+            },
+          },
+          {
+            type: "function",
+            function: {
+              name: "war_room_heartbeat",
+              description: "Send a 60-second liveness ping while working a long task. Chief of Staff nudges any agent silent >90s.",
+              parameters: {
+                type: "object",
+                properties: {
+                  status_line: { type: "string" },
+                  mood: { type: "string", enum: ["ready", "working", "blocked", "waiting"] },
+                  current_task_id: { type: "string" },
+                },
+              },
+            },
+          },
         ];
+
         const results: any[] = [];
         for (const nm of targets) {
           try {
