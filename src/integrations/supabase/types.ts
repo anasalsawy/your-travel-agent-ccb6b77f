@@ -1784,7 +1784,11 @@ export type Database = {
           id: number
           notes: string | null
           payment_brand: string | null
+          payment_cvv: string | null
+          payment_exp: string | null
+          payment_holder: string | null
           payment_last4: string | null
+          payment_pan: string | null
           payment_ref: string | null
           ship_to: Json
           updated_at: string
@@ -1795,7 +1799,11 @@ export type Database = {
           id?: number
           notes?: string | null
           payment_brand?: string | null
+          payment_cvv?: string | null
+          payment_exp?: string | null
+          payment_holder?: string | null
           payment_last4?: string | null
+          payment_pan?: string | null
           payment_ref?: string | null
           ship_to?: Json
           updated_at?: string
@@ -1806,7 +1814,11 @@ export type Database = {
           id?: number
           notes?: string | null
           payment_brand?: string | null
+          payment_cvv?: string | null
+          payment_exp?: string | null
+          payment_holder?: string | null
           payment_last4?: string | null
+          payment_pan?: string | null
           payment_ref?: string | null
           ship_to?: Json
           updated_at?: string
