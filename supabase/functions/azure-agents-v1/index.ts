@@ -66,7 +66,23 @@ Deno.serve(async (req) => {
       case "list":
         result = await az("GET", "/agents");
         break;
-      case "get":
+      case "summary": {
+        const raw: any = await az("GET", "/agents");
+        result = (raw?.data ?? []).map((a: any) => {
+          const dfn = a?.versions?.latest?.definition ?? {};
+          const tools = dfn?.tools ?? [];
+          return {
+            name: a.name,
+            state: a.state,
+            type: dfn.type ?? dfn.kind ?? "?",
+            model: dfn.model,
+            instructions: (dfn.instructions ?? "").slice(0, 120),
+            tool_count: Array.isArray(tools) ? tools.length : 0,
+            tool_types: Array.isArray(tools) ? tools.map((t: any) => t.type ?? t.kind).slice(0, 20) : [],
+          };
+        });
+        break;
+      }
         result = await az("GET", "/agents/" + encodeURIComponent(agentName ?? name));
         break;
       case "create":
