@@ -1,0 +1,1 @@
+DELETE FROM public.azure_assistants; DELETE FROM public.azure_agent_threads;
