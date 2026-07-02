@@ -26,6 +26,7 @@ import VoiceProxy from "./pages/VoiceProxy";
 import AdminDuffelCard from "./pages/AdminDuffelCard";
 import AdminAzure from "./pages/AdminAzure";
 import AdminDualLobe from "./pages/AdminDualLobe";
+import AdminAgentRooms from "./pages/AdminAgentRooms";
 import { lazy, Suspense } from "react";
 
 const MobileLogin = lazy(() => import("./pages/mobile-admin/MobileLogin"));
