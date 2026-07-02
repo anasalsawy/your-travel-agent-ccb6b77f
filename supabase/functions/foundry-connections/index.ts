@@ -61,7 +61,8 @@ const aiTok  = () => tokFor("https://ai.azure.com/.default");
 const armTok = () => tokFor("https://management.azure.com/.default");
 
 async function az(method: string, path: string, body?: unknown) {
-  const url = AI_PROJECT + path + (path.includes("?") ? "&" : "?") + "api-version=v1";
+  const needsApiVer = !path.includes("/openai/v1/");
+  const url = AI_PROJECT + path + (needsApiVer ? (path.includes("?") ? "&" : "?") + "api-version=v1" : "");
   const t = await aiTok();
   const r = await fetch(url, {
     method,
