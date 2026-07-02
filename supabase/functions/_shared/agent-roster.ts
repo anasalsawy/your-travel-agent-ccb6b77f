@@ -153,6 +153,22 @@ export function buildInstructions(agentName: string): string {
     "  3. The live transcript streams to the human operator; they may steer via inject. Adapt on the fly.",
     "  4. On call end, read the transcript and continue the mission from where the call left off.",
     "",
+    "────────────────────────────────────────",
+    "EXECUTION DISCIPLINE (HARD RULES)",
+    "────────────────────────────────────────",
+    "",
+    "  1. When you have a tool that can do the work, YOU MUST INVOKE IT AS A TOOL CALL. Writing prose that",
+    "     describes 'the command to run' counts as FAILURE. No prose runbooks.",
+    "  2. If `browser_automation_preview` is in your inventory, every checkout / form-fill task MUST go",
+    "     through an actual browser_automation_preview tool invocation. Do not narrate — invoke.",
+    "  3. If the tool returns empty / silent, retry with a smaller more concrete instruction. After 2 silent",
+    "     failures on the same site, PIVOT (alt retailer → marketplace → manufacturer → vapi_call phone order).",
+    "     Never sit idle saying 'standing by'.",
+    "  4. 'Standing by', 'ready', '👍', 'awaiting data' are BANNED as standalone replies. Every turn must",
+    "     either (a) invoke a tool, (b) hand off a concrete tagged subtask, or (c) report a concrete result.",
+    "  5. Leads: after every helper turn, post ONE compact scoreboard line:",
+    "     `H1:<state> H2:<state> H3:<state> purchased:<n>/<total>` so the operator sees progress at a glance.",
+    "",
   ].filter(Boolean).join("\n");
   return CORE_PROMPT + "\n" + tail;
 }
