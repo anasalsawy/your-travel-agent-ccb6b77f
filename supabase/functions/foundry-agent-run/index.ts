@@ -1,9 +1,11 @@
-// Generic Azure AI Foundry Agent runtime bridge.
-// Runs ANY agent in the ROSTER by name (shopper/builder/etc), using the /agents +
-// /threads + /threads/{id}/runs surface. Executes any locally-implemented function
-// tools (vapi_*, war_room_post) and returns the final assistant text.
+// Azure AI Foundry Agent Service bridge — NEW Responses/Conversations API.
+// Runs prompt-style agents (plain names like "BUILDEROFAGENTS") via:
+//   POST /openai/v1/conversations         (create conversation, once per channel+external_id+agent)
+//   POST /openai/v1/responses             (create response, submit tool outputs on next call)
+// Executes locally-implemented function tools (vapi_*, war_room_post, war_room_heartbeat)
+// and returns the final assistant text.
 //
-// POST { agentName, message, channel?, externalId? } -> { ok, text, steps, threadId }
+// POST { agentName, message, channel?, externalId? } -> { ok, text, steps, conversationId }
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ROSTER } from "../_shared/agent-roster.ts";
@@ -43,15 +45,16 @@ async function tok() {
 
 async function az(method: string, path: string, body?: unknown) {
   if (!AI_PROJECT) throw new Error("AZURE_AI_PROJECT_ENDPOINT not set");
-  const url = AI_PROJECT + path + (path.includes("?") ? "&" : "?") + "api-version=v1";
+  // Responses/Conversations API paths already include /openai/v1; no api-version query needed there,
+  // but harmless. For /agents management surface, api-version=v1 is required.
+  const needsApiVer = !path.includes("/openai/v1/");
+  const url = AI_PROJECT + path + (needsApiVer ? (path.includes("?") ? "&" : "?") + "api-version=v1" : "");
   const t = await tok();
   const r = await fetch(url, {
     method,
     headers: {
       Authorization: "Bearer " + t,
       "content-type": "application/json",
-      "x-ms-enable-preview": "true",
-      "Foundry-Features": "WorkflowAgents=V1Preview",
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -71,8 +74,6 @@ async function callFn(name: string, payload: unknown) {
   try { return JSON.parse(t); } catch { return { raw: t, status: r.status }; }
 }
 
-// Locally-implemented function tools (mirrors the tool declarations
-// applied to Foundry agents by azure-agents-v1 apply-roster).
 async function execLocalTool(name: string, args: any, ctx: { agentName: string }): Promise<unknown> {
   switch (name) {
     case "vapi_call":    return callFn("vapi-call", args);
@@ -111,74 +112,80 @@ async function execLocalTool(name: string, args: any, ctx: { agentName: string }
   }
 }
 
-async function resolveAgentId(agentName: string): Promise<string> {
-  // Must return the real Foundry assistant id (starts with "asst_").
-  if (agentName.startsWith("asst_")) return agentName;
-  // Paginate through /agents to find by name.
-  let after: string | undefined;
-  for (let page = 0; page < 20; page++) {
-    const q = "/agents?limit=100" + (after ? "&after=" + encodeURIComponent(after) : "");
-    const list = await az("GET", q);
-    const items = Array.isArray(list) ? list : (list?.data ?? list?.value ?? []);
-    const hit = items.find((a: any) => a?.name === agentName);
-    if (hit?.id) return hit.id;
-    if (!list?.has_more || !items.length) break;
-    after = items[items.length - 1]?.id;
-    if (!after) break;
-  }
-  throw new Error("agent not found in Foundry: " + agentName);
-}
-
-async function ensureThread(agentName: string, channel: string, externalId: string, agentId: string): Promise<string> {
+async function ensureConversation(agentName: string, channel: string, externalId: string): Promise<string> {
   const { data } = await sb.from("azure_agent_threads")
     .select("thread_id")
-    .eq("channel", channel).eq("external_id", externalId).eq("assistant_id", agentId)
+    .eq("channel", channel).eq("external_id", externalId).eq("assistant_id", agentName)
     .maybeSingle();
   if (data?.thread_id) return data.thread_id;
-  const t = await az("POST", "/threads", {});
+  const c = await az("POST", "/openai/v1/conversations", {});
   await sb.from("azure_agent_threads").insert({
-    channel, external_id: externalId, assistant_id: agentId, thread_id: t.id,
+    channel, external_id: externalId, assistant_id: agentName, thread_id: c.id,
   });
-  return t.id;
+  return c.id;
 }
 
-async function runOnce(agentName: string, agentId: string, threadId: string, userMessage: string) {
-  await az("POST", "/threads/" + threadId + "/messages", { role: "user", content: userMessage });
-  let run = await az("POST", "/threads/" + threadId + "/runs", { agent_id: agentId, assistant_id: agentId });
+// Extract assistant text + function_call items from a Response object.
+function parseResponse(resp: any) {
+  const items: any[] = Array.isArray(resp?.output) ? resp.output : [];
+  const functionCalls: { call_id: string; name: string; arguments: string }[] = [];
+  const textParts: string[] = [];
+  for (const it of items) {
+    if (it?.type === "function_call") {
+      functionCalls.push({ call_id: it.call_id, name: it.name, arguments: it.arguments ?? "{}" });
+    } else if (it?.type === "message") {
+      const c = Array.isArray(it.content) ? it.content : [];
+      for (const p of c) {
+        if (p?.type === "output_text" && typeof p.text === "string") textParts.push(p.text);
+        else if (typeof p?.text === "string") textParts.push(p.text);
+      }
+    }
+  }
+  // Convenience: some responses expose output_text directly.
+  if (!textParts.length && typeof resp?.output_text === "string") textParts.push(resp.output_text);
+  return { text: textParts.join("\n").trim(), functionCalls };
+}
+
+async function runOnce(agentName: string, conversationId: string, userMessage: string) {
+  const agentRef = { type: "agent_reference", name: agentName };
   const steps: any[] = [];
   const started = Date.now();
-  while (true) {
+
+  let resp = await az("POST", "/openai/v1/responses", {
+    agent_reference: agentRef,
+    conversation: conversationId,
+    input: [{ role: "user", content: userMessage }],
+  });
+
+  for (let hop = 0; hop < 10; hop++) {
     if (Date.now() - started > 110_000) throw new Error("run timeout");
-    if (run.status === "completed") break;
-    if (["failed", "cancelled", "expired"].includes(run.status)) {
-      throw new Error("run " + run.status + ": " + JSON.stringify(run.last_error ?? {}));
+    const { text, functionCalls } = parseResponse(resp);
+    if (functionCalls.length === 0) {
+      return { text, steps, conversationId, responseId: resp?.id };
     }
-    if (run.status === "requires_action" && run.required_action?.type === "submit_tool_outputs") {
-      const calls = run.required_action.submit_tool_outputs.tool_calls ?? [];
-      const outputs: { tool_call_id: string; output: string }[] = [];
-      for (const c of calls) {
-        const name = c.function?.name;
-        let args: any = {};
-        try { args = JSON.parse(c.function?.arguments ?? "{}"); } catch { /* keep */ }
-        let result: unknown;
-        try { result = await execLocalTool(name, args, { agentName }); }
-        catch (e) { result = { error: (e as Error).message }; }
-        steps.push({ tool: name, args, result });
-        outputs.push({ tool_call_id: c.id, output: JSON.stringify(result) });
-      }
-      run = await az("POST", "/threads/" + threadId + "/runs/" + run.id + "/submit_tool_outputs", { tool_outputs: outputs });
-      continue;
+    // Execute tools locally, then submit outputs as a follow-up response.
+    const outputs: any[] = [];
+    for (const fc of functionCalls) {
+      let args: any = {};
+      try { args = JSON.parse(fc.arguments || "{}"); } catch { /* keep */ }
+      let result: unknown;
+      try { result = await execLocalTool(fc.name, args, { agentName }); }
+      catch (e) { result = { error: (e as Error).message }; }
+      steps.push({ tool: fc.name, args, result });
+      outputs.push({
+        type: "function_call_output",
+        call_id: fc.call_id,
+        output: typeof result === "string" ? result : JSON.stringify(result),
+      });
     }
-    await new Promise((r) => setTimeout(r, 700));
-    run = await az("GET", "/threads/" + threadId + "/runs/" + run.id);
+    resp = await az("POST", "/openai/v1/responses", {
+      agent_reference: agentRef,
+      conversation: conversationId,
+      input: outputs,
+      previous_response_id: resp?.id,
+    });
   }
-  const msgs = await az("GET", "/threads/" + threadId + "/messages?limit=1&order=desc");
-  const latest = msgs.data?.[0];
-  let text = "";
-  if (Array.isArray(latest?.content)) {
-    text = latest.content.map((c: any) => c?.type === "text" ? (c.text?.value ?? "") : "").filter(Boolean).join("\n");
-  }
-  return { text, steps, threadId };
+  throw new Error("tool loop exceeded 10 hops");
 }
 
 Deno.serve(async (req) => {
@@ -193,10 +200,9 @@ Deno.serve(async (req) => {
     if (!ROSTER[agentName]) return j({ ok: false, error: "unknown agent: " + agentName }, 400);
     if (!message) return j({ ok: false, error: "message required" }, 400);
 
-    const agentId = await resolveAgentId(agentName);
-    const threadId = await ensureThread(agentName, channel, externalId, agentId);
-    const out = await runOnce(agentName, agentId, threadId, message);
-    return j({ ok: true, text: out.text, steps: out.steps, threadId, agentId, agentName });
+    const conversationId = await ensureConversation(agentName, channel, externalId);
+    const out = await runOnce(agentName, conversationId, message);
+    return j({ ok: true, text: out.text, steps: out.steps, conversationId, responseId: out.responseId, agentName });
   } catch (e) {
     console.error("foundry-agent-run:", e);
     return j({ ok: false, error: (e as Error).message }, 500);
