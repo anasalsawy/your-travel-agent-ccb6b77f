@@ -23,7 +23,7 @@ type Event = {
   call_id: string;
   role: string; // user | assistant | system | tool | steer
   content: string;
-  created_at: string;
+  at: string;
 };
 
 const roleColor: Record<string, string> = {
@@ -76,7 +76,7 @@ export function VapiLivePanel({ roomId }: { roomId: string | null }) {
     if (!call) { setEvents([]); return; }
     (async () => {
       const { data } = await supabase
-        .from("vapi_call_events").select("*").eq("call_id", call.id).order("created_at");
+        .from("vapi_call_events").select("*").eq("call_id", call.id).order("at");
       setEvents((data ?? []) as Event[]);
     })();
     const ch = supabase
@@ -139,7 +139,7 @@ export function VapiLivePanel({ roomId }: { roomId: string | null }) {
             <div className="flex items-center gap-2 mb-1">
               <Badge variant="outline" className="text-[9px]">{e.role}</Badge>
               <span className="text-[9px] text-muted-foreground ml-auto">
-                {new Date(e.created_at).toLocaleTimeString()}
+                {new Date(e.at).toLocaleTimeString()}
               </span>
             </div>
             <div className="whitespace-pre-wrap">{e.content}</div>
