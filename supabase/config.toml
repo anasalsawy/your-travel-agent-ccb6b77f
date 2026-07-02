@@ -1,6 +1,8 @@
 project_id = "wpwdxtyufpewdyffxlgo"
 
 [functions]
+  [functions.war-room]
+    verify_jwt = false
   [functions.agent-room-run]
     verify_jwt = false
   [functions.shopper-watchdog]
