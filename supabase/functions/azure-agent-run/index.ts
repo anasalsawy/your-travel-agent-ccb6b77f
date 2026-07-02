@@ -344,10 +344,20 @@ const BOOKING_TOOLS: ToolDef[] = [
         if (a.pnr) ors.push("booking_reference.ilike.%" + a.pnr.toUpperCase() + "%");
         if (a.order_id) ors.push("duffel_order_id.eq." + a.order_id);
         if (a.stripe_session_id) ors.push("stripe_session_id.eq." + a.stripe_session_id);
-        if (a.name) ors.push("passengers::text.ilike.%" + a.name + "%");
         if (ors.length) q = q.or(ors.join(","));
         const { data, error } = await q;
-        results.duffel_bookings = error ? { error: error.message } : (data ?? []);
+        let rows = error ? [] : (data ?? []);
+        // Name search: filter passengers JSONB client-side (PostgREST can't cast in or())
+        if (a.name && !error) {
+          const needle = String(a.name).toLowerCase();
+          if (ors.length === 0) {
+            const all = await sb.from("duffel_bookings")
+              .select("id, offer_id, duffel_order_id, booking_reference, status, contact_email, contact_phone, passengers, customer_amount, customer_currency, created_at")
+              .order("created_at", { ascending: false }).limit(200);
+            rows = (all.data ?? []).filter((r: any) => JSON.stringify(r.passengers ?? "").toLowerCase().includes(needle)).slice(0, limit);
+          }
+        }
+        results.duffel_bookings = error ? { error: error.message } : rows;
       }
       {
         let q = sb.from("ticket_requests")
