@@ -46,16 +46,15 @@ async function aiToken(): Promise<string> {
   return cachedToken.token;
 }
 
-async function az(method: string, path: string, body?: unknown, extraHeaders: Record<string,string> = {}) {
-  const url = AI_PROJECT + path + (path.includes("?") ? "&" : "?") + "api-version=v1";
+// Raw call — path is appended verbatim, no api-version query is added.
+async function azRaw(method: string, path: string, body?: unknown) {
+  const url = AI_PROJECT + path;
   const tok = await aiToken();
   const r = await fetch(url, {
     method,
     headers: {
       Authorization: "Bearer " + tok,
       "content-type": "application/json",
-      "Foundry-Features": "WorkflowAgents=V1Preview",
-      ...extraHeaders,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
