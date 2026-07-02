@@ -2182,6 +2182,110 @@ export type Database = {
         }
         Relationships: []
       }
+      war_room_heartbeats: {
+        Row: {
+          agent_name: string
+          current_task_id: string | null
+          last_beat_at: string
+          mood: string | null
+          status_line: string | null
+        }
+        Insert: {
+          agent_name: string
+          current_task_id?: string | null
+          last_beat_at?: string
+          mood?: string | null
+          status_line?: string | null
+        }
+        Update: {
+          agent_name?: string
+          current_task_id?: string | null
+          last_beat_at?: string
+          mood?: string | null
+          status_line?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "war_room_heartbeats_current_task_id_fkey"
+            columns: ["current_task_id"]
+            isOneToOne: false
+            referencedRelation: "war_room_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      war_room_messages: {
+        Row: {
+          addressed_to: string[] | null
+          agent_name: string
+          content: string
+          created_at: string
+          id: string
+          meta: Json | null
+          role: string
+        }
+        Insert: {
+          addressed_to?: string[] | null
+          agent_name: string
+          content: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          role?: string
+        }
+        Update: {
+          addressed_to?: string[] | null
+          agent_name?: string
+          content?: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          role?: string
+        }
+        Relationships: []
+      }
+      war_room_tasks: {
+        Row: {
+          assignee: string
+          created_at: string
+          created_by: string
+          deadline_at: string | null
+          description: string | null
+          id: string
+          priority: number
+          result: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assignee: string
+          created_at?: string
+          created_by?: string
+          deadline_at?: string | null
+          description?: string | null
+          id?: string
+          priority?: number
+          result?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assignee?: string
+          created_at?: string
+          created_by?: string
+          deadline_at?: string | null
+          description?: string | null
+          id?: string
+          priority?: number
+          result?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       customer_conversation_history: {
