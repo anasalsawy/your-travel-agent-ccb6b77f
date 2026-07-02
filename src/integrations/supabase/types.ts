@@ -1974,6 +1974,94 @@ export type Database = {
         }
         Relationships: []
       }
+      vapi_call_events: {
+        Row: {
+          at: string
+          call_id: string
+          content: string
+          id: string
+          meta: Json | null
+          role: string
+        }
+        Insert: {
+          at?: string
+          call_id: string
+          content: string
+          id?: string
+          meta?: Json | null
+          role: string
+        }
+        Update: {
+          at?: string
+          call_id?: string
+          content?: string
+          id?: string
+          meta?: Json | null
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vapi_call_events_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "vapi_calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vapi_calls: {
+        Row: {
+          agent_name: string
+          created_at: string
+          ended_at: string | null
+          goal: string | null
+          id: string
+          phone_number: string
+          room_id: string | null
+          started_at: string
+          status: string
+          summary: string | null
+          updated_at: string
+          vapi_call_id: string | null
+        }
+        Insert: {
+          agent_name: string
+          created_at?: string
+          ended_at?: string | null
+          goal?: string | null
+          id?: string
+          phone_number: string
+          room_id?: string | null
+          started_at?: string
+          status?: string
+          summary?: string | null
+          updated_at?: string
+          vapi_call_id?: string | null
+        }
+        Update: {
+          agent_name?: string
+          created_at?: string
+          ended_at?: string | null
+          goal?: string | null
+          id?: string
+          phone_number?: string
+          room_id?: string | null
+          started_at?: string
+          status?: string
+          summary?: string | null
+          updated_at?: string
+          vapi_call_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vapi_calls_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "agent_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vouchers: {
         Row: {
           airline: string

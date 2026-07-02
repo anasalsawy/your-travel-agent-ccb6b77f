@@ -1,66 +1,69 @@
-# Move Both Agents to Azure AI Foundry — Live Cutover
+## Goal
+Roll the uploaded 6,096-line Autonomous SWE Agent prompt onto every Foundry agent, then layer per-agent role/tools/teammates on top. Add a shared `vapi_call` toolset that any agent can use, with an inline live-transcript + steer panel that pops in whenever a call is active.
 
-Kill Vapi (customer concierge) and Gemini-via-Lovable-Gateway (booking agent). Both agents become **Azure AI Foundry Assistants** on your `anasalsawy-7430` project, using Azure's own LLM deployments. Same channels stay live: **website chat + WhatsApp**.
+## Deliverables
 
-## What gets created in Azure (one-time)
+### 1. Shared prompt + role composer
+- `supabase/functions/_shared/agent-core-prompt.ts` — the full 6,096-line prompt as a `const CORE_PROMPT` string.
+- `supabase/functions/_shared/agent-roster.ts` — per-agent metadata: `role`, `responsibilities[]`, `teammates[]` (who they may delegate to), `tools[]` (Foundry tool descriptors), `handoff_targets[]`.
+- Composer `buildInstructions(agentName)` returns `CORE_PROMPT + "\n\n────── AGENT IDENTITY ──────\n" + role block`.
 
-1. **Assistant: `Public Concierge`** — customer-facing. System prompt = Maya's current customer prompt. Tools = search flights, get quote, create Stripe link, escalate to human.
-2. **Assistant: `Booking Delegate`** — admin/ops. System prompt = current booking-agent prompt. Tools = full `openapi-booking.json` (Duffel search/book/cancel, DB reads).
-3. Both point at an Azure model deployment in your Foundry project (gpt-4o-mini or gpt-4.1-mini — whichever you have deployed; I'll list them first and pick).
+### 2. PATCH all 8 agents on Azure Foundry
+Via existing `azure-agents-v1` edge function (`action: "update"`):
 
-## What gets built in this project
+| Agent | Role | Delegates to | Adds tools |
+|---|---|---|---|
+| `Public Concierge` (assistant) | Front desk on web/WhatsApp | Booking Delegate | vapi_call, find_customer_booking, search_flights, get_quote |
+| `YTA-ASSISTANT` (Booking Delegate) | Autonomous booker | — | full travel suite + vapi_call, lookup_reservation, browser |
+| `BUILDEROFAGENTS` | Master builder / planner | builder-helper-1/2/3 | MCP, code_interpreter, browser, azure-rest, vapi_call |
+| `builder-helper-1/2/3` | Parallel executors | — | code_interpreter, browser, MCP, vapi_call |
+| `shopper-lead` | Autonomous shopper planner | shopper-helper-1/2/3 | browser_automation_preview, web_search, code_interpreter, MCP, vapi_call |
+| `shopper-helper-1/2/3` | Parallel checkout executors | — | same set |
 
-### Backend (edge functions)
-- **`azure-agent-run`** (new) — the single runtime bridge. Takes `{assistantId, threadId?, userMessage, channel}`, creates/reuses an Azure thread, posts the message, starts a run, polls to completion, executes any tool calls locally against our existing edge functions (Duffel, quotes, Stripe), submits tool outputs back to Azure, returns final text + threadId.
-- **`whatsapp-maya`** — rewire to call `azure-agent-run` with the Public Concierge assistant instead of the current path.
-- **`whatsapp-dev-agent`** — keep as-is (that's Frank, unrelated).
-- **`vapi-chat`** — deprecate; keep the file but route through `azure-agent-run` so any old client keeps working.
-- **`booking-agent`** — rewire to `azure-agent-run` with the Booking Delegate assistant.
+Hierarchy is enforced in the prompt addendum ("You may only delegate to: X, Y, Z"). No peer mesh.
 
-### Thread mapping (so conversations have memory per channel)
-New table `azure_agent_threads`:
-- `channel` (`web` | `whatsapp` | `admin`)
-- `external_id` (phone number, session id, or admin user id)
-- `assistant_id`, `thread_id`, `updated_at`
-- RLS: service-role only; edge functions read/write.
+### 3. Shared Vapi tool
 
-### Frontend
-- **Homepage "Chat with our Concierge"** — no visual change, just talks to `azure-agent-run` (Public Concierge) instead of `vapi-chat`.
-- **`/admin` + `/m` Booking Agent tab** — same UI, points at `azure-agent-run` (Booking Delegate).
+New edge functions:
+- `vapi-call-start` — POST `{ number, goal, assistantId?, agent }` → creates outbound Vapi call, inserts row in `vapi_calls`, returns `call_id`.
+- `vapi-call-inject` — POST `{ call_id, message }` → sends `add-message` control to Vapi mid-call.
+- `vapi-call-hangup` — POST `{ call_id }` → ends call.
+- `vapi-webhook` — receives Vapi server messages (transcript deltas, tool-calls, end-of-call). Writes to `vapi_call_events` (Realtime-enabled).
 
-### WhatsApp
-- Twilio inbound webhook → `whatsapp-maya` (unchanged URL) → `azure-agent-run` (Public Concierge) → reply via Twilio.
-- Thread keyed by sender phone → continuous memory per customer.
+Registered as function tools in every agent's tool list so any agent can dial, inject, or hang up.
 
-## Tools the Azure agents will call
+### 4. Database
+Migration:
+- `vapi_calls` — id, agent_name, room_id?, phone_number, goal, status, vapi_call_id, started_at, ended_at, summary.
+- `vapi_call_events` — id, call_id, role (assistant|user|system|tool), content, at.
+- Realtime + admin-only RLS. GRANTs for authenticated + service_role.
 
-Exposed via `public/openapi-concierge.json` (new, customer-safe subset) and existing `public/openapi-booking.json` (admin, full power). Azure calls them as OpenAPI tools; `azure-agent-run` executes the HTTP call to our edge functions and returns the JSON.
+### 5. Inline live-transcript + steer panel
+Extend `src/pages/AdminAgentRooms.tsx`:
+- Subscribes to `vapi_calls` for rows where `status='active'`.
+- When active call detected → expand an inline `VapiLivePanel` above the composer showing:
+  - Header: agent name, callee number, elapsed timer, hangup button.
+  - Live transcript stream (Realtime on `vapi_call_events`).
+  - Steer input: text box → `vapi-call-inject`.
+- Panel auto-collapses when call ends; final summary written to room as a system message.
 
-Concierge tools (customer-safe):
-- `search_flights`, `get_quote`, `create_stripe_checkout`, `handoff_to_human`
+Also add a `<VapiLivePanel />` mount inside `src/pages/mobile-admin/MobileHome.tsx` so mobile PWA gets the same cockpit when a call runs.
 
-Booking tools (admin):
-- everything already in `openapi-booking.json`
+### 6. Config
+- `supabase/config.toml`: register `vapi-call-start`, `vapi-call-inject`, `vapi-call-hangup`, `vapi-webhook` (webhook = `verify_jwt=false`, others require auth).
+- Vapi phone number ID + webhook URL: user needs to point Vapi server URL to `.../functions/v1/vapi-webhook` (I'll surface the exact URL after deploy).
 
-## Cutover order (minimal customer disruption)
+### 7. Validation
+- `azure-agents-v1 action:"summary"` — confirm all 8 agents show new tool counts.
+- `curl vapi-call-start` with a test number → verify row created + webhook fires transcript rows.
+- Load `/admin/agent-rooms` → open Builders room → dispatch a task that includes "call +1XXX and confirm X"; verify inline panel appears with live transcript and inject works.
 
-1. List Azure model deployments, pick one, store as `AZURE_AI_MODEL` secret.
-2. Create both assistants via `azure-rest`, store their IDs as `AZURE_ASSISTANT_CONCIERGE` and `AZURE_ASSISTANT_BOOKING`.
-3. Build `azure-agent-run` + `azure_agent_threads` table.
-4. Publish `openapi-concierge.json`, attach both tool specs to the respective assistants.
-5. Flip website chat to Azure. Test one flow end-to-end.
-6. Flip WhatsApp to Azure. Test one message end-to-end.
-7. Flip admin Booking Agent to Azure. Test one search + one (sandbox) book.
-8. Leave Vapi/ElevenLabs voice untouched for now — voice is a separate cutover.
+## Technical notes
+- The 6k-line prompt (~200KB) is within Azure Foundry's per-agent instruction cap. If any specific agent rejects the size, I'll fall back to a slim "See core-prompt document" reference and attach the full text as an agent-side file — I'll flag it if it happens.
+- `vapi_call` on customer-facing Concierge is gated behind an approval step in the prompt (Concierge asks the user before dialing).
+- Transcript inserts are batched (250ms debounce) to avoid Realtime spam on long calls.
+- Hangup + inject both use Vapi's `/call/:id/control` endpoint with the private API key.
 
-## Out of scope for this cutover
-- Voice (ElevenLabs Maya, Vapi voice) — stays as-is. Text channels first.
-- Frank / dev-agent — stays on its own runtime.
-- Duffel Cars/Hotels — still provider-gated regardless of agent runtime.
-
-## Two things I need from you before I start
-
-1. **Confirm which Azure model deployment to use.** I'll list them via `azure-rest`; if there's only one, I'll just use it. If there are several, I'll ask.
-2. **Confirm the customer-facing tool list above is what you want the concierge allowed to do.** (Search + quote + Stripe link + human handoff — no direct booking without your approval.)
-
-Say "go" and I'll start with step 1 (list deployments) and drive straight through.
+## Secrets needed
+- `VAPI_API_KEY` (private) — already present.
+- `VAPI_PHONE_NUMBER_ID` — need this from you (Vapi dashboard → Phone Numbers). Without it outbound calls won't dispatch; inject/hangup/webhook still work for calls initiated elsewhere.
