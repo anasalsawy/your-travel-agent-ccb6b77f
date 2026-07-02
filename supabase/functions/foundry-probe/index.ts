@@ -57,8 +57,10 @@ Deno.serve(async (req) => {
   // Try Foundry runtime host (subdomain swap): change services.ai.azure.com → agents.ai.azure.com
   const altHost = EP.replace("services.ai.azure.com", "agents.ai.azure.com");
   if (altHost !== EP) {
-    const r = await fetch(altHost + "/agents/" + NAME + "?api-version=v1", { headers: { Authorization: "Bearer " + t }});
-    results.push({ probe: "alt-host GET /agents/"+NAME, host: altHost, status: r.status, resp: (await r.text()).slice(0,300) });
+    try {
+      const r = await fetch(altHost + "/agents/" + NAME + "?api-version=v1", { headers: { Authorization: "Bearer " + t }});
+      results.push({ probe: "alt-host GET /agents/"+NAME, host: altHost, status: r.status, resp: (await r.text()).slice(0,300) });
+    } catch (e) { results.push({ probe: "alt-host", error: (e as Error).message }); }
   }
 
   return new Response(JSON.stringify({ endpoint: BASE, results }, null, 2), { headers: { "content-type": "application/json" } });
