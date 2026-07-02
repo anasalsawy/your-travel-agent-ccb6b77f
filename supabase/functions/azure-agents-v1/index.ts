@@ -115,92 +115,51 @@ Deno.serve(async (req) => {
           const rows = await pr.json();
           profile = Array.isArray(rows) ? rows[0] ?? null : null;
         } catch { /* ignore */ }
-        const VAPI_TOOLS = [
-          {
-            type: "function",
-            function: {
-              name: "vapi_call",
-              description: "Dial an outbound phone number via Vapi to accomplish a mission (talk to airline / hotel / vendor). Returns a call_id.",
-              parameters: {
-                type: "object",
-                properties: {
-                  number: { type: "string", description: "E.164 phone number, e.g. +14155550123" },
-                  goal: { type: "string", description: "Short mission goal for the voice agent" },
-                },
-                required: ["number", "goal"],
-              },
-            },
-          },
-          {
-            type: "function",
-            function: {
-              name: "vapi_inject",
-              description: "Steer an active Vapi call mid-conversation by injecting a system message the voice agent will act on immediately.",
-              parameters: {
-                type: "object",
-                properties: {
-                  call_id: { type: "string" },
-                  message: { type: "string" },
-                },
-                required: ["call_id", "message"],
-              },
-            },
-          },
-          {
-            type: "function",
-            function: {
-              name: "vapi_hangup",
-              description: "End an active Vapi call.",
-              parameters: { type: "object", properties: { call_id: { type: "string" } }, required: ["call_id"] },
-            },
-          },
-          {
-            type: "function",
-            function: {
-              name: "war_room_post",
-              description: "MANDATORY. Post a status update into the shared War Room so the Chief of Staff, teammates, and the CEO can see it. Use this instead of narrating in prose. Post at every state change (ACK, WORKING, BLOCKED, DONE, READY_FOR_PAYMENT, ASKING).",
-              parameters: {
-                type: "object",
-                properties: {
-                  content: { type: "string", description: "1-3 sentence status. Start with a status verb." },
-                  status: { type: "string", enum: ["ack", "working", "blocked", "done", "ready_for_payment", "asking", "heartbeat"] },
-                  addressed_to: { type: "array", items: { type: "string" }, description: "Agent names to ping." },
-                },
-                required: ["content"],
-              },
-            },
-          },
-          {
-            type: "function",
-            function: {
-              name: "war_room_heartbeat",
-              description: "Send a 60-second liveness ping while working a long task. Chief of Staff nudges any agent silent >90s.",
-              parameters: {
-                type: "object",
-                properties: {
-                  status_line: { type: "string" },
-                  mood: { type: "string", enum: ["ready", "working", "blocked", "waiting"] },
-                  current_task_id: { type: "string" },
-                },
-              },
-            },
-          },
+        // Foundry Agent Service requires FLAT function-tool shape:
+        //   { type:"function", name, description, parameters }
+        // AND tools only persist via POST /agents/{name}/versions with { definition: {...} }.
+        // PATCH silently drops function tools. Do not switch back.
+        const FN_TOOLS = [
+          { type: "function", name: "vapi_call",
+            description: "Dial an outbound phone number via Vapi to accomplish a mission. Returns a call_id.",
+            parameters: { type:"object", properties:{ number:{type:"string",description:"E.164 phone"}, goal:{type:"string"}}, required:["number","goal"]}},
+          { type: "function", name: "vapi_inject",
+            description: "Steer an active Vapi call by injecting a system message the voice agent acts on immediately.",
+            parameters: { type:"object", properties:{ call_id:{type:"string"}, message:{type:"string"}}, required:["call_id","message"]}},
+          { type: "function", name: "vapi_hangup",
+            description: "End an active Vapi call.",
+            parameters: { type:"object", properties:{ call_id:{type:"string"}}, required:["call_id"]}},
+          { type: "function", name: "war_room_post",
+            description: "MANDATORY. Post a status update into the shared War Room so Chief of Staff, teammates, and CEO see it. Use instead of narrating in prose. Post at every state change (ACK/WORKING/BLOCKED/DONE/READY_FOR_PAYMENT/ASKING).",
+            parameters: { type:"object", properties:{
+              content:{type:"string", description:"1-3 sentence status starting with a status verb."},
+              status:{type:"string", enum:["ack","working","blocked","done","ready_for_payment","asking","heartbeat"]},
+              addressed_to:{type:"array", items:{type:"string"}},
+            }, required:["content"]}},
+          { type: "function", name: "war_room_heartbeat",
+            description: "60-second liveness ping while working a long task. Chief nudges any agent silent >90s.",
+            parameters: { type:"object", properties:{
+              status_line:{type:"string"},
+              mood:{type:"string", enum:["ready","working","blocked","waiting"]},
+              current_task_id:{type:"string"},
+            }}},
         ];
+        const FN_NAMES = new Set(FN_TOOLS.map((t) => t.name));
 
         const results: any[] = [];
         for (const nm of targets) {
           try {
             const instructions = buildInstructions(nm, profile);
-            // Merge tools: keep existing, ensure our three function tools exist.
             const current: any = await az("GET", "/agents/" + encodeURIComponent(nm));
-            const existing = current?.versions?.latest?.definition?.tools ?? [];
-            const have = new Set(existing.map((t: any) => t?.function?.name).filter(Boolean));
-            const merged = [...existing, ...VAPI_TOOLS.filter((t) => !have.has(t.function.name))];
-            const patched = await az("PATCH", "/agents/" + encodeURIComponent(nm), {
-              instructions,
-              tools: merged,
-            });
-            results.push({ name: nm, ok: !patched?.__error, size: instructions.length, tools: merged.length, error: patched?.__error ? patched : null });
+            const dfn = current?.versions?.latest?.definition ?? { kind: "chat", model: "gpt-4o-mini" };
+            // Keep every existing tool that isn't one of ours (browser, mcp, file_search, etc.),
+            // then append our fresh function tools.
+            const preserved = (dfn.tools ?? []).filter((t: any) => !(t?.type === "function" && FN_NAMES.has(t?.name)));
+            const merged = [...preserved, ...FN_TOOLS];
+            const newDef = { ...dfn, instructions, tools: merged };
+            const posted = await az("POST", "/agents/" + encodeURIComponent(nm) + "/versions", { definition: newDef });
+            const ok = !posted?.__error && !posted?.error;
+            results.push({ name: nm, ok, version: posted?.version ?? null, tools: merged.length, error: ok ? null : posted });
           } catch (e) {
             results.push({ name: nm, ok: false, error: (e as Error).message });
           }
