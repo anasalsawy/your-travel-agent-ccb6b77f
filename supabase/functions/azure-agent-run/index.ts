@@ -154,19 +154,212 @@ const CONCIERGE_TOOLS: ToolDef[] = [
 
 const BOOKING_TOOLS: ToolDef[] = [
   {
-    name: "booking",
-    description: "Unified booking tool. Search / create / cancel / modify / get for flights, hotels, cars via Duffel or Trawex.",
+    name: "search_flights",
+    description: "Search live flight offers via Duffel. Returns array of offers each with id, price, airline, times, stops. Use the offer id later with book_flight.",
     parameters: {
       type: "object",
-      required: ["action", "product", "params"],
+      required: ["origin", "destination", "departure_date"],
       properties: {
-        action: { type: "string", enum: ["search", "create", "cancel", "modify", "get"] },
-        product: { type: "string", enum: ["flights", "hotels", "cars"] },
-        provider: { type: "string", enum: ["duffel", "trawex"] },
-        params: { type: "object", description: "Provider-shaped params." },
+        origin: { type: "string", description: "IATA airport code (uppercase), e.g. CAI" },
+        destination: { type: "string", description: "IATA airport code (uppercase), e.g. DXB" },
+        departure_date: { type: "string", description: "YYYY-MM-DD" },
+        return_date: { type: "string", description: "YYYY-MM-DD (omit for one-way)" },
+        adults: { type: "integer", minimum: 1, default: 1 },
+        cabin_class: { type: "string", enum: ["economy", "premium_economy", "business", "first"], default: "economy" },
       },
     },
-    execute: async (a) => callFn("booking", a),
+    execute: async (a) => callFn("booking", { action: "search", product: "flights", provider: "duffel", params: a }),
+  },
+  {
+    name: "search_hotels",
+    description: "Search hotel stays via Duffel. Accepts an IATA city/airport code as location (auto-mapped to lat/lng) or explicit latitude/longitude.",
+    parameters: {
+      type: "object",
+      required: ["check_in_date", "check_out_date"],
+      properties: {
+        location: { type: "string", description: "IATA code like DXB (mapped to coords). Or omit and provide latitude+longitude." },
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+        check_in_date: { type: "string", description: "YYYY-MM-DD" },
+        check_out_date: { type: "string", description: "YYYY-MM-DD" },
+        guests: { type: "integer", minimum: 1, default: 2 },
+        rooms: { type: "integer", minimum: 1, default: 1 },
+      },
+    },
+    execute: async (a) => callFn("booking", { action: "search", product: "hotels", provider: "duffel", params: a }),
+  },
+  {
+    name: "search_cars",
+    description: "Search car rentals via Duffel. Locations accept IATA codes (mapped to coords).",
+    parameters: {
+      type: "object",
+      required: ["pickup_location", "pickup_date", "dropoff_date"],
+      properties: {
+        pickup_location: { type: "string", description: "IATA code or {latitude,longitude}" },
+        dropoff_location: { type: "string", description: "IATA code or {latitude,longitude} (defaults to pickup)" },
+        pickup_date: { type: "string", description: "YYYY-MM-DD or ISO datetime" },
+        pickup_time: { type: "string", description: "HH:MM (24h)" },
+        dropoff_date: { type: "string", description: "YYYY-MM-DD or ISO datetime" },
+        dropoff_time: { type: "string", description: "HH:MM (24h)" },
+        driver_age: { type: "integer", default: 30 },
+      },
+    },
+    execute: async (a) => callFn("booking", { action: "search", product: "cars", provider: "duffel", params: a }),
+  },
+  {
+    name: "get_flight_offer",
+    description: "Re-fetch a live Duffel flight offer by id to confirm price, availability, and full itinerary before booking.",
+    parameters: {
+      type: "object", required: ["offer_id"],
+      properties: { offer_id: { type: "string" } },
+    },
+    execute: async (a) => callFn("duffel-offer", { offer_id: a.offer_id }),
+  },
+  {
+    name: "book_flight",
+    description: "Book a flight. Creates a duffel_bookings row and charges the admin's stored Duffel card (no customer payment step). Requires a valid offer_id from search_flights and full passenger details.",
+    parameters: {
+      type: "object",
+      required: ["offer_id", "passengers", "contact_email"],
+      properties: {
+        offer_id: { type: "string", description: "Fresh Duffel offer id from search_flights" },
+        passengers: {
+          type: "array",
+          description: "One entry per passenger in the offer, same order.",
+          items: {
+            type: "object",
+            required: ["given_name", "family_name", "born_on", "email", "phone_number"],
+            properties: {
+              title: { type: "string", enum: ["mr", "ms", "mrs", "miss", "dr"], default: "mr" },
+              gender: { type: "string", enum: ["m", "f"], default: "m" },
+              given_name: { type: "string" },
+              family_name: { type: "string" },
+              born_on: { type: "string", description: "YYYY-MM-DD" },
+              email: { type: "string" },
+              phone_number: { type: "string", description: "E.164, e.g. +14155551234" },
+            },
+          },
+        },
+        contact_email: { type: "string" },
+        contact_phone: { type: "string" },
+        mode: { type: "string", enum: ["test", "live"], default: "live" },
+      },
+    },
+    execute: async (a) => {
+      // Insert booking row, then charge card
+      const { data: row, error } = await sb.from("duffel_bookings").insert({
+        offer_id: a.offer_id,
+        passengers: a.passengers,
+        contact_email: a.contact_email,
+        contact_phone: a.contact_phone ?? null,
+        status: "pending",
+      }).select("id").single();
+      if (error) return { ok: false, error: "insert failed: " + error.message };
+      return callFn("duffel-book", { booking_id: row.id, mode: a.mode ?? "live" });
+    },
+  },
+  {
+    name: "get_booking",
+    description: "Fetch a live booking (order) from Duffel by order id — status, PNR, current itinerary, total.",
+    parameters: {
+      type: "object",
+      required: ["order_id", "product"],
+      properties: {
+        order_id: { type: "string", description: "Duffel order id (starts with 'ord_')" },
+        product: { type: "string", enum: ["flights", "hotels", "cars"] },
+      },
+    },
+    execute: async (a) => callFn("booking", { action: "get", product: a.product, provider: "duffel", params: { order_id: a.order_id } }),
+  },
+  {
+    name: "cancel_booking",
+    description: "Cancel a live Duffel booking. Returns refund breakdown when applicable. Confirm with admin before calling.",
+    parameters: {
+      type: "object",
+      required: ["order_id", "product"],
+      properties: {
+        order_id: { type: "string" },
+        product: { type: "string", enum: ["flights", "cars"], description: "Hotels cancel not implemented yet." },
+      },
+    },
+    execute: async (a) => callFn("booking", { action: "cancel", product: a.product, provider: "duffel", params: { order_id: a.order_id } }),
+  },
+  {
+    name: "change_flight",
+    description: "Change/modify an existing flight booking (new dates, times, or route). Duffel's order-change flow is not yet wired — this returns a not-implemented notice so the agent knows to fall back to cancel + rebook.",
+    parameters: {
+      type: "object",
+      required: ["order_id"],
+      properties: {
+        order_id: { type: "string" },
+        new_departure_date: { type: "string", description: "YYYY-MM-DD" },
+        new_return_date: { type: "string", description: "YYYY-MM-DD" },
+        notes: { type: "string" },
+      },
+    },
+    execute: async (a) => callFn("booking", { action: "modify", product: "flights", provider: "duffel", params: a }),
+  },
+  {
+    name: "list_recent_bookings",
+    description: "List the admin's recent Duffel bookings (all statuses).",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 20 },
+        status: { type: "string", enum: ["pending", "confirmed", "cancelled", "failed"] },
+      },
+    },
+    execute: async (a) => {
+      let q = sb.from("duffel_bookings").select("id, offer_id, duffel_order, status, contact_email, created_at").order("created_at", { ascending: false }).limit(a.limit ?? 20);
+      if (a.status) q = q.eq("status", a.status);
+      const { data, error } = await q;
+      return { ok: !error, error: error?.message, bookings: data ?? [] };
+    },
+  },
+  {
+    name: "lookup_reservation",
+    description: "Look up any reservation (Duffel or internal) by PNR, order id, email, or phone.",
+    parameters: {
+      type: "object",
+      properties: {
+        pnr: { type: "string" },
+        order_id: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+      },
+    },
+    execute: async (a) => callFn("lookup-reservation", a),
+  },
+  {
+    name: "create_stripe_payment_link",
+    description: "Generate a Stripe checkout link to send to a customer for a specific amount. Use when the admin wants to bill a customer for a quote/booking.",
+    parameters: {
+      type: "object",
+      required: ["amount_usd", "description"],
+      properties: {
+        amount_usd: { type: "number", description: "Total in USD (e.g. 349.50). NOT cents." },
+        description: { type: "string", description: "What the customer is paying for." },
+        customer_email: { type: "string" },
+      },
+    },
+    execute: async (a) => callFn("create-stripe-checkout", {
+      amount: a.amount_usd,
+      description: a.description,
+      customer_email: a.customer_email,
+    }),
+  },
+  {
+    name: "send_whatsapp_message",
+    description: "Send a WhatsApp message to a customer (Twilio). Use for confirmations, follow-ups, or sending a Stripe link.",
+    parameters: {
+      type: "object",
+      required: ["to", "message"],
+      properties: {
+        to: { type: "string", description: "E.164 phone, e.g. +14155551234" },
+        message: { type: "string" },
+      },
+    },
+    execute: async (a) => callFn("send-whatsapp-quote", { phone: a.to, message: a.message }),
   },
 ];
 
