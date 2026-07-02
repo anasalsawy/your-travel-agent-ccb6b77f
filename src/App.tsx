@@ -86,6 +86,7 @@ const App = () => (
             <Route path="/admin/duffel-card" element={<AdminDuffelCard />} />
             <Route path="/admin/azure" element={<AdminAzure />} />
             <Route path="/admin/dual-lobe" element={<AdminDualLobe />} />
+            <Route path="/admin/agent-rooms" element={<AdminAgentRooms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/about" element={<About />} />
