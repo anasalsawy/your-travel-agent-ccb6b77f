@@ -112,17 +112,21 @@ async function execLocalTool(name: string, args: any, ctx: { agentName: string }
 }
 
 async function resolveAgentId(agentName: string): Promise<string> {
-  // Try direct GET by name (Foundry accepts name-or-id in some routes); fall back to list.
-  try {
-    const g = await az("GET", "/agents/" + encodeURIComponent(agentName));
-    if (g?.id) return g.id;
-    if (g?.name) return g.name;
-  } catch { /* fall through */ }
-  const list = await az("GET", "/agents");
-  const items = Array.isArray(list) ? list : (list?.data ?? list?.value ?? []);
-  const hit = items.find((a: any) => a?.name === agentName || a?.id === agentName);
-  if (!hit) throw new Error("agent not found in Foundry: " + agentName);
-  return hit.id ?? hit.name;
+  // Must return the real Foundry assistant id (starts with "asst_").
+  if (agentName.startsWith("asst_")) return agentName;
+  // Paginate through /agents to find by name.
+  let after: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    const q = "/agents?limit=100" + (after ? "&after=" + encodeURIComponent(after) : "");
+    const list = await az("GET", q);
+    const items = Array.isArray(list) ? list : (list?.data ?? list?.value ?? []);
+    const hit = items.find((a: any) => a?.name === agentName);
+    if (hit?.id) return hit.id;
+    if (!list?.has_more || !items.length) break;
+    after = items[items.length - 1]?.id;
+    if (!after) break;
+  }
+  throw new Error("agent not found in Foundry: " + agentName);
 }
 
 async function ensureThread(agentName: string, channel: string, externalId: string, agentId: string): Promise<string> {
@@ -140,7 +144,7 @@ async function ensureThread(agentName: string, channel: string, externalId: stri
 
 async function runOnce(agentName: string, agentId: string, threadId: string, userMessage: string) {
   await az("POST", "/threads/" + threadId + "/messages", { role: "user", content: userMessage });
-  let run = await az("POST", "/threads/" + threadId + "/runs", { assistant_id: agentId });
+  let run = await az("POST", "/threads/" + threadId + "/runs", { agent_id: agentId, assistant_id: agentId });
   const steps: any[] = [];
   const started = Date.now();
   while (true) {
