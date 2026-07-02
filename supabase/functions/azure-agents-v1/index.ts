@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
         const results: any[] = [];
         for (const nm of targets) {
           try {
-            const instructions = buildInstructions(nm);
+            const instructions = buildInstructions(nm, profile);
             // Merge tools: keep existing, ensure our three function tools exist.
             const current: any = await az("GET", "/agents/" + encodeURIComponent(nm));
             const existing = current?.versions?.latest?.definition?.tools ?? [];
