@@ -90,6 +90,7 @@ const App = () => (
             <Route path="/admin/dual-lobe" element={<AdminDualLobe />} />
             <Route path="/admin/agent-rooms" element={<AdminAgentRooms />} />
             <Route path="/admin/shopper-profile" element={<AdminShopperProfile />} />
+            <Route path="/admin/war-room" element={<AdminWarRoom />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/about" element={<About />} />
