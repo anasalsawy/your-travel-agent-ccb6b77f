@@ -28,6 +28,7 @@ import AdminAzure from "./pages/AdminAzure";
 import AdminDualLobe from "./pages/AdminDualLobe";
 import AdminAgentRooms from "./pages/AdminAgentRooms";
 import AdminShopperProfile from "./pages/AdminShopperProfile";
+import AdminWarRoom from "./pages/AdminWarRoom";
 import { lazy, Suspense } from "react";
 
 const MobileLogin = lazy(() => import("./pages/mobile-admin/MobileLogin"));
