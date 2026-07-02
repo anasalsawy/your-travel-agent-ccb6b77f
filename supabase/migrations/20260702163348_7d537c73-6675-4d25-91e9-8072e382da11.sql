@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_rooms ADD COLUMN IF NOT EXISTS azure_conversation_id text;

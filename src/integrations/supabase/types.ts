@@ -174,6 +174,7 @@ export type Database = {
       }
       agent_rooms: {
         Row: {
+          azure_conversation_id: string | null
           azure_response_id: string | null
           created_at: string
           id: string
@@ -182,6 +183,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          azure_conversation_id?: string | null
           azure_response_id?: string | null
           created_at?: string
           id?: string
@@ -190,6 +192,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          azure_conversation_id?: string | null
           azure_response_id?: string | null
           created_at?: string
           id?: string
