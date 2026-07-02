@@ -44,6 +44,7 @@ async function az(method: string, path: string, body?: unknown): Promise<any> {
       Authorization: "Bearer " + tok,
       "content-type": "application/json",
       "x-ms-enable-preview": "true",
+      "Foundry-Features": "WorkflowAgents=V1Preview",
     },
     body: body ? JSON.stringify(body) : undefined,
   });
