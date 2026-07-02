@@ -838,6 +838,75 @@ export type Database = {
         }
         Relationships: []
       }
+      foundry_connection_backups: {
+        Row: {
+          agent_name: string | null
+          id: string
+          label: string
+          payload: Json
+          scope: string
+          taken_at: string
+        }
+        Insert: {
+          agent_name?: string | null
+          id?: string
+          label: string
+          payload: Json
+          scope: string
+          taken_at?: string
+        }
+        Update: {
+          agent_name?: string | null
+          id?: string
+          label?: string
+          payload?: Json
+          scope?: string
+          taken_at?: string
+        }
+        Relationships: []
+      }
+      foundry_connection_probes: {
+        Row: {
+          agent_name: string
+          auth_type: string | null
+          connection_name: string | null
+          connection_type: string | null
+          error: Json | null
+          id: string
+          identity_used: string | null
+          phase: string
+          ran_at: string
+          raw: Json | null
+          test_result: string | null
+        }
+        Insert: {
+          agent_name: string
+          auth_type?: string | null
+          connection_name?: string | null
+          connection_type?: string | null
+          error?: Json | null
+          id?: string
+          identity_used?: string | null
+          phase: string
+          ran_at?: string
+          raw?: Json | null
+          test_result?: string | null
+        }
+        Update: {
+          agent_name?: string
+          auth_type?: string | null
+          connection_name?: string | null
+          connection_type?: string | null
+          error?: Json | null
+          id?: string
+          identity_used?: string | null
+          phase?: string
+          ran_at?: string
+          raw?: Json | null
+          test_result?: string | null
+        }
+        Relationships: []
+      }
       foundry_runs: {
         Row: {
           agent_name: string
