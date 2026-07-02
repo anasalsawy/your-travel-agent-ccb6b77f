@@ -838,6 +838,60 @@ export type Database = {
         }
         Relationships: []
       }
+      foundry_runs: {
+        Row: {
+          agent_name: string
+          channel: string | null
+          conversation_id: string | null
+          duration_ms: number | null
+          ended_at: string | null
+          error: string | null
+          external_id: string | null
+          final_text: string | null
+          id: string
+          request_message: string | null
+          response_id: string | null
+          source: string
+          started_at: string
+          status: string
+          steps: Json
+        }
+        Insert: {
+          agent_name: string
+          channel?: string | null
+          conversation_id?: string | null
+          duration_ms?: number | null
+          ended_at?: string | null
+          error?: string | null
+          external_id?: string | null
+          final_text?: string | null
+          id?: string
+          request_message?: string | null
+          response_id?: string | null
+          source?: string
+          started_at?: string
+          status?: string
+          steps?: Json
+        }
+        Update: {
+          agent_name?: string
+          channel?: string | null
+          conversation_id?: string | null
+          duration_ms?: number | null
+          ended_at?: string | null
+          error?: string | null
+          external_id?: string | null
+          final_text?: string | null
+          id?: string
+          request_message?: string | null
+          response_id?: string | null
+          source?: string
+          started_at?: string
+          status?: string
+          steps?: Json
+        }
+        Relationships: []
+      }
       gift_cards: {
         Row: {
           airline: string
