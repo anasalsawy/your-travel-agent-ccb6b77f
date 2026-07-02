@@ -1,0 +1,1 @@
+DELETE FROM public.azure_assistants WHERE role = 'booking';
