@@ -1,6 +1,8 @@
 project_id = "wpwdxtyufpewdyffxlgo"
 
 [functions]
+  [functions.agent-room-run]
+    verify_jwt = false
   [functions.agent-roundtable]
     verify_jwt = false
   [functions.ai-chat]
