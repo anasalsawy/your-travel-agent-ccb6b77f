@@ -83,6 +83,7 @@ Deno.serve(async (req) => {
         });
         break;
       }
+      case "get":
         result = await az("GET", "/agents/" + encodeURIComponent(agentName ?? name));
         break;
       case "create":
