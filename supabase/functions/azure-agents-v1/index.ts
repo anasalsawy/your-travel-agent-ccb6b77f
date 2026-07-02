@@ -12,7 +12,7 @@ const TENANT = Deno.env.get("AZURE_TENANT_ID")!;
 const CLIENT_ID = Deno.env.get("AZURE_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("AZURE_CLIENT_SECRET")!;
 const AI_PROJECT = (Deno.env.get("AZURE_AI_PROJECT_ENDPOINT") ?? "").replace(/\/$/, "");
-const API_VERSION = "v1-preview";
+const API_VERSION = "v1";
 
 let cachedToken: { token: string; exp: number } | null = null;
 async function aiToken(): Promise<string> {
