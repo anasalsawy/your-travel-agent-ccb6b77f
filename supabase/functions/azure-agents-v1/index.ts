@@ -1,6 +1,9 @@
 // Azure AI Foundry v1-preview Agents API bridge.
-// Supports: list, get, create, update, delete on the NEW Agents surface.
-// POST body: { action: "list" | "get" | "update" | "create" | "delete", ...params }
+// Supports: list, get, create, update, delete, summary, apply-roster on the NEW Agents surface.
+// POST body: { action, ... }
+
+import { ROSTER, buildInstructions } from "../_shared/agent-roster.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
