@@ -5,6 +5,8 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.foundry-agent-run]
     verify_jwt = false
+  [functions.foundry-probe]
+    verify_jwt = false
 
   [functions.agent-room-run]
     verify_jwt = false
