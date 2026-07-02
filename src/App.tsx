@@ -26,6 +26,7 @@ import VoiceProxy from "./pages/VoiceProxy";
 import AdminDuffelCard from "./pages/AdminDuffelCard";
 import AdminAzure from "./pages/AdminAzure";
 import AdminDualLobe from "./pages/AdminDualLobe";
+import AdminAgentRooms from "./pages/AdminAgentRooms";
 import { lazy, Suspense } from "react";
 
 const MobileLogin = lazy(() => import("./pages/mobile-admin/MobileLogin"));
@@ -85,6 +86,7 @@ const App = () => (
             <Route path="/admin/duffel-card" element={<AdminDuffelCard />} />
             <Route path="/admin/azure" element={<AdminAzure />} />
             <Route path="/admin/dual-lobe" element={<AdminDualLobe />} />
+            <Route path="/admin/agent-rooms" element={<AdminAgentRooms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/about" element={<About />} />

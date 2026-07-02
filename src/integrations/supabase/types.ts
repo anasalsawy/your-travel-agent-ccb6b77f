@@ -134,6 +134,74 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_room_messages: {
+        Row: {
+          agent_name: string
+          content: string
+          created_at: string
+          id: string
+          meta: Json | null
+          role: string
+          room_id: string
+        }
+        Insert: {
+          agent_name: string
+          content: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          role: string
+          room_id: string
+        }
+        Update: {
+          agent_name?: string
+          content?: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          role?: string
+          room_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_room_messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "agent_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_rooms: {
+        Row: {
+          azure_conversation_id: string | null
+          azure_response_id: string | null
+          created_at: string
+          id: string
+          room: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          azure_conversation_id?: string | null
+          azure_response_id?: string | null
+          created_at?: string
+          id?: string
+          room: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          azure_conversation_id?: string | null
+          azure_response_id?: string | null
+          created_at?: string
+          id?: string
+          room?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_chat_messages: {
         Row: {
           content: string
