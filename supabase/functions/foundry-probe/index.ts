@@ -33,7 +33,7 @@ Deno.serve(async () => {
   results.push({ shape: "definition-wrapper", status: pA.status, err: pA.status >= 300 ? pA.data : null });
   // Verify
   const g1 = await az("GET", "/agents/" + name);
-  const nowNames = (g1.data?.versions?.latest?.definition?.tools ?? []).map((t:any)=> t?.name ?? t?.function?.name);
-  results.push({ verify_A_tool_names: nowNames });
+  const nowTools = g1.data?.versions?.latest?.definition?.tools ?? [];
+  results.push({ verify_A_tool_full: nowTools });
   return new Response(JSON.stringify(results, null, 2), { headers: {"content-type":"application/json"}});
 });
