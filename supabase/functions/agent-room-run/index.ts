@@ -74,9 +74,10 @@ function extractTurns(resp: any): { agent_name: string; role: string; content: s
   const arr = Array.isArray(output) ? output : [output];
   for (const item of arr) {
     if (!item) continue;
+    const agentFromRef = item.agent_reference?.name;
     // Standard message item
     if (item.type === "message" || item.object === "message") {
-      const agent = item.agent_name ?? item.assistant_name ?? item.agent?.name ?? item.author?.name ?? "assistant";
+      const agent = agentFromRef ?? item.agent_name ?? item.assistant_name ?? item.agent?.name ?? item.author?.name ?? "assistant";
       let text = "";
       const content = item.content ?? [];
       const parts = Array.isArray(content) ? content : [content];
@@ -84,14 +85,14 @@ function extractTurns(resp: any): { agent_name: string; role: string; content: s
         if (typeof c === "string") text += c;
         else if (c?.type === "output_text" || c?.type === "text") text += (c.text?.value ?? c.text ?? "");
       }
-      if (text.trim()) out.push({ agent_name: String(agent), role: item.role ?? "assistant", content: text, meta: { item_id: item.id, type: item.type } });
+      if (text.trim()) out.push({ agent_name: String(agent), role: item.role ?? "assistant", content: text, meta: { item_id: item.id, type: item.type, agent: agentFromRef } });
     }
     // Tool call item
-    else if (item.type?.includes?.("tool") || item.type === "function_call" || item.type === "browser_automation_call") {
+    else if (item.type?.includes?.("tool") || item.type === "function_call" || item.type === "browser_automation_call" || item.type?.startsWith?.("mcp_")) {
       out.push({
-        agent_name: item.agent_name ?? "tool",
+        agent_name: agentFromRef ?? item.agent_name ?? "tool",
         role: "tool",
-        content: `[${item.type}] ${item.name ?? item.function?.name ?? ""} ${JSON.stringify(item.arguments ?? item.function?.arguments ?? {}).slice(0, 500)}`,
+        content: `[${item.type}] ${item.name ?? item.function?.name ?? item.server_label ?? ""} ${JSON.stringify(item.arguments ?? item.function?.arguments ?? {}).slice(0, 500)}`,
         meta: item,
       });
     }
