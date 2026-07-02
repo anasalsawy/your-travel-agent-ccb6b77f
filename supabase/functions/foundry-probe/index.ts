@@ -22,18 +22,17 @@ Deno.serve(async () => {
   const dfn = cur.data?.versions?.latest?.definition ?? {};
   const existing = Array.isArray(dfn.tools) ? dfn.tools : [];
   const warTools = [
-    { type: "function", name: "war_room_post", description: "Post a status update to the shared War Room. Call this on ACK, WORKING, BLOCKED, DONE.", parameters: { type: "object", properties: { content: {type:"string"}, status: {type:"string", enum:["ack","working","blocked","done","asking","heartbeat"]}, addressed_to:{type:"array", items:{type:"string"}}}, required:["content"]}},
-    { type: "function", name: "war_room_heartbeat", description: "60-second liveness ping.", parameters: { type: "object", properties: { status_line:{type:"string"}, mood:{type:"string"} }}},
+    // Try nested `function` shape (Assistants-style)
+    { type: "function", function: { name: "war_room_post", description: "Post to war room.", parameters: { type: "object", properties: { content:{type:"string"}}, required:["content"]}, strict: false }},
+    { type: "function", function: { name: "war_room_heartbeat", description: "Liveness ping.", parameters: { type: "object", properties: { status_line:{type:"string"}}}, strict: false }},
   ];
-  const have = new Set(existing.map((t:any)=> t?.name ?? t?.function?.name).filter(Boolean));
-  const merged = [...existing, ...warTools.filter(t => !have.has(t.name))];
+  const nonFn = existing.filter((t:any) => t?.type !== "function");
+  const merged = [...nonFn, ...warTools];
   const results: any[] = [];
-  // Try PATCH shape A: definition wrapper
   const pA = await az("PATCH", "/agents/" + name, { definition: { ...dfn, tools: merged }});
-  results.push({ shape: "definition-wrapper", status: pA.status, err: pA.status >= 300 ? pA.data : null });
-  // Verify
+  results.push({ shape: "function-nested", status: pA.status, err: pA.status >= 300 ? pA.data : null });
   const g1 = await az("GET", "/agents/" + name);
   const nowTools = g1.data?.versions?.latest?.definition?.tools ?? [];
-  results.push({ verify_A_tool_full: nowTools });
+  results.push({ verify_tools: nowTools });
   return new Response(JSON.stringify(results, null, 2), { headers: {"content-type":"application/json"}});
 });
