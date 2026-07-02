@@ -182,7 +182,6 @@ async function runOnce(agentName: string, conversationId: string, userMessage: s
       agent_reference: agentRef,
       conversation: conversationId,
       input: outputs,
-      previous_response_id: resp?.id,
     });
   }
   throw new Error("tool loop exceeded 10 hops");

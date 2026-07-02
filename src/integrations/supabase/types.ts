@@ -14,6 +14,21 @@ export type Database = {
   }
   public: {
     Tables: {
+      _cron_secrets: {
+        Row: {
+          key: string
+          value: string
+        }
+        Insert: {
+          key: string
+          value: string
+        }
+        Update: {
+          key?: string
+          value?: string
+        }
+        Relationships: []
+      }
       admin_alerts: {
         Row: {
           admin_response: string | null
@@ -2182,6 +2197,27 @@ export type Database = {
         }
         Relationships: []
       }
+      war_room_cron_log: {
+        Row: {
+          fired_at: string
+          id: number
+          job: string
+          req_id: number | null
+        }
+        Insert: {
+          fired_at?: string
+          id?: number
+          job: string
+          req_id?: number | null
+        }
+        Update: {
+          fired_at?: string
+          id?: number
+          job?: string
+          req_id?: number | null
+        }
+        Relationships: []
+      }
       war_room_heartbeats: {
         Row: {
           agent_name: string
@@ -2331,6 +2367,11 @@ export type Database = {
       }
     }
     Functions: {
+      _cron_call: { Args: { fn: string; payload?: Json }; Returns: number }
+      _cron_fire: {
+        Args: { fn: string; job: string; payload?: Json }
+        Returns: undefined
+      }
       get_customer_context: { Args: { p_customer_id: string }; Returns: Json }
       get_or_create_customer_by_phone: {
         Args: { p_phone: string }
@@ -2393,6 +2434,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      war_room_stale_sweep: { Args: never; Returns: number }
     }
     Enums: {
       app_role: "admin" | "customer" | "staff"
