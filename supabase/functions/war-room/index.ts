@@ -166,31 +166,54 @@ async function tick() {
     }
   }
 
-  // 5) Next specialist replies (skip if Chief just addressed the same person who last spoke)
+  // 5) Next specialist replies. For real Foundry agents (Concierge, Booking Delegate) we invoke the
+  //    actual Azure agent via azure-agent-run so it uses its real tools. For others we role-play via Gemini
+  //    (until they have a native war-room posting tool of their own).
   const nextName = plan.next_speaker && SPECIALISTS.find((s) => s.name === plan.next_speaker) ? plan.next_speaker : null;
   if (nextName && lastMsg?.agent_name !== nextName) {
     const agent = SPECIALISTS.find((s) => s.name === nextName)!;
-    const agentTasks = tasks.filter((t) => t.assignee === nextName);
-    const specSystem = [
-      "You are " + agent.display + " (codename: " + agent.name + ") in a live war room.",
-      "Specialty: " + agent.specialty,
-      "Chief of Staff just directed you: \"" + (plan.directive ?? plan.speech ?? "give a status") + "\"",
-      "",
-      "Your open tasks: " + (agentTasks.map((t) => t.title).join(" | ") || "(none)"),
-      "",
-      "Rules:",
-      "- Reply in FIRST PERSON, 1-3 short sentences.",
-      "- Start with a status verb (ACK / WORKING / BLOCKED / DONE / ASKING).",
-      "- If you need another agent's help, address them by name.",
-      "- End with a concrete next step or a specific ask.",
-      "- No prose padding. No sign-offs.",
-    ].join("\n");
-    const specUser = "Room transcript so far:\n" + transcriptText(transcript.slice(-12));
-    try {
-      const speech = await llm(specSystem, specUser, { max: 300 });
-      if (speech) await postMessage(nextName, speech, "assistant", [CHIEF]);
-    } catch (e) {
-      await postMessage(nextName, "BLOCKED — LLM error: " + (e as Error).message.slice(0, 80), "error", [CHIEF]);
+    const directive = String(plan.directive ?? plan.speech ?? "give a status");
+    const roleMap: Record<string, string> = { "assistant": "concierge", "YTA-ASSISTANT": "booking" };
+    const foundryRole = roleMap[nextName];
+    if (foundryRole) {
+      try {
+        const r = await fetch(SB_URL + "/functions/v1/azure-agent-run", {
+          method: "POST",
+          headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
+          body: JSON.stringify({
+            role: foundryRole, channel: "war-room", externalId: "war-room",
+            message: "[CHIEF OF STAFF DIRECTIVE] " + directive + "\n\nRespond in 1-3 sentences starting with ACK/WORKING/BLOCKED/DONE. Invoke any tools you need to advance the mission. Do not just narrate.",
+          }),
+        });
+        const j = await r.json();
+        const text = String(j?.text ?? "").slice(0, 1200) || "(empty response from Foundry)";
+        await postMessage(nextName, text, "assistant", [CHIEF], { via: "azure-agent-run", steps: j?.steps?.length ?? 0 });
+      } catch (e) {
+        await postMessage(nextName, "BLOCKED — Foundry error: " + (e as Error).message.slice(0, 100), "error", [CHIEF]);
+      }
+    } else {
+      const agentTasks = tasks.filter((t) => t.assignee === nextName);
+      const specSystem = [
+        "You are " + agent.display + " (codename: " + agent.name + ") in a live war room.",
+        "Specialty: " + agent.specialty,
+        "Chief of Staff just directed you: \"" + directive + "\"",
+        "",
+        "Your open tasks: " + (agentTasks.map((t) => t.title).join(" | ") || "(none)"),
+        "",
+        "Rules:",
+        "- Reply in FIRST PERSON, 1-3 short sentences.",
+        "- Start with a status verb (ACK / WORKING / BLOCKED / DONE / ASKING).",
+        "- If you need another agent's help, address them by name.",
+        "- End with a concrete next step or a specific ask.",
+        "- No prose padding. No sign-offs.",
+      ].join("\n");
+      const specUser = "Room transcript so far:\n" + transcriptText(transcript.slice(-12));
+      try {
+        const speech = await llm(specSystem, specUser, { max: 300 });
+        if (speech) await postMessage(nextName, speech, "assistant", [CHIEF]);
+      } catch (e) {
+        await postMessage(nextName, "BLOCKED — LLM error: " + (e as Error).message.slice(0, 80), "error", [CHIEF]);
+      }
     }
   }
 
