@@ -128,9 +128,8 @@ Deno.serve(async (req) => {
       room_id: rid, agent_name: "You", role: "user", content: text,
     });
 
-    // Fire the workflow agent via Responses API
+    // Fire the workflow agent via Foundry Responses API (per-agent endpoint)
     const body: any = {
-      agent: { name: orch },
       input: [{ role: "user", content: text }],
     };
     // Reuse previous_response_id for continuity
@@ -139,7 +138,7 @@ Deno.serve(async (req) => {
 
     let resp: any;
     try {
-      resp = await az("POST", "/responses", body);
+      resp = await az("POST", "/agents/" + encodeURIComponent(orch) + "/responses", body);
     } catch (e) {
       const err = (e as Error).message;
       await sb.from("agent_room_messages").insert({
