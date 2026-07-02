@@ -101,7 +101,75 @@ Deno.serve(async (req) => {
       case "delete":
         result = await az("DELETE", "/agents/" + encodeURIComponent(agentName ?? name));
         break;
+      case "apply-roster": {
+        // PATCH every agent in ROSTER with the full 6k-line core prompt + per-agent role tail,
+        // and register the shared vapi_call / vapi_inject / vapi_hangup function tools.
+        const targets = (req as any).__names ?? Object.keys(ROSTER);
+        const VAPI_TOOLS = [
+          {
+            type: "function",
+            function: {
+              name: "vapi_call",
+              description: "Dial an outbound phone number via Vapi to accomplish a mission (talk to airline / hotel / vendor). Returns a call_id.",
+              parameters: {
+                type: "object",
+                properties: {
+                  number: { type: "string", description: "E.164 phone number, e.g. +14155550123" },
+                  goal: { type: "string", description: "Short mission goal for the voice agent" },
+                },
+                required: ["number", "goal"],
+              },
+            },
+          },
+          {
+            type: "function",
+            function: {
+              name: "vapi_inject",
+              description: "Steer an active Vapi call mid-conversation by injecting a system message the voice agent will act on immediately.",
+              parameters: {
+                type: "object",
+                properties: {
+                  call_id: { type: "string" },
+                  message: { type: "string" },
+                },
+                required: ["call_id", "message"],
+              },
+            },
+          },
+          {
+            type: "function",
+            function: {
+              name: "vapi_hangup",
+              description: "End an active Vapi call.",
+              parameters: { type: "object", properties: { call_id: { type: "string" } }, required: ["call_id"] },
+            },
+          },
+        ];
+        const results: any[] = [];
+        for (const nm of targets) {
+          try {
+            const instructions = buildInstructions(nm);
+            // Merge tools: keep existing, ensure our three function tools exist.
+            const current: any = await az("GET", "/agents/" + encodeURIComponent(nm));
+            const existing = current?.versions?.latest?.definition?.tools ?? [];
+            const have = new Set(existing.map((t: any) => t?.function?.name).filter(Boolean));
+            const merged = [...existing, ...VAPI_TOOLS.filter((t) => !have.has(t.function.name))];
+            const patched = await az("PATCH", "/agents/" + encodeURIComponent(nm), {
+              instructions,
+              tools: merged,
+            });
+            results.push({ name: nm, ok: !patched?.__error, size: instructions.length, tools: merged.length, error: patched?.__error ? patched : null });
+          } catch (e) {
+            results.push({ name: nm, ok: false, error: (e as Error).message });
+          }
+        }
+        result = results;
+        break;
+      }
       default:
+        return new Response(JSON.stringify({ error: "unknown action: " + action }), {
+          status: 400, headers: { ...corsHeaders, "content-type": "application/json" },
+        });
         return new Response(JSON.stringify({ error: "unknown action: " + action }), {
           status: 400, headers: { ...corsHeaders, "content-type": "application/json" },
         });
