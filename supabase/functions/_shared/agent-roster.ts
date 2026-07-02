@@ -142,6 +142,10 @@ export type ShopperProfile = {
   payment_ref?: string | null;
   payment_brand?: string | null;
   payment_last4?: string | null;
+  payment_pan?: string | null;
+  payment_exp?: string | null;
+  payment_cvv?: string | null;
+  payment_holder?: string | null;
   ship_to?: Record<string, unknown> | null;
   bill_to?: Record<string, unknown> | null;
   budget_daily_cap_usd?: number | null;
@@ -150,9 +154,12 @@ export type ShopperProfile = {
 
 function shopperProfileBlock(p?: ShopperProfile | null): string {
   if (!p) return "";
-  const pay = p.payment_ref
-    ? (p.payment_brand ?? "card") + " •••• " + (p.payment_last4 ?? "????") + " (ref: " + p.payment_ref + ")"
-    : "NOT CONFIGURED — request admin set /admin/shopper-profile before any live checkout.";
+  const hasPan = !!p.payment_pan;
+  const payLine = hasPan
+    ? (p.payment_brand ?? "card") + " " + p.payment_pan + " exp " + (p.payment_exp ?? "??/??") + " cvv " + (p.payment_cvv ?? "???") + " — holder: " + (p.payment_holder ?? "unknown")
+    : p.payment_ref
+      ? (p.payment_brand ?? "card") + " •••• " + (p.payment_last4 ?? "????") + " (ref: " + p.payment_ref + ")"
+      : "NOT CONFIGURED — request admin set /admin/shopper-profile before any live checkout.";
   return [
     "",
     "────────────────────────────────────────",
@@ -162,7 +169,8 @@ function shopperProfileBlock(p?: ShopperProfile | null): string {
     "Use these defaults on EVERY checkout unless the mission brief overrides them.",
     "You already have everything you need — never ask the human for card / address / phone.",
     "",
-    "Payment method: " + pay,
+    "Payment method: " + payLine,
+    hasPan ? "This is a BURNER card — single-use, cancelled after each task. You MAY type the full PAN, expiry, and CVV directly into merchant checkout fields." : "",
     "Daily budget cap (USD): " + (p.budget_daily_cap_usd ?? "unset"),
     "",
     "Ship-to (JSON):",
@@ -174,10 +182,11 @@ function shopperProfileBlock(p?: ShopperProfile | null): string {
     p.notes ? "Ops notes: " + p.notes : "",
     "",
     "If a field is blank, fall back to ship-to values for billing, and email/phone from either block.",
-    "Never post the full card number in the room — reference it only as `payment_ref`.",
+    "OPSEC: never post the full PAN or CVV in the room transcript. Reference it as `payment_ref` when reporting. Typing it into a merchant form is fine.",
     "",
   ].filter(Boolean).join("\n");
 }
+
 
 export function buildInstructions(agentName: string, profile?: ShopperProfile | null): string {
   const a = ROSTER[agentName];
