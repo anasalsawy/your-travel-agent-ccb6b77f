@@ -184,13 +184,55 @@ function RoomView({ room }: { room: Room }) {
 
 export default function AdminAgentRooms() {
   const [tab, setTab] = useState<Room>("builders");
+  const [watchdog, setWatchdog] = useState<{ ready: boolean; msg: string } | null>(null);
+
+  // Auto-check on shoppers: heartbeat every 60s, nudge if idle, verify standing orders.
+  useEffect(() => {
+    if (tab !== "shoppers") return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const { data } = await supabase.functions.invoke("shopper-watchdog", { body: {} });
+        if (!alive) return;
+        const r = data?.readiness ?? {};
+        const ready = !!(r.payOk && r.shipOk);
+        const missing: string[] = [];
+        if (!r.payOk) missing.push("payment");
+        if (!r.shipOk) missing.push("shipping");
+        setWatchdog({
+          ready,
+          msg: ready
+            ? (data?.nudged ? "Nudged idle squad" : "Squad active")
+            : "Missing: " + missing.join(", "),
+        });
+      } catch {/* ignore */}
+    };
+    tick();
+    const iv = setInterval(tick, 60_000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [tab]);
+
   return (
     <div className="container mx-auto p-4 max-w-6xl">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">Agent Rooms</h1>
-        <p className="text-sm text-muted-foreground">
-          Watch orchestrators delegate to helpers, tool by tool, live.
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Agent Rooms</h1>
+          <p className="text-sm text-muted-foreground">
+            Watch orchestrators delegate to helpers, tool by tool, live.
+          </p>
+        </div>
+        {tab === "shoppers" && (
+          <div className="flex items-center gap-2">
+            {watchdog && (
+              <Badge variant={watchdog.ready ? "default" : "destructive"}>
+                Watchdog · {watchdog.msg}
+              </Badge>
+            )}
+            <Button asChild variant="outline" size="sm">
+              <a href="/admin/shopper-profile">Standing Orders</a>
+            </Button>
+          </div>
+        )}
       </div>
       <Tabs value={tab} onValueChange={(v) => setTab(v as Room)}>
         <TabsList>

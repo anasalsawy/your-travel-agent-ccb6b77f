@@ -138,9 +138,51 @@ export const ROSTER: Record<string, AgentRole> = {
   },
 };
 
-export function buildInstructions(agentName: string): string {
+export type ShopperProfile = {
+  payment_ref?: string | null;
+  payment_brand?: string | null;
+  payment_last4?: string | null;
+  ship_to?: Record<string, unknown> | null;
+  bill_to?: Record<string, unknown> | null;
+  budget_daily_cap_usd?: number | null;
+  notes?: string | null;
+};
+
+function shopperProfileBlock(p?: ShopperProfile | null): string {
+  if (!p) return "";
+  const pay = p.payment_ref
+    ? (p.payment_brand ?? "card") + " •••• " + (p.payment_last4 ?? "????") + " (ref: " + p.payment_ref + ")"
+    : "NOT CONFIGURED — request admin set /admin/shopper-profile before any live checkout.";
+  return [
+    "",
+    "────────────────────────────────────────",
+    "SHOPPER STANDING ORDERS (payment / ship / bill)",
+    "────────────────────────────────────────",
+    "",
+    "Use these defaults on EVERY checkout unless the mission brief overrides them.",
+    "You already have everything you need — never ask the human for card / address / phone.",
+    "",
+    "Payment method: " + pay,
+    "Daily budget cap (USD): " + (p.budget_daily_cap_usd ?? "unset"),
+    "",
+    "Ship-to (JSON):",
+    JSON.stringify(p.ship_to ?? {}, null, 2),
+    "",
+    "Bill-to (JSON):",
+    JSON.stringify(p.bill_to ?? {}, null, 2),
+    "",
+    p.notes ? "Ops notes: " + p.notes : "",
+    "",
+    "If a field is blank, fall back to ship-to values for billing, and email/phone from either block.",
+    "Never post the full card number in the room — reference it only as `payment_ref`.",
+    "",
+  ].filter(Boolean).join("\n");
+}
+
+export function buildInstructions(agentName: string, profile?: ShopperProfile | null): string {
   const a = ROSTER[agentName];
   if (!a) throw new Error("Unknown agent: " + agentName);
+  const isShopper = agentName.startsWith("shopper-");
   const tail = [
     "",
     "────────────────────────────────────────",
@@ -162,6 +204,7 @@ export function buildInstructions(agentName: string): string {
     "Available tool inventory:",
     ...a.toolset.map((t) => "  - " + t),
     "",
+    isShopper ? shopperProfileBlock(profile) : "",
     "────────────────────────────────────────",
     "SHARED VAPI VOICE-CALL PROTOCOL",
     "────────────────────────────────────────",

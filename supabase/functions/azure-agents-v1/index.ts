@@ -105,6 +105,16 @@ Deno.serve(async (req) => {
         // PATCH every agent in ROSTER with the full 6k-line core prompt + per-agent role tail,
         // and register the shared vapi_call / vapi_inject / vapi_hangup function tools.
         const targets = (req as any).__names ?? Object.keys(ROSTER);
+        // Fetch shopper profile once so all shopper agents receive current standing orders.
+        let profile: any = null;
+        try {
+          const pr = await fetch(
+            "https://wpwdxtyufpewdyffxlgo.supabase.co/rest/v1/shopper_profile?id=eq.1&select=*",
+            { headers: { apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", Authorization: "Bearer " + (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "") } },
+          );
+          const rows = await pr.json();
+          profile = Array.isArray(rows) ? rows[0] ?? null : null;
+        } catch { /* ignore */ }
         const VAPI_TOOLS = [
           {
             type: "function",
@@ -148,7 +158,7 @@ Deno.serve(async (req) => {
         const results: any[] = [];
         for (const nm of targets) {
           try {
-            const instructions = buildInstructions(nm);
+            const instructions = buildInstructions(nm, profile);
             // Merge tools: keep existing, ensure our three function tools exist.
             const current: any = await az("GET", "/agents/" + encodeURIComponent(nm));
             const existing = current?.versions?.latest?.definition?.tools ?? [];
