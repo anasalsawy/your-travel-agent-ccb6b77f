@@ -15,6 +15,7 @@
 //  - Every mutation returns the DB backup row id so a rollback is possible.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { AZURE_FUNCTION_TOOLS, AZURE_TOOL_NAMES } from "../_shared/azure-tools.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
