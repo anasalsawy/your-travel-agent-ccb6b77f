@@ -50,10 +50,10 @@ export const ROSTER: Record<string, AgentRole> = {
       "Break work into subtasks tagged [H1], [H2], [H3]",
       "Delegate parallel execution to builder-helper-1/2/3",
       "Synthesize results and mark [COMPLETE] when done",
-      "Use MCP, azure-rest, browser, and code_interpreter directly when needed",
+      "Use bridge-owned azure_* function tools (ARM/Graph/Foundry) — NEVER Azure MCP",
     ],
     teammates: ["builder-helper-1", "builder-helper-2", "builder-helper-3"],
-    toolset: ["mcp", "code_interpreter", "browser", "azure-rest", "web_search", "vapi_call", "vapi_inject", "vapi_hangup"],
+    toolset: ["azure_arm_get", "azure_arm_action", "azure_graph_query", "azure_foundry_list_agents", "azure_foundry_get_agent", "azure_foundry_create_agent", "azure_foundry_publish_version", "azure_foundry_list_connections", "azure_identity_whoami", "code_interpreter", "browser", "web_search", "war_room_post", "war_room_heartbeat", "vapi_call", "vapi_inject", "vapi_hangup"],
   },
   "builder-helper-1": {
     name: "builder-helper-1",

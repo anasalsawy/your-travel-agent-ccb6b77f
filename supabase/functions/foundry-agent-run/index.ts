@@ -9,6 +9,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ROSTER } from "../_shared/agent-roster.ts";
+import { AZURE_TOOL_NAMES, executeAzureTool } from "../_shared/azure-tools.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -75,6 +76,7 @@ async function callFn(name: string, payload: unknown) {
 }
 
 async function execLocalTool(name: string, args: any, ctx: { agentName: string }): Promise<unknown> {
+  if (AZURE_TOOL_NAMES.includes(name as any)) return executeAzureTool(name, args ?? {});
   switch (name) {
     case "vapi_call":    return callFn("vapi-call", args);
     case "vapi_inject":  return callFn("vapi-inject", args);

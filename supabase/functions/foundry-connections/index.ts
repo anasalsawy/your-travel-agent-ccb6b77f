@@ -15,6 +15,7 @@
 //  - Every mutation returns the DB backup row id so a rollback is possible.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { AZURE_FUNCTION_TOOLS, AZURE_TOOL_NAMES } from "../_shared/azure-tools.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -240,8 +241,30 @@ Deno.serve(async (req) => {
         if (!Array.isArray(body.tools)) return j({ ok: false, error: "tools[] required" }, 400);
         return j({ ok: true, ...(await patchBuilder(body.tools, String(body.reason ?? "unspecified"))) });
       }
+      case "install-azure-tools": {
+        // Non-destructive: keep every existing Builder tool, strip any prior
+        // azure_* function tools (so we can re-run idempotently), then append
+        // the current AZURE_FUNCTION_TOOLS set. Backup taken by patchBuilder.
+        const before = await az("GET", "/agents/" + BUILDER);
+        const dfn = before.data?.versions?.latest?.definition ?? {};
+        const existing = Array.isArray(dfn.tools) ? dfn.tools : [];
+        const kept = existing.filter((t: any) => {
+          const n = t?.name ?? t?.function?.name ?? null;
+          return !(t?.type === "function" && n && AZURE_TOOL_NAMES.includes(n));
+        });
+        const newTools = [...kept, ...AZURE_FUNCTION_TOOLS];
+        const result = await patchBuilder(newTools, "install-azure-tools");
+        return j({
+          ok: true,
+          action,
+          added: AZURE_TOOL_NAMES,
+          kept_count: kept.length,
+          new_total: newTools.length,
+          ...result,
+        });
+      }
       default:
-        return j({ ok: false, error: "unknown action", allowed: ["backup","list-connections","list-agent-tools","probe-current","probe-after","patch-builder"] }, 400);
+        return j({ ok: false, error: "unknown action", allowed: ["backup","list-connections","list-agent-tools","probe-current","probe-after","patch-builder","install-azure-tools"] }, 400);
     }
   } catch (e) {
     return j({ ok: false, error: (e as Error).message }, 500);
