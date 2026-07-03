@@ -45,6 +45,8 @@ const RETRY_ATTEMPTS = 3;
 const COACH_LOOP_ROUNDS = 3;
 const ESCALATE_AFTER_ERRORS = 2;
 const ERROR_WINDOW_MS = 20 * 60 * 1000;
+const CHILD_TTL_MINUTES = 20;
+const EPHEMERAL_PARENT_AGENTS = new Set(["BUILDEROFAGENTS", "shopper-lead", "YTA-ASSISTANT", "assistant"]);
 
 // ---------- Helpers ----------
 function parsePlanJson(raw: string): any {
@@ -125,6 +127,25 @@ function staleAgents(hbs: any[]): string[] {
     .map((a) => a.name);
 }
 
+function resolveSpeaker(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim();
+  if (!v) return null;
+  const byName = SPECIALISTS.find((s) => s.name.toLowerCase() === v.toLowerCase());
+  if (byName) return byName.name;
+  const byDisplay = SPECIALISTS.find((s) => s.display.toLowerCase() === v.toLowerCase());
+  if (byDisplay) return byDisplay.name;
+  return null;
+}
+
+function fallbackSpeaker(stale: string[], tasks: any[]): string {
+  const stalePick = stale.find((name) => !!resolveSpeaker(name));
+  if (stalePick) return resolveSpeaker(stalePick)!;
+  const openTaskAssignee = tasks.find((t) => t?.status !== "done" && resolveSpeaker(t?.assignee))?.assignee;
+  if (openTaskAssignee) return resolveSpeaker(openTaskAssignee)!;
+  return "YTA-ASSISTANT";
+}
+
 function shouldInvokeSpecialist(nextName: string | null, lastMsg: any): boolean {
   if (!nextName) return false;
   if (!lastMsg) return true;
@@ -145,6 +166,20 @@ function countRecentAgentErrors(transcript: any[], agentName: string): number {
     if (!Number.isFinite(ts) || now - ts > ERROR_WINDOW_MS) return false;
     const text = String(m?.content ?? "").toLowerCase();
     return m?.role === "error" || /blocked|no response|tool_user_error|azure 4\d\d|azure 5\d\d|runtime error/.test(text);
+  }).length;
+}
+
+function isReadinessLoopText(v: string): boolean {
+  const t = String(v ?? "").toLowerCase();
+  if (!t) return false;
+  return /readiness|heartbeat sweep|roster heartbeat|capability sweep|room is cold|stale agents|reactivation/.test(t);
+}
+
+function countRecentChiefReadinessLoops(transcript: any[]): number {
+  const recent = transcript.slice(-10);
+  return recent.filter((m) => {
+    if (m?.agent_name !== CHIEF) return false;
+    return isReadinessLoopText(String(m?.content ?? ""));
   }).length;
 }
 
@@ -170,6 +205,384 @@ async function runSpecialist(agentName: string, message: string, source: string)
   const ok = r.ok && jr?.ok !== false && (posted || !!finalText);
   const error = ok ? null : String(jr?.error ?? ("http_" + r.status));
   return { ok, posted, finalText, steps, error, status: r.status };
+}
+
+type TaskTeamSpec = {
+  role: string;
+  objective: string;
+  inputs: string[];
+  outputs: string[];
+  restrictions: string[];
+  min_tools: string[];
+  interfaces: string[];
+  completion_criteria: string[];
+};
+type PlannedCapabilityAction = {
+  kind: "tool" | "infra";
+  action: "create" | "configure" | "reuse" | "retire";
+  name: string;
+  owner: string;
+  purpose: string;
+  temporary: boolean;
+  risk: "low" | "medium" | "high";
+  requires_approval: boolean;
+};
+type ChildSession = { id: string; parent: string; created_at: string; expires_at: string; spec: TaskTeamSpec };
+type ExecutionOutcome = { out: AgentRun | null; via: "direct" | "ephemeral-child"; child?: ChildSession; coach?: string };
+type ManagerStage = "PLAN" | "CREATE_CHILD" | "DELEGATE" | "SUPERVISE" | "VERIFY" | "CLEANUP" | "DONE" | "ESCALATE";
+
+function shouldUseEphemeralChild(agentName: string): boolean {
+  return EPHEMERAL_PARENT_AGENTS.has(agentName);
+}
+
+function makeChildId(parent: string): string {
+  const slug = parent.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 20) || "worker";
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return "wr-child-" + slug + "-" + stamp + "-" + rand;
+}
+
+function deriveTaskSpec(parent: string, directive: string): TaskTeamSpec {
+  const lower = directive.toLowerCase();
+  let role = "Execution Specialist";
+  let minTools = ["war_room_post"];
+  let inputs = ["Chief directive", "Recent room context"];
+  let outputs = ["Status update", "Evidence of one concrete step"];
+  const restrictions = [
+    "Do not expand scope without lead approval.",
+    "Do not perform destructive infra actions without authority approval.",
+    "Prefer minimum viable next step over broad speculative work.",
+  ];
+  if (lower.includes("book") || lower.includes("flight") || lower.includes("hotel")) role = "Booking Execution Specialist";
+  else if (lower.includes("shop")) role = "Shopping Execution Specialist";
+  else if (lower.includes("build") || lower.includes("deploy") || lower.includes("fix")) role = "Engineering Execution Specialist";
+  if (lower.includes("book") || lower.includes("flight")) {
+    minTools = ["war_room_post", "duffel_search", "duffel_offer", "duffel_create_checkout"];
+    inputs.push("Passenger/search constraints");
+    outputs.push("Offer shortlist with price evidence", "Provider checkout path");
+  } else if (lower.includes("build") || lower.includes("deploy")) {
+    minTools = ["war_room_post", "azure_deploy_function", "azure_get_logs", "azure_patch_agent"];
+    inputs.push("Code and deployment target");
+    outputs.push("Patch/deploy report", "Rollback notes");
+  }
+  const objective = directive.slice(0, 280);
+  return {
+    role,
+    objective,
+    inputs,
+    outputs,
+    restrictions,
+    min_tools: minTools,
+    interfaces: [parent, CHIEF, INFRA_AUTHORITY],
+    completion_criteria: [
+      "Post ACK status with first concrete step.",
+      "Execute at least one real tool/action step with evidence.",
+      "If blocked, post blocker evidence plus fallback.",
+      "End with DONE/READY_FOR_PAYMENT/ASKING status and next action.",
+    ],
+  };
+}
+
+function buildChildPrompt(child: ChildSession, baseMessage: string, attempt: number): string {
+  const cc = child.spec.completion_criteria.map((c, i) => (i + 1) + ") " + c).join("\n");
+  const io = [
+    "inputs: " + child.spec.inputs.join(" | "),
+    "outputs: " + child.spec.outputs.join(" | "),
+    "restrictions: " + child.spec.restrictions.join(" | "),
+    "minimum_tools: " + child.spec.min_tools.join(", "),
+  ].join("\n");
+  return [
+    "[EPHEMERAL CHILD WORKER]",
+    "child_id: " + child.id,
+    "parent_agent: " + child.parent,
+    "worker_role: " + child.spec.role,
+    "objective: " + child.spec.objective,
+    "interfaces_with: " + child.spec.interfaces.join(", "),
+    "attempt: " + attempt + "/" + RETRY_ATTEMPTS,
+    "ttl_minutes: " + CHILD_TTL_MINUTES,
+    "",
+    "Completion criteria:",
+    cc,
+    "",
+    "Task contract:",
+    io,
+    "",
+    "Delegation rule: You are a disposable worker. Do not expand scope. If you need sub-specialists, request lead approval first.",
+    "",
+    baseMessage,
+  ].join("\n");
+}
+
+async function spawnChildSession(parent: string, directive: string, spec: TaskTeamSpec): Promise<ChildSession> {
+  const created = new Date();
+  const expires = new Date(created.getTime() + CHILD_TTL_MINUTES * 60 * 1000);
+  const child: ChildSession = {
+    id: makeChildId(parent),
+    parent,
+    created_at: created.toISOString(),
+    expires_at: expires.toISOString(),
+    spec,
+  };
+  await postMessage(
+    CHIEF,
+    "Spawned ephemeral worker " + child.id + " under " + parent + " as " + spec.role + ".",
+    "assistant",
+    [parent],
+    { via: "child-spawn", child_id: child.id, ttl_minutes: CHILD_TTL_MINUTES, role: spec.role, objective: spec.objective, directive: directive.slice(0, 220) },
+  );
+  return child;
+}
+
+async function closeChildSession(child: ChildSession, outcome: "done" | "failed", details: string, addressed_to: string[] = []): Promise<void> {
+  await postMessage(
+    CHIEF,
+    "Closed ephemeral worker " + child.id + " (" + outcome + "). " + details.slice(0, 220),
+    "assistant",
+    addressed_to,
+    { via: "child-close", child_id: child.id, outcome, parent: child.parent },
+  );
+}
+
+function childExpired(child: ChildSession): boolean {
+  const exp = new Date(child.expires_at).getTime();
+  return Number.isFinite(exp) && Date.now() > exp;
+}
+
+async function postManagerStage(
+  lead: string,
+  stage: ManagerStage,
+  child: ChildSession | null,
+  details: string,
+  addressed_to: string[] = [],
+  meta: Record<string, unknown> = {},
+): Promise<void> {
+  await postMessage(
+    CHIEF,
+    "[MANAGER:" + stage + "] " + lead + (child?.id ? " child=" + child.id : "") + " — " + details.slice(0, 260),
+    "assistant",
+    addressed_to,
+    {
+      via: "manager-state",
+      manager_stage: stage,
+      lead,
+      child_id: child?.id ?? null,
+      child_expires_at: child?.expires_at ?? null,
+      retry_policy: { attempts: RETRY_ATTEMPTS, coach_rounds: COACH_LOOP_ROUNDS, ttl_minutes: CHILD_TTL_MINUTES },
+      ...meta,
+    },
+  );
+}
+
+async function createLifecycleTask(parent: string, child: ChildSession, directive: string): Promise<string | null> {
+  const { data, error } = await sb.from("war_room_tasks").insert({
+    title: "Lifecycle " + child.id + " (" + parent + ")",
+    description: "Manager pipeline: PLAN->CREATE_CHILD->DELEGATE->SUPERVISE->VERIFY->CLEANUP->DONE. Role: " + child.spec.role + ". Objective: " + directive.slice(0, 220),
+    assignee: parent,
+    priority: 2,
+    status: "doing",
+    created_by: CHIEF,
+  }).select("id").single();
+  if (error) {
+    await postManagerStage(parent, "PLAN", child, "Lifecycle task insert failed (non-fatal).", [parent], { task_error: error.message });
+    return null;
+  }
+  return data?.id ?? null;
+}
+
+async function closeLifecycleTask(taskId: string | null, outcome: "done" | "failed", result: string): Promise<void> {
+  if (!taskId) return;
+  await sb.from("war_room_tasks").update({ status: "done", result: "[" + outcome.toUpperCase() + "] " + result.slice(0, 800) }).eq("id", taskId);
+}
+
+async function createEscalationTask(failingAgent: string, details: string): Promise<void> {
+  await sb.from("war_room_tasks").insert({
+    title: "Escalation: recover " + failingAgent,
+    description: details.slice(0, 800),
+    assignee: INFRA_AUTHORITY,
+    priority: 1,
+    created_by: CHIEF,
+  });
+}
+
+async function verifyByAuthority(parentAgent: string, child: ChildSession, workerOut: AgentRun): Promise<{ ok: boolean; notes: string }> {
+  const verificationPrompt = [
+    "[INDEPENDENT VERIFICATION REQUEST]",
+    "Lead agent: " + parentAgent,
+    "Worker child_id: " + child.id,
+    "Worker role: " + child.spec.role,
+    "Objective: " + child.spec.objective,
+    "",
+    "Worker output excerpt:",
+    (workerOut.finalText || "(empty)").slice(0, 1200),
+    "",
+    "Verify against completion criteria:",
+    child.spec.completion_criteria.map((c, i) => (i + 1) + ") " + c).join("\n"),
+    "",
+    "Respond with PASS or FAIL in your first line, then one short reason and one next action.",
+  ].join("\n");
+  const vr = await runSpecialist(INFRA_AUTHORITY, verificationPrompt, "cron-verify-" + child.id);
+  const txt = (vr.finalText || "").trim();
+  const pass = vr.ok && /^pass\b/i.test(txt);
+  return { ok: pass, notes: txt.slice(0, 300) || String(vr.error ?? "verification-empty") };
+}
+
+function normalizePlannedActions(raw: unknown, kind: "tool" | "infra"): PlannedCapabilityAction[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PlannedCapabilityAction[] = [];
+  for (const item of raw) {
+    const action = String((item as any)?.action ?? "").toLowerCase();
+    const normalizedAction = action === "create" || action === "configure" || action === "reuse" || action === "retire"
+      ? action as PlannedCapabilityAction["action"]
+      : null;
+    if (!normalizedAction) continue;
+    const name = String((item as any)?.name ?? "").trim();
+    if (!name) continue;
+    const ownerRaw = String((item as any)?.owner ?? "").trim();
+    const owner = resolveSpeaker(ownerRaw) ?? (kind === "infra" ? INFRA_AUTHORITY : CHIEF);
+    const riskRaw = String((item as any)?.risk ?? "medium").toLowerCase();
+    const risk: PlannedCapabilityAction["risk"] =
+      riskRaw === "low" || riskRaw === "medium" || riskRaw === "high" ? riskRaw : "medium";
+    const purpose = String((item as any)?.purpose ?? "").trim() || "No purpose provided.";
+    const temporary = Boolean((item as any)?.temporary ?? true);
+    const requiresApproval = Boolean((item as any)?.requires_approval ?? (kind === "infra" || risk === "high"));
+    out.push({
+      kind,
+      action: normalizedAction,
+      name,
+      owner,
+      purpose: purpose.slice(0, 300),
+      temporary,
+      risk,
+      requires_approval: requiresApproval,
+    });
+  }
+  return out;
+}
+
+async function enqueueCapabilityActions(actions: PlannedCapabilityAction[]): Promise<void> {
+  for (const a of actions) {
+    const mustRouteAuthority = a.kind === "infra" && (a.requires_approval || a.risk === "high");
+    const assignee = mustRouteAuthority ? INFRA_AUTHORITY : a.owner;
+    await sb.from("war_room_tasks").insert({
+      title: `${a.kind.toUpperCase()} ${a.action}: ${a.name}`,
+      description: `Purpose: ${a.purpose}. Temporary: ${a.temporary}. Risk: ${a.risk}. Approval: ${a.requires_approval}.`,
+      assignee,
+      priority: mustRouteAuthority ? 1 : 2,
+      created_by: CHIEF,
+    });
+    const msg = mustRouteAuthority
+      ? `Approval required for ${a.kind} action ${a.action} on ${a.name}. ${INFRA_AUTHORITY}, review with lead before execution.`
+      : `Planned ${a.kind} action ${a.action} on ${a.name} assigned to ${assignee}.`;
+    await postMessage(CHIEF, msg, "assistant", [assignee], {
+      via: "capability-plan",
+      capability_kind: a.kind,
+      capability_action: a.action,
+      capability_name: a.name,
+      temporary: a.temporary,
+      risk: a.risk,
+      requires_approval: a.requires_approval,
+    });
+  }
+}
+
+async function runDirectWithRecovery(agentName: string, baseMessage: string, transcript: any[]): Promise<ExecutionOutcome> {
+  let out: AgentRun | null = null;
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    out = await runSpecialist(agentName, retryMessage(baseMessage, attempt), attempt === 1 ? "cron-tick" : ("cron-tick-retry-" + attempt));
+    if (out.ok) return { out, via: "direct" };
+  }
+  const firstErr = (out?.error ?? "empty").toString();
+  const loop = await runCoachLoop(agentName, baseMessage, transcript, firstErr);
+  return { out: loop.out, via: "direct", coach: loop.coach };
+}
+
+async function runWithEphemeralChildLifecycle(parentAgent: string, baseMessage: string, transcript: any[]): Promise<ExecutionOutcome> {
+  await postManagerStage(parentAgent, "PLAN", null, "Preparing delegated execution pipeline.", [parentAgent]);
+  const spec = deriveTaskSpec(parentAgent, baseMessage);
+  const child = await spawnChildSession(parentAgent, baseMessage, spec);
+  await postManagerStage(parentAgent, "CREATE_CHILD", child, "Ephemeral child created with TTL enforcement.", [parentAgent]);
+  const lifecycleTaskId = await createLifecycleTask(parentAgent, child, baseMessage);
+  let out: AgentRun | null = null;
+  let childClosed = false;
+
+  try {
+    await postManagerStage(parentAgent, "DELEGATE", child, "Delegating directive to child-run attempts.", [parentAgent]);
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+      if (childExpired(child)) {
+        await postManagerStage(parentAgent, "SUPERVISE", child, "TTL expired before attempt " + attempt + ". Forcing cleanup and escalation.", [INFRA_AUTHORITY, parentAgent], { attempt });
+        await postManagerStage(parentAgent, "VERIFY", child, "Verification failed: child TTL expired before completion.", [INFRA_AUTHORITY, parentAgent], { attempt, reason: "ttl_expired" });
+        await closeChildSession(child, "failed", "TTL expired before completion.", [INFRA_AUTHORITY, parentAgent]);
+        childClosed = true;
+        await postManagerStage(parentAgent, "CLEANUP", child, "Child session closed after TTL expiry.", [INFRA_AUTHORITY, parentAgent], { attempt, task_id: lifecycleTaskId });
+        await closeLifecycleTask(lifecycleTaskId, "failed", "TTL expired before completion; escalated.");
+        await createEscalationTask(parentAgent, "Lifecycle TTL expired for child " + child.id + ". Infra authority intervention required.");
+        await postManagerStage(parentAgent, "ESCALATE", child, "Escalated due to TTL expiry.", [INFRA_AUTHORITY, parentAgent], { reason: "ttl_expired" });
+        return { out: null, via: "ephemeral-child", child };
+      }
+      const childPrompt = buildChildPrompt(child, retryMessage(baseMessage, attempt), attempt);
+      out = await runSpecialist(parentAgent, childPrompt, "cron-child-" + attempt);
+      await postManagerStage(
+        parentAgent,
+        "SUPERVISE",
+        child,
+        out.ok
+          ? "Attempt " + attempt + " succeeded."
+          : "Attempt " + attempt + " failed (" + String(out.error ?? "unknown").slice(0, 120) + ").",
+        [parentAgent],
+        { attempt, outcome_ok: out.ok, http_status: out.status, error: out.error ?? null },
+      );
+      if (out.ok) {
+        const verifier = await verifyByAuthority(parentAgent, child, out);
+        if (!verifier.ok) {
+          await postManagerStage(parentAgent, "VERIFY", child, "Independent verification failed on attempt " + attempt + ".", [INFRA_AUTHORITY, parentAgent], { attempt, verifier_notes: verifier.notes });
+          out = { ...out, ok: false, error: "verification_failed: " + verifier.notes };
+          continue;
+        }
+        await postManagerStage(parentAgent, "VERIFY", child, "Output independently verified after attempt " + attempt + ".", [parentAgent, CHIEF], { attempt, verifier: INFRA_AUTHORITY });
+        await closeChildSession(child, "done", "Completed during retry window.", [parentAgent, CHIEF]);
+        childClosed = true;
+        await postManagerStage(parentAgent, "CLEANUP", child, "Child session closed after successful verification.", [parentAgent, CHIEF], { task_id: lifecycleTaskId });
+        await closeLifecycleTask(lifecycleTaskId, "done", "Recovered in " + attempt + " attempt(s).");
+        await postManagerStage(parentAgent, "DONE", child, "Delegated execution completed.", [parentAgent, CHIEF], { task_id: lifecycleTaskId });
+        return { out, via: "ephemeral-child", child };
+      }
+    }
+
+    const firstErr = (out?.error ?? "empty").toString();
+    const coachedBase = buildChildPrompt(child, baseMessage, RETRY_ATTEMPTS);
+    await postManagerStage(parentAgent, "SUPERVISE", child, "Retry budget exhausted. Entering coach loop.", [parentAgent], { first_error: firstErr.slice(0, 220) });
+    const loop = await runCoachLoop(parentAgent, coachedBase, transcript, firstErr);
+    if (loop.out?.ok) {
+      await postManagerStage(parentAgent, "VERIFY", child, "Coach loop recovered execution via " + loop.coach + ".", [parentAgent, CHIEF], { coach: loop.coach ?? null });
+      await closeChildSession(child, "done", "Recovered in coach loop via " + loop.coach + ".", [parentAgent, CHIEF]);
+      childClosed = true;
+      await postManagerStage(parentAgent, "CLEANUP", child, "Child session closed after coach-loop recovery.", [parentAgent, CHIEF], { coach: loop.coach ?? null, task_id: lifecycleTaskId });
+      await closeLifecycleTask(lifecycleTaskId, "done", "Recovered via coach " + (loop.coach ?? "unknown") + ".");
+      await postManagerStage(parentAgent, "DONE", child, "Delegated execution completed after recovery.", [parentAgent, CHIEF], { coach: loop.coach ?? null, task_id: lifecycleTaskId });
+      return { out: loop.out, via: "ephemeral-child", child, coach: loop.coach };
+    }
+
+    await postManagerStage(parentAgent, "VERIFY", child, "Verification failed after retries and coach loop.", [INFRA_AUTHORITY, parentAgent], { coach: loop.coach ?? null });
+    await closeChildSession(child, "failed", "Retries and coach loop exhausted. Escalation required.", [INFRA_AUTHORITY, parentAgent]);
+    childClosed = true;
+    await postManagerStage(parentAgent, "CLEANUP", child, "Child session closed after failure.", [INFRA_AUTHORITY, parentAgent], { coach: loop.coach ?? null, task_id: lifecycleTaskId });
+    await closeLifecycleTask(lifecycleTaskId, "failed", "Retries and coach loop exhausted; escalation required.");
+    await createEscalationTask(parentAgent, "Lifecycle retries + coach loop exhausted for child " + child.id + ". Last coach: " + (loop.coach ?? "none") + ".");
+    await postManagerStage(parentAgent, "ESCALATE", child, "Escalated to infra authority after lifecycle exhaustion.", [INFRA_AUTHORITY, parentAgent], { coach: loop.coach ?? null, task_id: lifecycleTaskId });
+    return { out: null, via: "ephemeral-child", child, coach: loop.coach };
+  } catch (e) {
+    const err = (e as Error).message ?? String(e);
+    await postManagerStage(parentAgent, "VERIFY", child, "Lifecycle threw unexpected exception.", [INFRA_AUTHORITY, parentAgent], { error: err.slice(0, 220) });
+    if (!childClosed) {
+      await closeChildSession(child, "failed", "Lifecycle exception: " + err.slice(0, 180), [INFRA_AUTHORITY, parentAgent]);
+      childClosed = true;
+    }
+    await postManagerStage(parentAgent, "CLEANUP", child, "Child session closed after lifecycle exception.", [INFRA_AUTHORITY, parentAgent], { task_id: lifecycleTaskId, error: err.slice(0, 220) });
+    await closeLifecycleTask(lifecycleTaskId, "failed", "Lifecycle exception: " + err.slice(0, 300));
+    await createEscalationTask(parentAgent, "Lifecycle exception in delegated run for child " + child.id + ": " + err);
+    await postManagerStage(parentAgent, "ESCALATE", child, "Escalated due to lifecycle exception.", [INFRA_AUTHORITY, parentAgent], { error: err.slice(0, 220), task_id: lifecycleTaskId });
+    return { out: null, via: "ephemeral-child", child };
+  }
 }
 
 function pickCoach(stuckAgent: string): string {
@@ -247,6 +660,8 @@ async function tick() {
     '  "next_speaker": "<agent name from roster OR null to wait>",',
     '  "directive": "<one crisp order for that agent>",',
     '  "new_tasks": [{"title":"...","assignee":"<agent>","priority":1-5,"description":"..."}],',
+    '  "tool_actions": [{"action":"create|configure|reuse|retire","name":"...","owner":"<agent>","purpose":"...","temporary":true,"risk":"low|medium|high","requires_approval":false}],',
+    '  "infra_actions": [{"action":"create|configure|reuse|retire","name":"...","owner":"<agent>","purpose":"...","temporary":true,"risk":"low|medium|high","requires_approval":true}],',
     '  "nudges": ["<agent names to publicly ping for a status heartbeat>"],',
     '  "closed_tasks": ["<task id prefix to mark done, if any>"] }',
   ].join("\n");
@@ -272,6 +687,46 @@ async function tick() {
     };
   }
 
+  // Normalize planner output so malformed/partial plans cannot stall delegation.
+  const resolvedSpeaker = resolveSpeaker(plan?.next_speaker);
+  const needsAction =
+    stale.length > 0 ||
+    tasks.some((t) => t?.status !== "done") ||
+    (lastMsg && ["user", "error"].includes(String(lastMsg.role ?? "").toLowerCase()));
+  if (!resolvedSpeaker && needsAction) {
+    const pick = fallbackSpeaker(stale, tasks);
+    const priorSpeech = typeof plan?.speech === "string" ? plan.speech.trim() : "";
+    plan.next_speaker = pick;
+    plan.directive = String(plan?.directive ?? "").trim() || "Post ACK, execute one concrete step, and report progress with evidence.";
+    plan.speech = priorSpeech
+      ? priorSpeech + " " + pick + ", take immediate action and post a status update."
+      : pick + ", take immediate action and post a status update.";
+  } else {
+    plan.next_speaker = resolvedSpeaker ?? null;
+    if (resolvedSpeaker && !String(plan?.directive ?? "").trim()) {
+      plan.directive = String(plan?.speech ?? "Post ACK, execute one concrete step, and report back.");
+    }
+  }
+
+  // Anti-stall: if Chief keeps repeating readiness sweeps, force execution-mode routing.
+  const readinessLoopCount = countRecentChiefReadinessLoops(transcript);
+  const currentDirective = String(plan?.directive ?? "");
+  if (
+    readinessLoopCount >= 2 &&
+    resolveSpeaker(plan?.next_speaker) === "BUILDEROFAGENTS" &&
+    isReadinessLoopText(currentDirective)
+  ) {
+    plan.next_speaker = "YTA-ASSISTANT";
+    plan.directive =
+      "Start real execution now: launch booking lane with concrete first step and blocker report. " +
+      "In parallel, request shopper-lead to start shopping lane and BUILDEROFAGENTS to open Task1 build lane. " +
+      "Post progress updates, not readiness sweeps.";
+    plan.speech =
+      "Readiness baseline is sufficient. We are now in execution mode. " +
+      "YTA-ASSISTANT, open booking lane now and trigger parallel shopping/build lanes with immediate progress updates.";
+    plan.nudges = ["shopper-lead", "BUILDEROFAGENTS"];
+  }
+
   // 2) Post Chief speech
   if (plan.speech) {
     const addr = [plan.next_speaker, ...(plan.nudges ?? [])].filter(Boolean);
@@ -290,6 +745,13 @@ async function tick() {
         created_by: CHIEF,
       });
     }
+  }
+
+  // 3.1) Capability/infrastructure actions (dynamic tool and infra planning).
+  const toolActions = normalizePlannedActions(plan.tool_actions, "tool");
+  const infraActions = normalizePlannedActions(plan.infra_actions, "infra");
+  if (toolActions.length || infraActions.length) {
+    await enqueueCapabilityActions([...toolActions, ...infraActions]);
   }
 
   // 4) Close tasks
@@ -340,48 +802,53 @@ async function tick() {
       "REQUIRED: Call the war_room_post tool with a 1-3 sentence status starting with ACK/WORKING/BLOCKED/DONE/READY_FOR_PAYMENT/ASKING. Then invoke whatever tools you need to advance the mission. Do not just narrate.",
     ].join("\n");
 
-    let out: AgentRun | null = null;
-    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
-      out = await runSpecialist(nextName!, retryMessage(message, attempt), attempt === 1 ? "cron-tick" : ("cron-tick-retry-" + attempt));
-      if (out.ok) break;
-    }
+    const useChild = nextName !== INFRA_AUTHORITY && shouldUseEphemeralChild(nextName!);
+    const execution = useChild
+      ? await runWithEphemeralChildLifecycle(nextName!, message, transcript)
+      : await runDirectWithRecovery(nextName!, message, transcript);
+    const out = execution.out;
 
     if (!out?.ok && nextName !== INFRA_AUTHORITY) {
-      const firstErr = (out?.error ?? "empty").toString();
-      const loop = await runCoachLoop(nextName!, message, transcript, firstErr);
-      out = loop.out;
-      if (!out) {
-        await postMessage(
-          CHIEF,
-          "Stuck-loop exhausted for " + nextName + " after " + COACH_LOOP_ROUNDS + " rounds with " + loop.coach + ". Escalating.",
-          "assistant",
-          [INFRA_AUTHORITY, nextName!],
-          { via: "stuck-loop-exhausted" },
-        );
-      }
+      await postMessage(
+        CHIEF,
+        "Stuck-loop exhausted for " + nextName + " after " + COACH_LOOP_ROUNDS + " rounds. Escalating.",
+        "assistant",
+        [INFRA_AUTHORITY, nextName!],
+        {
+          via: "stuck-loop-exhausted",
+          execution_mode: execution.via,
+          child_id: execution.child?.id ?? null,
+          coach: execution.coach ?? null,
+        },
+      );
     }
 
     if (out?.ok) {
       if (out.finalText && !out.posted) {
-        await postMessage(nextName!, out.finalText.slice(0, 1200), "assistant", [CHIEF], { via: "foundry-agent-run", steps: out.steps.length });
+        await postMessage(nextName!, out.finalText.slice(0, 1200), "assistant", [CHIEF], {
+          via: "foundry-agent-run",
+          steps: out.steps.length,
+          execution_mode: execution.via,
+          child_id: execution.child?.id ?? null,
+        });
       }
     } else {
       const err = (out?.error ?? "empty").toString().slice(0, 240);
-      await postMessage(nextName!, "(no response from Foundry after retries — " + err + ")", "error", [CHIEF], { retries: RETRY_ATTEMPTS, status: out?.status ?? null });
+      await postMessage(nextName!, "(no response from Foundry after retries — " + err + ")", "error", [CHIEF], {
+        retries: RETRY_ATTEMPTS,
+        status: out?.status ?? null,
+        execution_mode: execution.via,
+        child_id: execution.child?.id ?? null,
+      });
       if (nextName !== INFRA_AUTHORITY) {
-        await sb.from("war_room_tasks").insert({
-          title: "Escalation: recover " + nextName,
-          description: "Automatic escalation after " + RETRY_ATTEMPTS + " retries failed. Last error: " + err,
-          assignee: INFRA_AUTHORITY,
-          priority: 1,
-          created_by: CHIEF,
-        });
+        await createEscalationTask(nextName!, "Automatic escalation after " + RETRY_ATTEMPTS + " retries failed. Last error: " + err);
         await postMessage(
           CHIEF,
-          INFRA_AUTHORITY + ", take over " + nextName + " recovery now. Approve and execute infra/resource fixes, then post decision.",
+          INFRA_AUTHORITY + ", take over " + nextName + " recovery now. Approve and execute infra/resource fixes, then post decision. " +
+            (execution.child?.id ? "Failed child session: " + execution.child.id + "." : ""),
           "assistant",
           [INFRA_AUTHORITY, nextName],
-          { via: "auto-escalation", last_error: err },
+          { via: "auto-escalation", last_error: err, execution_mode: execution.via, child_id: execution.child?.id ?? null },
         );
       }
     }
