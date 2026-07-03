@@ -9,6 +9,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ROSTER } from "../_shared/agent-roster.ts";
+import { AZURE_TOOL_NAMES, executeAzureTool } from "../_shared/azure-tools.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
