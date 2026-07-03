@@ -107,13 +107,67 @@ export const duffelAdapter: BookingAdapter = {
   },
 };
 
+const TRAWEX_BASE_URL = (Deno.env.get("TRAWEX_BASE_URL") ?? "").replace(/\/$/, "");
+const TRAWEX_API_KEY = Deno.env.get("TRAWEX_API_KEY") ?? "";
+const TRAWEX_AUTH_HEADER = Deno.env.get("TRAWEX_AUTH_HEADER") ?? "x-api-key";
+const TRAWEX_SEARCH_PATH = Deno.env.get("TRAWEX_SEARCH_PATH") ?? "/api/flights/search";
+const TRAWEX_CREATE_PATH = Deno.env.get("TRAWEX_CREATE_PATH") ?? "/api/flights/book";
+const TRAWEX_CANCEL_PATH = Deno.env.get("TRAWEX_CANCEL_PATH") ?? "/api/flights/cancel";
+const TRAWEX_MODIFY_PATH = Deno.env.get("TRAWEX_MODIFY_PATH") ?? "/api/flights/modify";
+const TRAWEX_GET_PATH = Deno.env.get("TRAWEX_GET_PATH") ?? "/api/flights/get";
+
+function trawexReady() {
+  return !!TRAWEX_BASE_URL && !!TRAWEX_API_KEY;
+}
+
+async function trawexCall(path: string, payload: Record<string, unknown>) {
+  if (!trawexReady()) {
+    return {
+      status: 503,
+      ok: false,
+      data: {
+        error: "trawex not configured",
+        needed_env: ["TRAWEX_BASE_URL", "TRAWEX_API_KEY"],
+      },
+    };
+  }
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    [TRAWEX_AUTH_HEADER]: TRAWEX_API_KEY,
+  };
+  const r = await fetch(TRAWEX_BASE_URL + path, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const text = await r.text();
+  let data: unknown = text;
+  try { data = JSON.parse(text); } catch { /* keep raw */ }
+  return { status: r.status, ok: r.ok, data };
+}
+
 export const trawexAdapter: BookingAdapter = {
   name: "trawex",
-  async search() { return { status: 503, ok: false, data: { error: "trawex adapter pending H2H creds from Manoj" } }; },
-  async create() { return { status: 503, ok: false, data: { error: "trawex adapter pending H2H creds" } }; },
-  async cancel() { return { status: 503, ok: false, data: { error: "trawex adapter pending H2H creds" } }; },
-  async modify() { return { status: 503, ok: false, data: { error: "trawex adapter pending H2H creds" } }; },
-  async get()    { return { status: 503, ok: false, data: { error: "trawex adapter pending H2H creds" } }; },
+  async search(product, params) {
+    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
+    return trawexCall(TRAWEX_SEARCH_PATH, { product, ...params });
+  },
+  async create(product, params) {
+    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
+    return trawexCall(TRAWEX_CREATE_PATH, { product, ...params });
+  },
+  async cancel(product, params) {
+    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
+    return trawexCall(TRAWEX_CANCEL_PATH, { product, ...params });
+  },
+  async modify(product, params) {
+    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
+    return trawexCall(TRAWEX_MODIFY_PATH, { product, ...params });
+  },
+  async get(product, params) {
+    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
+    return trawexCall(TRAWEX_GET_PATH, { product, ...params });
+  },
 };
 
 // Router: today defaults to Duffel; will switch to Trawex per-product once ready.
@@ -122,7 +176,7 @@ export function pickAdapter(product: Product, override?: string): BookingAdapter
   if (override === "duffel") return duffelAdapter;
   // Default matrix — flip these when Trawex is live
   const defaults: Record<Product, BookingAdapter> = {
-    flights: duffelAdapter,
+    flights: trawexReady() ? trawexAdapter : duffelAdapter,
     hotels:  duffelAdapter,
     cars:    duffelAdapter,
   };

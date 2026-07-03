@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,7 @@ type Heartbeat = { agent_name: string; status_line: string | null; current_task_
 const CHIEF = "chief-of-staff";
 const ROSTER = [
   { name: CHIEF,              display: "Chief of Staff",    color: "hsl(0 84% 60%)",   emoji: "🎯", leader: true },
+  { name: "internal-app-test-buildrunner", display: "Infra Authority", color: "hsl(224 76% 58%)", emoji: "🛡️" },
   { name: "assistant",        display: "Concierge",         color: "hsl(199 89% 48%)", emoji: "💬" },
   { name: "YTA-ASSISTANT",    display: "Booking Delegate",  color: "hsl(262 83% 58%)", emoji: "✈️" },
   { name: "BUILDEROFAGENTS",  display: "Master Builder",    color: "hsl(217 91% 60%)", emoji: "🏗️" },
@@ -57,34 +58,51 @@ export default function AdminWarRoom() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [, forceRender] = useState(0);
 
+  const refreshRoom = useCallback(async (silent = true) => {
+    const [m, t, h] = await Promise.all([
+      supabase.from("war_room_messages").select("*").order("created_at", { ascending: true }).limit(200),
+      supabase.from("war_room_tasks").select("*").order("priority").order("created_at", { ascending: false }),
+      supabase.from("war_room_heartbeats").select("*"),
+    ]);
+    if (m.error || t.error || h.error) {
+      if (!silent) toast.error("Failed to refresh war room");
+      return;
+    }
+    setMessages((m.data ?? []) as Msg[]);
+    setTasks((t.data ?? []) as Task[]);
+    setBeats((h.data ?? []) as Heartbeat[]);
+  }, []);
+
   // Load + realtime
   useEffect(() => {
-    const load = async () => {
-      const [m, t, h] = await Promise.all([
-        supabase.from("war_room_messages").select("*").order("created_at", { ascending: true }).limit(200),
-        supabase.from("war_room_tasks").select("*").order("priority").order("created_at", { ascending: false }),
-        supabase.from("war_room_heartbeats").select("*"),
-      ]);
-      setMessages((m.data ?? []) as Msg[]);
-      setTasks((t.data ?? []) as Task[]);
-      setBeats((h.data ?? []) as Heartbeat[]);
-    };
-    load();
+    refreshRoom(false);
 
     const ch = supabase
       .channel("war-room-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "war_room_messages" }, (p: any) => {
-        if (p.eventType === "INSERT") setMessages((prev) => [...prev, p.new as Msg]);
+        if (p.eventType === "INSERT") {
+          setMessages((prev) => [...prev, p.new as Msg]);
+          return;
+        }
+        refreshRoom(true);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "war_room_tasks" }, () => {
-        supabase.from("war_room_tasks").select("*").order("priority").order("created_at", { ascending: false }).then(({ data }) => setTasks((data ?? []) as Task[]));
+        refreshRoom(true);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "war_room_heartbeats" }, () => {
-        supabase.from("war_room_heartbeats").select("*").then(({ data }) => setBeats((data ?? []) as Heartbeat[]));
+        refreshRoom(true);
       })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, []);
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          refreshRoom(true);
+        }
+      });
+    const poll = setInterval(() => { refreshRoom(true); }, 10000);
+    return () => {
+      clearInterval(poll);
+      supabase.removeChannel(ch);
+    };
+  }, [refreshRoom]);
 
   // Refresh relative timestamps
   useEffect(() => {
@@ -100,17 +118,26 @@ export default function AdminWarRoom() {
   // Autotick — Chief runs a cycle every N seconds
   useEffect(() => {
     if (!autoTick) return;
+    let inFlight = false;
     const run = async () => {
-      if (ticking) return;
+      if (inFlight) return;
+      inFlight = true;
       setTicking(true);
       try {
-        await supabase.functions.invoke("war-room", { body: { action: "tick" } });
-      } catch (e) { /* silent */ }
-      setTicking(false);
+        const { error } = await supabase.functions.invoke("war-room", { body: { action: "tick" } });
+        if (error) toast.error(error.message ?? "Tick failed");
+      } catch (e: any) {
+        toast.error(e?.message ?? "Tick failed");
+      } finally {
+        setTicking(false);
+        inFlight = false;
+        refreshRoom(true);
+      }
     };
+    void run();
     const i = setInterval(run, TICK_MS);
     return () => clearInterval(i);
-  }, [autoTick, ticking]);
+  }, [autoTick, refreshRoom]);
 
   const send = async () => {
     const text = input.trim();
@@ -135,13 +162,20 @@ export default function AdminWarRoom() {
       const { error } = await supabase.functions.invoke("war-room", { body: { action: "tick" } });
       if (error) throw error;
     } catch (e: any) { toast.error(e.message); }
-    setTicking(false);
+    finally {
+      setTicking(false);
+      refreshRoom(true);
+    }
   };
 
   const resetRoom = async () => {
     if (!confirm("Wipe all room messages, tasks, and heartbeats?")) return;
-    await supabase.functions.invoke("war-room", { body: { action: "reset" } });
-    setMessages([]); setTasks([]); setBeats([]);
+    const { error } = await supabase.functions.invoke("war-room", { body: { action: "reset" } });
+    if (error) {
+      toast.error(error.message ?? "Failed to reset room");
+      return;
+    }
+    await refreshRoom(true);
     toast.success("Room reset");
   };
 

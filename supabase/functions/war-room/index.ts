@@ -22,17 +22,18 @@ const corsHeaders = {
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const sb = createClient(SB_URL, SVC);
 
 // ---------- Roster (main agents only; keep tight) ----------
 const CHIEF = "chief-of-staff";
+const INFRA_AUTHORITY = "internal-app-test-buildrunner";
 type AgentDef = { name: string; display: string; role: string; specialty: string };
 const ROSTER: AgentDef[] = [
   { name: CHIEF,               display: "Chief of Staff",     role: "leader",   specialty: "Coordinates the room. Assigns tasks by specialty. Demands heartbeats. Pings idle agents. Synthesizes and closes work." },
   { name: "assistant",         display: "Concierge",          role: "customer", specialty: "Front-desk / customer voice. Quotes, checkout links, first-line answers." },
   { name: "YTA-ASSISTANT",     display: "Booking Delegate",   role: "booking",  specialty: "Autonomous flight/hotel/car booking, changes, cancels, reservation lookup." },
   { name: "BUILDEROFAGENTS",   display: "Master Builder",     role: "builder",  specialty: "Spawns/edits agents, plans code + infra work, orchestrates the builder helpers." },
+  { name: INFRA_AUTHORITY,     display: "Infrastructure Authority", role: "infra", specialty: "High-authority Azure AI Developer. Owns infra/resource edits, deployment unblock, and final escalation decisions." },
   { name: "shopper-lead",      display: "Shopper Chief",      role: "shopper",  specialty: "Runs shopping missions: research→plan→tactics→execute→verify with 3 helpers." },
   { name: "shopper-helper-1",  display: "Research Analyst",   role: "shopper",  specialty: "Retailer matrix, price/stock/friction recon." },
   { name: "shopper-helper-2",  display: "Tactical Operator",  role: "shopper",  specialty: "Cart prep, anti-bot, captcha, auth pivots." },
@@ -40,24 +41,53 @@ const ROSTER: AgentDef[] = [
 ];
 const SPECIALISTS = ROSTER.filter((a) => a.name !== CHIEF);
 const STALE_SECS = 90;
+const RETRY_ATTEMPTS = 3;
+const COACH_LOOP_ROUNDS = 3;
+const ESCALATE_AFTER_ERRORS = 2;
+const ERROR_WINDOW_MS = 20 * 60 * 1000;
 
 // ---------- Helpers ----------
-async function llm(system: string, user: string, opts: { json?: boolean; max?: number } = {}) {
-  const body: any = {
-    model: "google/gemini-2.5-flash",
-    messages: [{ role: "system", content: system }, { role: "user", content: user }],
-    max_tokens: opts.max ?? 500,
-    temperature: 0.7,
-  };
-  if (opts.json) body.response_format = { type: "json_object" };
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+function parsePlanJson(raw: string): any {
+  const txt = String(raw ?? "").trim();
+  if (!txt) return {};
+  try { return JSON.parse(txt); } catch { /* continue */ }
+  const fenced = txt.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+  if (fenced) {
+    try { return JSON.parse(fenced); } catch { /* continue */ }
+  }
+  const first = txt.indexOf("{");
+  const last = txt.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(txt.slice(first, last + 1)); } catch { /* continue */ }
+  }
+  return {};
+}
+
+async function planFromAuthority(system: string, user: string) {
+  const r = await fetch(SB_URL + "/functions/v1/foundry-agent-run", {
     method: "POST",
-    headers: { Authorization: "Bearer " + LOVABLE_API_KEY, "content-type": "application/json" },
-    body: JSON.stringify(body),
+    headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
+    body: JSON.stringify({
+      agentName: INFRA_AUTHORITY,
+      channel: "war-room",
+      externalId: "war-room",
+      source: "chief-planner",
+      message: [
+        "[SYSTEM]",
+        system,
+        "",
+        "[TASK]",
+        user,
+        "",
+        "Respond with JSON only. Do not call tools for this planner turn.",
+      ].join("\n"),
+    }),
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error("LLM " + r.status + ": " + JSON.stringify(j).slice(0, 400));
-  return String(j.choices?.[0]?.message?.content ?? "").trim();
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j?.ok === false) {
+    throw new Error(String(j?.error ?? ("planner_http_" + r.status)));
+  }
+  return parsePlanJson(String(j?.text ?? ""));
 }
 
 async function postMessage(agent_name: string, content: string, role = "assistant", addressed_to: string[] = [], meta: Record<string, unknown> = {}) {
@@ -95,6 +125,99 @@ function staleAgents(hbs: any[]): string[] {
     .map((a) => a.name);
 }
 
+function shouldInvokeSpecialist(nextName: string | null, lastMsg: any): boolean {
+  if (!nextName) return false;
+  if (!lastMsg) return true;
+  if (lastMsg.agent_name !== nextName) return true;
+  if (lastMsg.role === "error") return true;
+  const ts = new Date(lastMsg.created_at ?? 0).getTime();
+  if (!Number.isFinite(ts) || ts <= 0) return true;
+  const ageSec = (Date.now() - ts) / 1000;
+  // Retry same-agent turns when the previous message is old enough.
+  return ageSec > 45;
+}
+
+function countRecentAgentErrors(transcript: any[], agentName: string): number {
+  const now = Date.now();
+  return transcript.filter((m) => {
+    if (m?.agent_name !== agentName) return false;
+    const ts = new Date(m?.created_at ?? 0).getTime();
+    if (!Number.isFinite(ts) || now - ts > ERROR_WINDOW_MS) return false;
+    const text = String(m?.content ?? "").toLowerCase();
+    return m?.role === "error" || /blocked|no response|tool_user_error|azure 4\d\d|azure 5\d\d|runtime error/.test(text);
+  }).length;
+}
+
+function retryMessage(base: string, attempt: number): string {
+  if (attempt <= 1) return base;
+  if (attempt === 2) {
+    return base + "\n\nRETRY MODE A: keep it minimal. Post ACK via war_room_post first, then execute one smallest next tool step.";
+  }
+  return base + "\n\nRETRY MODE B: choose a different path/tool than prior attempts. If still blocked, post evidence + exact blocker + next fallback.";
+}
+
+type AgentRun = { ok: boolean; posted: boolean; finalText: string; steps: any[]; error: string | null; status: number };
+async function runSpecialist(agentName: string, message: string, source: string): Promise<AgentRun> {
+  const r = await fetch(SB_URL + "/functions/v1/foundry-agent-run", {
+    method: "POST",
+    headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
+    body: JSON.stringify({ agentName, channel: "war-room", externalId: "war-room", message, source }),
+  });
+  const jr = await r.json().catch(() => ({}));
+  const finalText = String(jr?.text ?? "").trim();
+  const steps = Array.isArray(jr?.steps) ? jr.steps : [];
+  const posted = steps.some((s: any) => s?.tool === "war_room_post");
+  const ok = r.ok && jr?.ok !== false && (posted || !!finalText);
+  const error = ok ? null : String(jr?.error ?? ("http_" + r.status));
+  return { ok, posted, finalText, steps, error, status: r.status };
+}
+
+function pickCoach(stuckAgent: string): string {
+  if (stuckAgent === "BUILDEROFAGENTS") return "YTA-ASSISTANT";
+  if (stuckAgent === INFRA_AUTHORITY) return "BUILDEROFAGENTS";
+  return "BUILDEROFAGENTS";
+}
+
+async function runCoachLoop(stuckAgent: string, baseMessage: string, transcript: any[], firstError: string): Promise<{ out: AgentRun | null; coach: string }> {
+  const coach = pickCoach(stuckAgent);
+  let lastErr = firstError;
+  for (let round = 1; round <= COACH_LOOP_ROUNDS; round++) {
+    const coachPrompt = [
+      "[WAR ROOM STUCK-LOOP COACH REQUEST]",
+      "You are coaching " + stuckAgent + " to recover a blocked run.",
+      "Round: " + round + "/" + COACH_LOOP_ROUNDS,
+      "Last error: " + (lastErr || "unknown"),
+      "",
+      "Recent transcript (oldest→newest):",
+      transcriptText(transcript.slice(-10)) || "(empty)",
+      "",
+      "Respond with 3-6 concrete steps. Avoid generic advice. Include a fallback path.",
+      "Start with: COACH_PLAN:",
+    ].join("\n");
+    const coachOut = await runSpecialist(coach, coachPrompt, "stuck-loop-coach-" + round);
+    const guidance = coachOut.finalText || ("COACH_PLAN: failed to generate plan. Use smallest safe step and post blocker evidence.");
+    await postMessage(
+      CHIEF,
+      "Recovery loop " + round + "/" + COACH_LOOP_ROUNDS + ": " + coach + " coaching " + stuckAgent + ".",
+      "assistant",
+      [coach, stuckAgent],
+      { via: "stuck-loop", round, first_error: firstError.slice(0, 220) },
+    );
+    const loopPrompt = [
+      retryMessage(baseMessage, 3),
+      "",
+      "[COACH GUIDANCE]",
+      guidance.slice(0, 2500),
+      "",
+      "MANDATORY: Execute one concrete next step now and call war_room_post with result.",
+    ].join("\n");
+    const out = await runSpecialist(stuckAgent, loopPrompt, "stuck-loop-agent-" + round);
+    if (out.ok) return { out, coach };
+    lastErr = out.error ?? "unknown";
+  }
+  return { out: null, coach };
+}
+
 // ---------- Chief of Staff cycle ----------
 async function tick() {
   const { transcript, tasks, heartbeats } = await loadContext();
@@ -105,8 +228,10 @@ async function tick() {
 
   // 1) Chief speaks — decides action as JSON
   const chiefSystem = [
-    "You are the CHIEF OF STAFF of a live coordination war room.",
-    "You never do specialist work yourself. You OBSERVE, DECIDE, ASSIGN, and NUDGE.",
+    "You are the planning brain for CHIEF OF STAFF in a live coordination war room.",
+    "Identity: " + INFRA_AUTHORITY + ". You are high-authority Azure AI Developer and escalation lead.",
+    "You produce Chief strategy: OBSERVE, DECIDE, ASSIGN, NUDGE.",
+    "Do not be a dictator. For major infra policy choices, include consultation note in speech.",
     "Voice: crisp, decisive, one short paragraph max. Address people by name.",
     "",
     "ROSTER (delegate to exactly one of these names):",
@@ -131,10 +256,20 @@ async function tick() {
 
   let plan: any = {};
   try {
-    const raw = await llm(chiefSystem, chiefUser, { json: true, max: 600 });
-    plan = JSON.parse(raw);
+    plan = await planFromAuthority(chiefSystem, chiefUser);
+    const hasSpeech = typeof plan?.speech === "string" && plan.speech.trim().length > 0;
+    const hasSpeaker = typeof plan?.next_speaker === "string" && plan.next_speaker.trim().length > 0;
+    if (!hasSpeech && !hasSpeaker) throw new Error("planner returned empty plan");
   } catch (e) {
-    plan = { speech: "Standing by — brain hiccup: " + (e as Error).message.slice(0, 80), next_speaker: null };
+    const fallback = stale[0] ?? "YTA-ASSISTANT";
+    plan = {
+      speech: "Planner degraded: " + (e as Error).message.slice(0, 120) + ". " + fallback + ", post ACK and continue with next concrete action.",
+      next_speaker: fallback,
+      directive: "Recover flow and post concrete progress.",
+      new_tasks: [],
+      nudges: stale.slice(0, 2),
+      closed_tasks: [],
+    };
   }
 
   // 2) Post Chief speech
@@ -170,8 +305,23 @@ async function tick() {
   //    Every agent in the roster runs through foundry-agent-run, which invokes
   //    the actual /agents/{name} + /threads/{id}/runs surface and executes local
   //    tool calls (war_room_post, war_room_heartbeat, vapi_*).
-  const nextName = plan.next_speaker && SPECIALISTS.find((s) => s.name === plan.next_speaker) ? plan.next_speaker : null;
-  if (nextName && lastMsg?.agent_name !== nextName) {
+  const planned = plan.next_speaker && SPECIALISTS.find((s) => s.name === plan.next_speaker) ? plan.next_speaker : null;
+  const plannedErrors = planned ? countRecentAgentErrors(transcript, planned) : 0;
+  const nextName = planned && planned !== INFRA_AUTHORITY && plannedErrors >= ESCALATE_AFTER_ERRORS
+    ? INFRA_AUTHORITY
+    : planned;
+
+  if (planned && nextName === INFRA_AUTHORITY && planned !== INFRA_AUTHORITY) {
+    await postMessage(
+      CHIEF,
+      "Escalation activated: " + planned + " has repeated failures. " + INFRA_AUTHORITY + ", take authority on recovery and infra actions.",
+      "assistant",
+      [INFRA_AUTHORITY, planned],
+      { via: "escalation", reason: "repeated_errors", retries_seen: plannedErrors },
+    );
+  }
+
+  if (shouldInvokeSpecialist(nextName, lastMsg)) {
     const directive = String(plan.directive ?? plan.speech ?? "give a status");
     const agentTasks = tasks.filter((t) => t.assignee === nextName);
     const message = [
@@ -183,25 +333,57 @@ async function tick() {
       "Recent room transcript (oldest→newest):",
       transcriptText(transcript.slice(-12)) || "(empty)",
       "",
+      nextName === INFRA_AUTHORITY
+        ? "You are escalation authority. Decide recovery, infra/resource changes, and publish the action plan back to Chief."
+        : "If this task touches infra/resources/deployment policy, coordinate with " + INFRA_AUTHORITY + " before final decision.",
+      "",
       "REQUIRED: Call the war_room_post tool with a 1-3 sentence status starting with ACK/WORKING/BLOCKED/DONE/READY_FOR_PAYMENT/ASKING. Then invoke whatever tools you need to advance the mission. Do not just narrate.",
     ].join("\n");
-    try {
-      const r = await fetch(SB_URL + "/functions/v1/foundry-agent-run", {
-        method: "POST",
-        headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
-        body: JSON.stringify({ agentName: nextName, channel: "war-room", externalId: "war-room", message, source: "cron-tick" }),
-      });
-      const jr = await r.json();
-      // If the agent didn't post via war_room_post but returned final text, mirror it.
-      const finalText = String(jr?.text ?? "").trim();
-      const posted = Array.isArray(jr?.steps) && jr.steps.some((s: any) => s?.tool === "war_room_post");
-      if (finalText && !posted) {
-        await postMessage(nextName, finalText.slice(0, 1200), "assistant", [CHIEF], { via: "foundry-agent-run", steps: jr?.steps?.length ?? 0 });
-      } else if (!finalText && !posted) {
-        await postMessage(nextName, "(no response from Foundry — " + (jr?.error ?? "empty").toString().slice(0, 120) + ")", "error", [CHIEF]);
+
+    let out: AgentRun | null = null;
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+      out = await runSpecialist(nextName!, retryMessage(message, attempt), attempt === 1 ? "cron-tick" : ("cron-tick-retry-" + attempt));
+      if (out.ok) break;
+    }
+
+    if (!out?.ok && nextName !== INFRA_AUTHORITY) {
+      const firstErr = (out?.error ?? "empty").toString();
+      const loop = await runCoachLoop(nextName!, message, transcript, firstErr);
+      out = loop.out;
+      if (!out) {
+        await postMessage(
+          CHIEF,
+          "Stuck-loop exhausted for " + nextName + " after " + COACH_LOOP_ROUNDS + " rounds with " + loop.coach + ". Escalating.",
+          "assistant",
+          [INFRA_AUTHORITY, nextName!],
+          { via: "stuck-loop-exhausted" },
+        );
       }
-    } catch (e) {
-      await postMessage(nextName, "BLOCKED — Foundry runtime error: " + (e as Error).message.slice(0, 140), "error", [CHIEF]);
+    }
+
+    if (out?.ok) {
+      if (out.finalText && !out.posted) {
+        await postMessage(nextName!, out.finalText.slice(0, 1200), "assistant", [CHIEF], { via: "foundry-agent-run", steps: out.steps.length });
+      }
+    } else {
+      const err = (out?.error ?? "empty").toString().slice(0, 240);
+      await postMessage(nextName!, "(no response from Foundry after retries — " + err + ")", "error", [CHIEF], { retries: RETRY_ATTEMPTS, status: out?.status ?? null });
+      if (nextName !== INFRA_AUTHORITY) {
+        await sb.from("war_room_tasks").insert({
+          title: "Escalation: recover " + nextName,
+          description: "Automatic escalation after " + RETRY_ATTEMPTS + " retries failed. Last error: " + err,
+          assignee: INFRA_AUTHORITY,
+          priority: 1,
+          created_by: CHIEF,
+        });
+        await postMessage(
+          CHIEF,
+          INFRA_AUTHORITY + ", take over " + nextName + " recovery now. Approve and execute infra/resource fixes, then post decision.",
+          "assistant",
+          [INFRA_AUTHORITY, nextName],
+          { via: "auto-escalation", last_error: err },
+        );
+      }
     }
   }
 

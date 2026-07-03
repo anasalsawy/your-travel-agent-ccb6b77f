@@ -17,6 +17,9 @@ const CLIENT_ID = Deno.env.get("AZURE_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("AZURE_CLIENT_SECRET")!;
 const AI_PROJECT = (Deno.env.get("AZURE_AI_PROJECT_ENDPOINT") ?? "").replace(/\/$/, "");
 const DEFAULT_MODEL = Deno.env.get("AZURE_AI_MODEL_DEFAULT") ?? "gpt-4o-mini";
+const DEFAULT_FLIGHT_PROVIDER = (Deno.env.get("BOOKING_PROVIDER_FLIGHTS") ?? "duffel").toLowerCase();
+const DEFAULT_HOTEL_PROVIDER = (Deno.env.get("BOOKING_PROVIDER_HOTELS") ?? "duffel").toLowerCase();
+const DEFAULT_CAR_PROVIDER = (Deno.env.get("BOOKING_PROVIDER_CARS") ?? "duffel").toLowerCase();
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -84,6 +87,12 @@ async function callFn(name: string, payload: unknown): Promise<unknown> {
   try { return JSON.parse(t); } catch { return { raw: t, status: r.status }; }
 }
 
+function providerFor(product: "flights" | "hotels" | "cars") {
+  if (product === "flights") return DEFAULT_FLIGHT_PROVIDER;
+  if (product === "hotels") return DEFAULT_HOTEL_PROVIDER;
+  return DEFAULT_CAR_PROVIDER;
+}
+
 const CONCIERGE_TOOLS: ToolDef[] = [
   {
     name: "search_flights",
@@ -108,7 +117,7 @@ const CONCIERGE_TOOLS: ToolDef[] = [
         passengers: pax, cabin_class: a.cabin_class ?? "economy",
       };
       if (a.return_date) params.return_date = a.return_date;
-      return callFn("booking", { action: "search", product: "flights", provider: "duffel", params });
+      return callFn("booking", { action: "search", product: "flights", provider: providerFor("flights"), params });
     },
   },
   {
@@ -168,7 +177,7 @@ const BOOKING_TOOLS: ToolDef[] = [
         cabin_class: { type: "string", enum: ["economy", "premium_economy", "business", "first"], default: "economy" },
       },
     },
-    execute: async (a) => callFn("booking", { action: "search", product: "flights", provider: "duffel", params: a }),
+    execute: async (a) => callFn("booking", { action: "search", product: "flights", provider: providerFor("flights"), params: a }),
   },
   {
     name: "search_hotels",
@@ -186,7 +195,7 @@ const BOOKING_TOOLS: ToolDef[] = [
         rooms: { type: "integer", minimum: 1, default: 1 },
       },
     },
-    execute: async (a) => callFn("booking", { action: "search", product: "hotels", provider: "duffel", params: a }),
+    execute: async (a) => callFn("booking", { action: "search", product: "hotels", provider: providerFor("hotels"), params: a }),
   },
   {
     name: "search_cars",
@@ -204,7 +213,7 @@ const BOOKING_TOOLS: ToolDef[] = [
         driver_age: { type: "integer", default: 30 },
       },
     },
-    execute: async (a) => callFn("booking", { action: "search", product: "cars", provider: "duffel", params: a }),
+    execute: async (a) => callFn("booking", { action: "search", product: "cars", provider: providerFor("cars"), params: a }),
   },
   {
     name: "get_flight_offer",
@@ -269,7 +278,7 @@ const BOOKING_TOOLS: ToolDef[] = [
         product: { type: "string", enum: ["flights", "hotels", "cars"] },
       },
     },
-    execute: async (a) => callFn("booking", { action: "get", product: a.product, provider: "duffel", params: { order_id: a.order_id } }),
+    execute: async (a) => callFn("booking", { action: "get", product: a.product, provider: providerFor(a.product), params: { order_id: a.order_id } }),
   },
   {
     name: "cancel_booking",
@@ -282,7 +291,7 @@ const BOOKING_TOOLS: ToolDef[] = [
         product: { type: "string", enum: ["flights", "cars"], description: "Hotels cancel not implemented yet." },
       },
     },
-    execute: async (a) => callFn("booking", { action: "cancel", product: a.product, provider: "duffel", params: { order_id: a.order_id } }),
+    execute: async (a) => callFn("booking", { action: "cancel", product: a.product, provider: providerFor(a.product), params: { order_id: a.order_id } }),
   },
   {
     name: "change_flight",
@@ -297,7 +306,7 @@ const BOOKING_TOOLS: ToolDef[] = [
         notes: { type: "string" },
       },
     },
-    execute: async (a) => callFn("booking", { action: "modify", product: "flights", provider: "duffel", params: a }),
+    execute: async (a) => callFn("booking", { action: "modify", product: "flights", provider: providerFor("flights"), params: a }),
   },
   {
     name: "list_recent_bookings",

@@ -62,9 +62,9 @@ export default function AdminAutonomyAudit() {
     return () => { clearInterval(iv); clearInterval(clk); };
   }, []);
 
-  const lastTick = cron.find((c) => c.job === "war-room-tick");
-  const lastWatch = cron.find((c) => c.job === "shopper-watchdog");
-  const lastSweep = cron.find((c) => c.job === "stale-sweep");
+  const lastTick = cron.find((c) => c.job === "war_room_tick");
+  const lastWatch = cron.find((c) => c.job === "shopper_watchdog");
+  const lastSweep = cron.find((c) => c.job === "war_room_stale_sweep");
   const stale = beats.filter((b) => (Date.now() - new Date(b.last_beat_at).getTime()) > 3 * 60 * 1000);
   const running = tasks.filter((t) => t.status === "doing" || t.status === "todo");
   const nudges = tasks.filter((t) => t.title?.startsWith?.("NUDGE:"));
@@ -74,7 +74,7 @@ export default function AdminAutonomyAudit() {
   const sweepPosts = messages.filter((m) => m?.meta?.via === "stale_sweep");
 
   const criteria = [
-    { k: 1, label: "Server-side loop", ok: !!lastTick, detail: lastTick ? "last war-room-tick " + fmtAgo(lastTick.fired_at) : "no cron ticks logged" },
+    { k: 1, label: "Server-side loop", ok: !!lastTick, detail: lastTick ? "last war_room_tick " + fmtAgo(lastTick.fired_at) : "no cron ticks logged" },
     { k: 2, label: "Foundry bridge real", ok: runs.length > 0, detail: runs[0] ? "last run " + runs[0].agent_name + " " + fmtAgo(runs[0].started_at) : "no runs" },
     { k: 3, label: "Tool round-trip", ok: runs.some((r) => Array.isArray(r.steps) && r.steps.length > 0), detail: (() => { const r = runs.find((x) => Array.isArray(x.steps) && x.steps.length); return r ? r.steps.length + " tool step(s) on " + r.response_id?.slice(0, 20) : "no tool steps observed" })() },
     { k: 4, label: "Agents post themselves", ok: toolPosts.length > 0, detail: toolPosts[0] ? toolPosts[0].agent_name + " via tool " + fmtAgo(toolPosts[0].created_at) : "no tool-authored posts" },
