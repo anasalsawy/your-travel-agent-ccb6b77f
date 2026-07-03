@@ -25,6 +25,7 @@ const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FN_URL = SB_URL + "/functions/v1";
 const sb = createClient(SB_URL, SVC);
+const EXTRA_ALLOWED_AGENTS = new Set(["internal-app-test-buildrunner"]);
 
 let tokCache: { token: string; exp: number } | null = null;
 async function tok() {
@@ -202,7 +203,9 @@ Deno.serve(async (req) => {
     externalId = String(body.externalId ?? "war-room");
     source = String(body.source ?? "unknown");
     if (!agentName) return j({ ok: false, error: "agentName required" }, 400);
-    if (!ROSTER[agentName]) return j({ ok: false, error: "unknown agent: " + agentName }, 400);
+    if (!ROSTER[agentName] && !EXTRA_ALLOWED_AGENTS.has(agentName)) {
+      return j({ ok: false, error: "unknown agent: " + agentName }, 400);
+    }
     if (!message) return j({ ok: false, error: "message required" }, 400);
 
     const ins = await sb.from("foundry_runs").insert({

@@ -38,6 +38,11 @@ const sb = createClient(SB_URL, SVC);
 
 const BUILDER = "BUILDEROFAGENTS";
 
+function agentNameFrom(body: Record<string, unknown>): string {
+  const n = String(body.agentName ?? body.agent_name ?? BUILDER).trim();
+  return n || BUILDER;
+}
+
 // --- Auth tokens for two scopes: AI data plane + ARM control plane. ---
 const tokCache: Record<string, { token: string; exp: number }> = {};
 async function tokFor(scope: string): Promise<string> {
@@ -101,12 +106,12 @@ function armProjectConnectionsBase(): string | null {
 
 // ---- Handlers ----
 
-async function backupAll(label: string) {
+async function backupAll(label: string, agentName = BUILDER) {
   const rows: any[] = [];
   // 1. Agent definition (full, with all versions if returned)
-  const ag = await az("GET", "/agents/" + BUILDER);
+  const ag = await az("GET", "/agents/" + agentName);
   const b1 = await sb.from("foundry_connection_backups").insert({
-    label, scope: "agent", agent_name: BUILDER, payload: ag.data,
+    label, scope: "agent", agent_name: agentName, payload: ag.data,
   }).select("id").single();
   rows.push({ scope: "agent", id: b1.data?.id, status: ag.status });
 
@@ -136,8 +141,8 @@ function summarizeBuilderTools(agent: any) {
   }));
 }
 
-async function probeCurrent(phase: "before" | "after") {
-  const agent = await az("GET", "/agents/" + BUILDER);
+async function probeCurrent(phase: "before" | "after", agentName = BUILDER) {
+  const agent = await az("GET", "/agents/" + agentName);
   const tools = summarizeBuilderTools(agent.data);
   const results: any[] = [];
   // Only pings we can safely do under SP: create a single Response with the
@@ -154,7 +159,7 @@ async function probeCurrent(phase: "before" | "after") {
     const conv = await az("POST", "/openai/v1/conversations", {});
     const convId = conv?.data?.id ?? null;
     const resp = await az("POST", "/openai/v1/responses", {
-      agent_reference: { type: "agent_reference", name: BUILDER },
+      agent_reference: { type: "agent_reference", name: agentName },
       conversation: convId,
       input: [{ role: "user", content: prompt }],
     });
@@ -162,7 +167,7 @@ async function probeCurrent(phase: "before" | "after") {
     const isToolUserErr = !!errText && /tool_user_error|signed-in user/i.test(errText);
     const ok = resp.ok && !isToolUserErr;
     const row = {
-      phase, agent_name: BUILDER,
+      phase, agent_name: agentName,
       connection_name: t.server_label ?? t.name ?? t.connection_id ?? t.type,
       connection_type: t.type,
       auth_type: t.type === "mcp" ? "mcp-oauth-or-key" : (t.type === "browser" ? "browser-connection" : t.type),
@@ -184,16 +189,17 @@ async function probeCurrent(phase: "before" | "after") {
   return { total: results.length, results };
 }
 
-async function patchBuilder(newTools: any[], reason: string) {
-  const before = await az("GET", "/agents/" + BUILDER);
+async function patchAgent(agentName: string, newTools: any[], reason: string) {
+  const before = await az("GET", "/agents/" + agentName);
   const back = await sb.from("foundry_connection_backups").insert({
-    label: "pre-patch:" + reason, scope: "agent", agent_name: BUILDER, payload: before.data,
+    label: "pre-patch:" + reason, scope: "agent", agent_name: agentName, payload: before.data,
   }).select("id").single();
 
   const dfn = before.data?.versions?.latest?.definition ?? {};
   const newDef = { ...dfn, tools: newTools };
-  const posted = await az("POST", "/agents/" + BUILDER + "/versions", { definition: newDef });
+  const posted = await az("POST", "/agents/" + agentName + "/versions", { definition: newDef });
   return {
+    agent_name: agentName,
     backup_id: back.data?.id,
     posted_status: posted.status,
     posted_version: posted.data?.version ?? null,
@@ -201,7 +207,39 @@ async function patchBuilder(newTools: any[], reason: string) {
   };
 }
 
-// ---- Router ----
+async function patchBuilder(newTools: any[], reason: string) {
+  return patchAgent(BUILDER, newTools, reason);
+}
+
+async function makeAgentSpSafe(agentName: string) {
+  const before = await az("GET", "/agents/" + agentName);
+  const dfn = before.data?.versions?.latest?.definition ?? {};
+  const existing = Array.isArray(dfn.tools) ? dfn.tools : [];
+  const removed: string[] = [];
+  const kept = existing.filter((t: any) => {
+    if (t?.type === "mcp") {
+      removed.push(t?.server_label ?? t?.mcp?.server_label ?? "mcp");
+      return false;
+    }
+    if (t?.type === "browser_automation_preview" && agentName !== BUILDER) {
+      removed.push("browser_automation_preview");
+      return false;
+    }
+    const n = t?.name ?? t?.function?.name ?? null;
+    if (t?.type === "function" && n && AZURE_TOOL_NAMES.includes(n)) return false;
+    return true;
+  });
+  const newTools = agentName === BUILDER
+    ? [...kept, ...AZURE_FUNCTION_TOOLS]
+    : kept;
+  const result = await patchAgent(agentName, newTools, "make-sp-safe:" + agentName);
+  return { removed, kept_count: kept.length, added: agentName === BUILDER ? AZURE_TOOL_NAMES : [], new_total: newTools.length, ...result };
+}
+
+const WAR_ROOM_AGENTS = [
+  "assistant", "YTA-ASSISTANT", "BUILDEROFAGENTS", "internal-app-test-buildrunner",
+  "shopper-lead", "shopper-helper-1", "shopper-helper-2", "shopper-helper-3",
+];
 
 function j(p: unknown, s = 200) {
   return new Response(JSON.stringify(p, null, 2), { status: s, headers: { ...cors, "content-type": "application/json" } });
@@ -217,7 +255,8 @@ Deno.serve(async (req) => {
     switch (action) {
       case "backup": {
         const label = String(body.label ?? ("manual-" + new Date().toISOString()));
-        return j({ ok: true, action, rows: await backupAll(label) });
+        const agent = agentNameFrom(body);
+        return j({ ok: true, action, agent_name: agent, rows: await backupAll(label, agent) });
       }
       case "list-connections": {
         const cbase = armProjectConnectionsBase();
@@ -226,16 +265,18 @@ Deno.serve(async (req) => {
         return j({ ok: cx.ok, status: cx.status, connections: cx.data });
       }
       case "list-agent-tools": {
-        const ag = await az("GET", "/agents/" + BUILDER);
-        return j({ ok: ag.ok, tools: summarizeBuilderTools(ag.data) });
+        const agent = agentNameFrom(body);
+        const ag = await az("GET", "/agents/" + agent);
+        return j({ ok: ag.ok, agent_name: agent, tools: summarizeBuilderTools(ag.data) });
       }
       case "probe-current": {
-        // Auto-backup first.
-        await backupAll("pre-probe-" + new Date().toISOString());
-        return j({ ok: true, ...(await probeCurrent("before")) });
+        const agent = agentNameFrom(body);
+        await backupAll("pre-probe-" + new Date().toISOString(), agent);
+        return j({ ok: true, agent_name: agent, ...(await probeCurrent("before", agent)) });
       }
       case "probe-after": {
-        return j({ ok: true, ...(await probeCurrent("after")) });
+        const agent = agentNameFrom(body);
+        return j({ ok: true, agent_name: agent, ...(await probeCurrent("after", agent)) });
       }
       case "patch-builder": {
         if (!Array.isArray(body.tools)) return j({ ok: false, error: "tools[] required" }, 400);
@@ -263,8 +304,23 @@ Deno.serve(async (req) => {
           ...result,
         });
       }
+      case "make-sp-safe": {
+        const agent = agentNameFrom(body);
+        return j({ ok: true, action, ...(await makeAgentSpSafe(agent)) });
+      }
+      case "make-war-room-sp-safe": {
+        const results: any[] = [];
+        for (const agent of WAR_ROOM_AGENTS) {
+          try {
+            results.push({ ...(await makeAgentSpSafe(agent)), ok: true });
+          } catch (e) {
+            results.push({ agent_name: agent, ok: false, error: (e as Error).message });
+          }
+        }
+        return j({ ok: true, action, patched: results });
+      }
       default:
-        return j({ ok: false, error: "unknown action", allowed: ["backup","list-connections","list-agent-tools","probe-current","probe-after","patch-builder","install-azure-tools"] }, 400);
+        return j({ ok: false, error: "unknown action", allowed: ["backup","list-connections","list-agent-tools","probe-current","probe-after","patch-builder","install-azure-tools","make-sp-safe","make-war-room-sp-safe"] }, 400);
     }
   } catch (e) {
     return j({ ok: false, error: (e as Error).message }, 500);

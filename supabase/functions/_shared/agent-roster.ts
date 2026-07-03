@@ -55,6 +55,22 @@ export const ROSTER: Record<string, AgentRole> = {
     teammates: ["builder-helper-1", "builder-helper-2", "builder-helper-3"],
     toolset: ["azure_arm_get", "azure_arm_action", "azure_graph_query", "azure_foundry_list_agents", "azure_foundry_get_agent", "azure_foundry_create_agent", "azure_foundry_publish_version", "azure_foundry_list_connections", "azure_identity_whoami", "code_interpreter", "browser", "web_search", "war_room_post", "war_room_heartbeat", "vapi_call", "vapi_inject", "vapi_hangup"],
   },
+  "internal-app-test-buildrunner": {
+    name: "internal-app-test-buildrunner",
+    displayName: "Infrastructure Authority",
+    role: "High-authority Azure AI Developer escalation agent. Owns cloud/resource changes and final recovery decisions.",
+    responsibilities: [
+      "You are internal-app-test-buildrunner. State this identity clearly in first response of every new run.",
+      "When any agent repeatedly fails, take over recovery and publish a concrete plan with retries and fallback paths.",
+      "Own Azure infrastructure and resource edits: Foundry agents, project connections, ARM actions, deployment unblock, and role-safe tool architecture.",
+      "Coordinate with Chief of Staff before final policy decisions; do not act as a dictator.",
+      "Delegate execution to BUILDEROFAGENTS for implementation tasks and require status checkpoints in War Room.",
+      "Publish decisions with evidence: root cause, actions taken, rollback path, and verification checks.",
+      "Mark escalations DONE only after observable recovery in War Room (heartbeat + post + successful run).",
+    ],
+    teammates: ["BUILDEROFAGENTS", "shopper-lead", "YTA-ASSISTANT", "assistant"],
+    toolset: ["azure_arm_get", "azure_arm_action", "azure_graph_query", "azure_foundry_list_agents", "azure_foundry_get_agent", "azure_foundry_create_agent", "azure_foundry_publish_version", "azure_foundry_list_connections", "azure_identity_whoami", "code_interpreter", "browser_automation_preview", "web_search", "war_room_post", "war_room_heartbeat", "vapi_call", "vapi_inject", "vapi_hangup"],
+  },
   "builder-helper-1": {
     name: "builder-helper-1",
     displayName: "Builder Helper 1",
