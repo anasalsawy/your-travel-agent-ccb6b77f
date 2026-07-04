@@ -1,6 +1,7 @@
 // Provider-agnostic booking adapters.
-// Today: Duffel (Flights live; Cars/Stays gated on live acct).
-// Tomorrow: Trawex — slot in the same interface, agents/tools don't change.
+// Current policy:
+// - Flights: Trawex when configured, otherwise Duffel fallback.
+// - Hotels/Cars: Trawex only by default (no Duffel fallback unless explicitly overridden).
 
 export type Product = "flights" | "hotels" | "cars";
 
@@ -84,7 +85,22 @@ export const duffelAdapter: BookingAdapter = {
     throw new Error("unknown product");
   },
   async create(product, params) {
-    if (product === "flights") return callInternal("duffel-book", params);
+    if (product === "flights") {
+      // Frontend "continue to payment" starts from an offer, not a booking row id.
+      // Route by payload shape to prevent "booking_id required" failures.
+      const bookingId = typeof params?.booking_id === "string" ? params.booking_id : "";
+      const offerId =
+        (typeof params?.offer_id === "string" && params.offer_id) ||
+        (typeof params?.id === "string" && params.id) ||
+        "";
+      if (bookingId) return callInternal("duffel-book", params);
+      if (offerId) return callInternal("duffel-create-checkout", { ...params, offer_id: offerId });
+      return {
+        status: 400,
+        ok: false,
+        data: { error: "offer_id or booking_id required for flights create" },
+      };
+    }
     if (product === "hotels")  return callInternal("duffel-stays-book", params);
     if (product === "cars")    return callInternal("duffel-cars-book", params);
     throw new Error("unknown product");
@@ -110,75 +126,237 @@ export const duffelAdapter: BookingAdapter = {
 const TRAWEX_BASE_URL = (Deno.env.get("TRAWEX_BASE_URL") ?? "").replace(/\/$/, "");
 const TRAWEX_API_KEY = Deno.env.get("TRAWEX_API_KEY") ?? "";
 const TRAWEX_AUTH_HEADER = Deno.env.get("TRAWEX_AUTH_HEADER") ?? "x-api-key";
-const TRAWEX_SEARCH_PATH = Deno.env.get("TRAWEX_SEARCH_PATH") ?? "/api/flights/search";
-const TRAWEX_CREATE_PATH = Deno.env.get("TRAWEX_CREATE_PATH") ?? "/api/flights/book";
-const TRAWEX_CANCEL_PATH = Deno.env.get("TRAWEX_CANCEL_PATH") ?? "/api/flights/cancel";
-const TRAWEX_MODIFY_PATH = Deno.env.get("TRAWEX_MODIFY_PATH") ?? "/api/flights/modify";
-const TRAWEX_GET_PATH = Deno.env.get("TRAWEX_GET_PATH") ?? "/api/flights/get";
+const TRAWEX_FLIGHTS_SEARCH_PATH = Deno.env.get("TRAWEX_FLIGHTS_SEARCH_PATH") ?? Deno.env.get("TRAWEX_SEARCH_PATH") ?? "/api/flights/search";
+const TRAWEX_FLIGHTS_CREATE_PATH = Deno.env.get("TRAWEX_FLIGHTS_CREATE_PATH") ?? Deno.env.get("TRAWEX_CREATE_PATH") ?? "/api/flights/book";
+const TRAWEX_FLIGHTS_CANCEL_PATH = Deno.env.get("TRAWEX_FLIGHTS_CANCEL_PATH") ?? Deno.env.get("TRAWEX_CANCEL_PATH") ?? "/api/flights/cancel";
+const TRAWEX_FLIGHTS_MODIFY_PATH = Deno.env.get("TRAWEX_FLIGHTS_MODIFY_PATH") ?? Deno.env.get("TRAWEX_MODIFY_PATH") ?? "/api/flights/modify";
+const TRAWEX_FLIGHTS_GET_PATH = Deno.env.get("TRAWEX_FLIGHTS_GET_PATH") ?? Deno.env.get("TRAWEX_GET_PATH") ?? "/api/flights/get";
+
+const TRAWEX_HOTELS_SEARCH_PATH = Deno.env.get("TRAWEX_HOTELS_SEARCH_PATH") ?? "/api/hotels/search";
+const TRAWEX_HOTELS_CREATE_PATH = Deno.env.get("TRAWEX_HOTELS_CREATE_PATH") ?? "/api/hotels/book";
+const TRAWEX_HOTELS_CANCEL_PATH = Deno.env.get("TRAWEX_HOTELS_CANCEL_PATH") ?? "/api/hotels/cancel";
+const TRAWEX_HOTELS_MODIFY_PATH = Deno.env.get("TRAWEX_HOTELS_MODIFY_PATH") ?? "/api/hotels/modify";
+const TRAWEX_HOTELS_GET_PATH = Deno.env.get("TRAWEX_HOTELS_GET_PATH") ?? "/api/hotels/get";
+
+const TRAWEX_CARS_SEARCH_PATH = Deno.env.get("TRAWEX_CARS_SEARCH_PATH") ?? "/api/cars/search";
+const TRAWEX_CARS_CREATE_PATH = Deno.env.get("TRAWEX_CARS_CREATE_PATH") ?? "/api/cars/book";
+const TRAWEX_CARS_CANCEL_PATH = Deno.env.get("TRAWEX_CARS_CANCEL_PATH") ?? "/api/cars/cancel";
+const TRAWEX_CARS_MODIFY_PATH = Deno.env.get("TRAWEX_CARS_MODIFY_PATH") ?? "/api/cars/modify";
+const TRAWEX_CARS_GET_PATH = Deno.env.get("TRAWEX_CARS_GET_PATH") ?? "/api/cars/get";
+const TRAWEX_TIMEOUT_MS = Math.max(1000, Number(Deno.env.get("TRAWEX_TIMEOUT_MS") ?? "12000"));
+const TRAWEX_MAX_RETRIES = Math.max(0, Number(Deno.env.get("TRAWEX_MAX_RETRIES") ?? "2"));
+const TRAWEX_RETRY_BASE_MS = Math.max(100, Number(Deno.env.get("TRAWEX_RETRY_BASE_MS") ?? "350"));
+const TRAWEX_RETRY_MAX_MS = Math.max(TRAWEX_RETRY_BASE_MS, Number(Deno.env.get("TRAWEX_RETRY_MAX_MS") ?? "4000"));
+const TRAWEX_RETRYABLE_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 
 function trawexReady() {
   return !!TRAWEX_BASE_URL && !!TRAWEX_API_KEY;
 }
 
+function trawexPaths(product: Product) {
+  if (product === "flights") {
+    return {
+      search: TRAWEX_FLIGHTS_SEARCH_PATH,
+      create: TRAWEX_FLIGHTS_CREATE_PATH,
+      cancel: TRAWEX_FLIGHTS_CANCEL_PATH,
+      modify: TRAWEX_FLIGHTS_MODIFY_PATH,
+      get: TRAWEX_FLIGHTS_GET_PATH,
+    };
+  }
+  if (product === "hotels") {
+    return {
+      search: TRAWEX_HOTELS_SEARCH_PATH,
+      create: TRAWEX_HOTELS_CREATE_PATH,
+      cancel: TRAWEX_HOTELS_CANCEL_PATH,
+      modify: TRAWEX_HOTELS_MODIFY_PATH,
+      get: TRAWEX_HOTELS_GET_PATH,
+    };
+  }
+  return {
+    search: TRAWEX_CARS_SEARCH_PATH,
+    create: TRAWEX_CARS_CREATE_PATH,
+    cancel: TRAWEX_CARS_CANCEL_PATH,
+    modify: TRAWEX_CARS_MODIFY_PATH,
+    get: TRAWEX_CARS_GET_PATH,
+  };
+}
+
+function safeDiagnostic(message: string, status?: number) {
+  const compact = message.replace(/\s+/g, " ").trim().slice(0, 240);
+  return status ? `${compact} (status=${status})` : compact;
+}
+
+function normalizedProviderError(
+  status: number,
+  retryable: boolean,
+  message: string,
+  extra?: Record<string, unknown>,
+) {
+  const envelope = {
+    status,
+    provider: "trawex",
+    retryable,
+    message: safeDiagnostic(message, status),
+    ...(extra ?? {}),
+  };
+  return {
+    status,
+    ok: false,
+    data: {
+      // Legacy compatibility: some clients read data.error as a user-facing string.
+      error: envelope.message,
+      error_envelope: envelope,
+    },
+  };
+}
+
+function retryDelayMs(attempt: number) {
+  const exp = Math.min(TRAWEX_RETRY_MAX_MS, TRAWEX_RETRY_BASE_MS * (2 ** attempt));
+  const jitter = Math.floor(Math.random() * Math.max(1, Math.floor(exp * 0.25)));
+  return Math.min(TRAWEX_RETRY_MAX_MS, exp + jitter);
+}
+
+function shouldRetryStatus(status: number) {
+  return TRAWEX_RETRYABLE_STATUS.has(status);
+}
+
+function isRetryableNetworkError(err: unknown) {
+  if (err instanceof DOMException && err.name === "AbortError") return true;
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("network") ||
+    msg.includes("fetch failed") ||
+    msg.includes("aborted") ||
+    msg.includes("econnreset") ||
+    msg.includes("etimedout") ||
+    msg.includes("socket")
+  );
+}
+
+async function trawexFetchWithTimeout(
+  url: string,
+  headers: Record<string, string>,
+  payload: Record<string, unknown>,
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("timeout"), TRAWEX_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function trawexCall(path: string, payload: Record<string, unknown>) {
   if (!trawexReady()) {
-    return {
-      status: 503,
-      ok: false,
-      data: {
-        error: "trawex not configured",
-        needed_env: ["TRAWEX_BASE_URL", "TRAWEX_API_KEY"],
-      },
-    };
+    return normalizedProviderError(503, false, "provider not configured", {
+      attempts: 0,
+      needed_env: ["TRAWEX_BASE_URL", "TRAWEX_API_KEY"],
+    });
   }
   const headers: Record<string, string> = {
     "content-type": "application/json",
     [TRAWEX_AUTH_HEADER]: TRAWEX_API_KEY,
   };
-  const r = await fetch(TRAWEX_BASE_URL + path, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
-  const text = await r.text();
-  let data: unknown = text;
-  try { data = JSON.parse(text); } catch { /* keep raw */ }
-  return { status: r.status, ok: r.ok, data };
+  const url = TRAWEX_BASE_URL + path;
+
+  let lastFailure: { status: number; message: string; retryable: boolean; attempts: number } | null = null;
+
+  for (let attempt = 0; attempt <= TRAWEX_MAX_RETRIES; attempt++) {
+    try {
+      const r = await trawexFetchWithTimeout(url, headers, payload);
+      const text = await r.text();
+      let data: unknown = text;
+      try { data = JSON.parse(text); } catch { /* keep raw */ }
+
+      if (r.ok) {
+        return { status: r.status, ok: true, data };
+      }
+
+      const retryable = shouldRetryStatus(r.status);
+      const message =
+        (data && typeof data === "object" && "message" in (data as Record<string, unknown>) &&
+          typeof (data as Record<string, unknown>).message === "string")
+          ? (data as Record<string, unknown>).message as string
+          : "provider request failed";
+
+      if (retryable && attempt < TRAWEX_MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt)));
+        continue;
+      }
+
+      return normalizedProviderError(r.status, retryable, message, {
+        attempts: attempt + 1,
+      });
+    } catch (err) {
+      const retryable = isRetryableNetworkError(err);
+      const status = 502;
+      const message = err instanceof Error ? err.message : "network error";
+
+      if (retryable && attempt < TRAWEX_MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt)));
+        continue;
+      }
+
+      lastFailure = { status, message, retryable, attempts: attempt + 1 };
+      break;
+    }
+  }
+
+  if (lastFailure) {
+    return normalizedProviderError(
+      lastFailure.status,
+      lastFailure.retryable,
+      lastFailure.message,
+      { attempts: lastFailure.attempts },
+    );
+  }
+
+  return normalizedProviderError(500, false, "unexpected provider error");
 }
 
 export const trawexAdapter: BookingAdapter = {
   name: "trawex",
   async search(product, params) {
-    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
-    return trawexCall(TRAWEX_SEARCH_PATH, { product, ...params });
+    const p = trawexPaths(product);
+    return trawexCall(p.search, { product, ...params });
   },
   async create(product, params) {
-    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
-    return trawexCall(TRAWEX_CREATE_PATH, { product, ...params });
+    const p = trawexPaths(product);
+    return trawexCall(p.create, { product, ...params });
   },
   async cancel(product, params) {
-    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
-    return trawexCall(TRAWEX_CANCEL_PATH, { product, ...params });
+    const p = trawexPaths(product);
+    return trawexCall(p.cancel, { product, ...params });
   },
   async modify(product, params) {
-    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
-    return trawexCall(TRAWEX_MODIFY_PATH, { product, ...params });
+    const p = trawexPaths(product);
+    return trawexCall(p.modify, { product, ...params });
   },
   async get(product, params) {
-    if (product !== "flights") return { status: 501, ok: false, data: { error: "trawex currently wired for flights only" } };
-    return trawexCall(TRAWEX_GET_PATH, { product, ...params });
+    const p = trawexPaths(product);
+    return trawexCall(p.get, { product, ...params });
   },
 };
 
-// Router: today defaults to Duffel; will switch to Trawex per-product once ready.
+// Router defaults:
+// - Flights keep Duffel fallback for continuity.
+// - Hotels/Cars are pinned to Trawex by default.
 export function pickAdapter(product: Product, override?: string): BookingAdapter {
   if (override === "trawex") return trawexAdapter;
   if (override === "duffel") return duffelAdapter;
-  // Default matrix — flip these when Trawex is live
   const defaults: Record<Product, BookingAdapter> = {
     flights: trawexReady() ? trawexAdapter : duffelAdapter,
-    hotels:  duffelAdapter,
-    cars:    duffelAdapter,
+    hotels:  trawexAdapter,
+    cars:    trawexAdapter,
   };
   return defaults[product];
 }
