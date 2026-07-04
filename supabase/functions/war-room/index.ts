@@ -47,6 +47,8 @@ const ESCALATE_AFTER_ERRORS = 2;
 const ERROR_WINDOW_MS = 20 * 60 * 1000;
 const CHILD_TTL_MINUTES = 20;
 const EPHEMERAL_PARENT_AGENTS = new Set(["BUILDEROFAGENTS", "shopper-lead", "YTA-ASSISTANT", "assistant"]);
+const PLANNER_TIMEOUT_MS = 12000;
+const SPECIALIST_TIMEOUT_MS = 18000;
 
 // ---------- Helpers ----------
 function parsePlanJson(raw: string): any {
@@ -66,30 +68,36 @@ function parsePlanJson(raw: string): any {
 }
 
 async function planFromAuthority(system: string, user: string) {
-  const r = await fetch(SB_URL + "/functions/v1/foundry-agent-run", {
-    method: "POST",
-    headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
-    body: JSON.stringify({
-      agentName: INFRA_AUTHORITY,
-      channel: "war-room",
-      externalId: "war-room",
-      source: "chief-planner",
-      message: [
-        "[SYSTEM]",
-        system,
-        "",
-        "[TASK]",
-        user,
-        "",
-        "Respond with JSON only. Do not call tools for this planner turn.",
-      ].join("\n"),
-    }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || j?.ok === false) {
-    throw new Error(String(j?.error ?? ("planner_http_" + r.status)));
+  try {
+    const r = await fetch(SB_URL + "/functions/v1/foundry-agent-run", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
+      body: JSON.stringify({
+        agentName: INFRA_AUTHORITY,
+        channel: "war-room",
+        externalId: "war-room",
+        source: "chief-planner",
+        message: [
+          "[SYSTEM]",
+          system,
+          "",
+          "[TASK]",
+          user,
+          "",
+          "Respond with JSON only. Do not call tools for this planner turn.",
+        ].join("\n"),
+      }),
+      signal: AbortSignal.timeout(PLANNER_TIMEOUT_MS),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j?.ok === false) {
+      throw new Error(String(j?.error ?? ("planner_http_" + r.status)));
+    }
+    return parsePlanJson(String(j?.text ?? ""));
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e);
+    throw new Error(msg.includes("aborted") || msg.includes("timeout") ? "planner_timeout" : msg);
   }
-  return parsePlanJson(String(j?.text ?? ""));
 }
 
 async function postMessage(agent_name: string, content: string, role = "assistant", addressed_to: string[] = [], meta: Record<string, unknown> = {}) {
@@ -183,6 +191,24 @@ function countRecentChiefReadinessLoops(transcript: any[]): number {
   }).length;
 }
 
+function countRecentDirectiveRepeats(transcript: any[], directive: string): number {
+  const d = String(directive ?? "").trim().toLowerCase();
+  if (!d) return 0;
+  return transcript.slice(-20).filter((m) => {
+    if (m?.agent_name !== CHIEF) return false;
+    const md = String(m?.meta?.directive ?? "").trim().toLowerCase();
+    return md && md === d;
+  }).length;
+}
+
+function directivePhase(directive: string, speech: string, nextSpeaker: string | null): "planning" | "readiness" | "execution" | "escalation" {
+  const d = (directive + " " + speech).toLowerCase();
+  if (nextSpeaker === INFRA_AUTHORITY || /escalat|take over|authority/.test(d)) return "escalation";
+  if (/readiness|heartbeat|stale|roll call|reactivation|status board|capability sweep/.test(d)) return "readiness";
+  if (/execute|launch|book|shopping|build|mission|checkout|implementation|task lane/.test(d)) return "execution";
+  return "planning";
+}
+
 function retryMessage(base: string, attempt: number): string {
   if (attempt <= 1) return base;
   if (attempt === 2) {
@@ -193,18 +219,25 @@ function retryMessage(base: string, attempt: number): string {
 
 type AgentRun = { ok: boolean; posted: boolean; finalText: string; steps: any[]; error: string | null; status: number };
 async function runSpecialist(agentName: string, message: string, source: string): Promise<AgentRun> {
-  const r = await fetch(SB_URL + "/functions/v1/foundry-agent-run", {
-    method: "POST",
-    headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
-    body: JSON.stringify({ agentName, channel: "war-room", externalId: "war-room", message, source }),
-  });
-  const jr = await r.json().catch(() => ({}));
-  const finalText = String(jr?.text ?? "").trim();
-  const steps = Array.isArray(jr?.steps) ? jr.steps : [];
-  const posted = steps.some((s: any) => s?.tool === "war_room_post");
-  const ok = r.ok && jr?.ok !== false && (posted || !!finalText);
-  const error = ok ? null : String(jr?.error ?? ("http_" + r.status));
-  return { ok, posted, finalText, steps, error, status: r.status };
+  try {
+    const r = await fetch(SB_URL + "/functions/v1/foundry-agent-run", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer " + SVC },
+      body: JSON.stringify({ agentName, channel: "war-room", externalId: "war-room", message, source }),
+      signal: AbortSignal.timeout(SPECIALIST_TIMEOUT_MS),
+    });
+    const jr = await r.json().catch(() => ({}));
+    const finalText = String(jr?.text ?? "").trim();
+    const steps = Array.isArray(jr?.steps) ? jr.steps : [];
+    const posted = steps.some((s: any) => s?.tool === "war_room_post");
+    const ok = r.ok && jr?.ok !== false && (posted || !!finalText);
+    const error = ok ? null : String(jr?.error ?? ("http_" + r.status));
+    return { ok, posted, finalText, steps, error, status: r.status };
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e);
+    const err = msg.includes("aborted") || msg.includes("timeout") ? "specialist_timeout" : msg;
+    return { ok: false, posted: false, finalText: "", steps: [], error: err, status: 599 };
+  }
 }
 
 type TaskTeamSpec = {
@@ -727,10 +760,28 @@ async function tick() {
     plan.nudges = ["shopper-lead", "BUILDEROFAGENTS"];
   }
 
+  // Escalate automatically if the same directive repeats more than 2 times.
+  const directiveRepeats = countRecentDirectiveRepeats(transcript, String(plan?.directive ?? ""));
+  if (directiveRepeats > 2) {
+    plan.next_speaker = INFRA_AUTHORITY;
+    plan.directive =
+      "Directive loop detected (>2 repeats). Take over, break loop, and issue concrete execution-lane assignments now.";
+    plan.speech =
+      "Loop guard triggered. " + INFRA_AUTHORITY +
+      ", take control to break repeated directive loop and relaunch execution lanes with concrete assignments.";
+    plan.nudges = ["BUILDEROFAGENTS", "YTA-ASSISTANT", "shopper-lead"];
+  }
+
+  const phase = directivePhase(String(plan?.directive ?? ""), String(plan?.speech ?? ""), resolveSpeaker(plan?.next_speaker));
+
   // 2) Post Chief speech
   if (plan.speech) {
     const addr = [plan.next_speaker, ...(plan.nudges ?? [])].filter(Boolean);
-    await postMessage(CHIEF, String(plan.speech), "assistant", addr, { directive: plan.directive ?? null });
+    await postMessage(CHIEF, String(plan.speech), "assistant", addr, {
+      directive: plan.directive ?? null,
+      phase,
+      directive_repeat_count: directiveRepeats,
+    });
   }
 
   // 3) Create tasks
