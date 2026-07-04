@@ -127,6 +127,12 @@ async function loadContext(): Promise<LoadedContext> {
     sb.from("war_room_tasks").select("*").in("status", ["todo", "doing"]).order("priority").order("created_at"),
     sb.from("war_room_heartbeats").select("*"),
   ]);
+  if (msgs.error || tasks.error || hbs.error) {
+    const details = [msgs.error?.message, tasks.error?.message, hbs.error?.message]
+      .filter((m): m is string => Boolean(m && m.trim()))
+      .join(" | ");
+    throw new Error(`war_room_schema_or_rls_error: ${details || "loadContext failed"}`);
+  }
   return {
     transcript: (msgs.data ?? []).reverse(),
     tasks: tasks.data ?? [],

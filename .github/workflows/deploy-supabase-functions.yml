@@ -47,16 +47,19 @@ jobs:
             exit 1
           fi
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
-          node-version: 20
+          version: latest
 
       - name: Show Supabase CLI version
-        run: npx supabase --version
+        run: supabase --version
 
       - name: Deploy selected functions
         shell: bash
         run: |
           echo "Deploying functions: ${FUNCTIONS_TO_DEPLOY}"
-          npx supabase functions deploy ${FUNCTIONS_TO_DEPLOY} --project-ref "${SUPABASE_PROJECT_REF}"
+          for fn in ${FUNCTIONS_TO_DEPLOY}; do
+            echo "Deploying function: ${fn}"
+            supabase functions deploy "${fn}" --project-ref "${SUPABASE_PROJECT_REF}"
+          done
