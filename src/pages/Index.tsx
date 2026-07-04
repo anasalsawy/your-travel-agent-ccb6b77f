@@ -1,62 +1,216 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, Plane, Car, CreditCard, HelpCircle, Brain, Search, PenTool, MessageSquare, Zap, Shield, User, ArrowRight, CheckCircle } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Plane,
+  Building2,
+  Car,
+  Search,
+  Loader2,
+  Shield,
+  User,
+  Sparkles,
+  ArrowLeftRight,
+  CalendarDays,
+  Users,
+  Undo2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
-import { useVoiceChat } from "@/hooks/useVoiceChat";
-import { VoiceButton } from "@/components/chat/VoiceButton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { AirportAutocomplete } from "@/components/flights/AirportAutocomplete";
 import { supabase } from "@/integrations/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import logo from "@/assets/logo-black-gold-shield.png";
-import carRentalSuv from "@/assets/car-rental-suv.jpg";
-import carRentalSedan from "@/assets/car-rental-sedan.jpg";
 
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-};
+type SearchKind = "flights" | "hotels" | "cars";
+type TripType = "one_way" | "round_trip";
 
-type ThinkingPhase = "thinking" | "researching" | "composing" | null;
+const cabinOptions = [
+  { value: "economy", label: "Economy" },
+  { value: "premium_economy", label: "Premium Economy" },
+  { value: "business", label: "Business" },
+  { value: "first", label: "First" },
+];
 
-// Persist session ID so returning visitors keep the same conversation context.
-const getOrCreateSessionId = (): string => {
-  const STORAGE_KEY = "maya_session_id";
-  const existingId = localStorage.getItem(STORAGE_KEY);
-  if (existingId) return existingId;
-  const newId = crypto.randomUUID();
-  localStorage.setItem(STORAGE_KEY, newId);
-  return newId;
-};
+function normalizeArray(payload: unknown): Record<string, unknown>[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload.filter((r): r is Record<string, unknown> => !!r && typeof r === "object");
+
+  if (typeof payload !== "object") return [];
+  const obj = payload as Record<string, unknown>;
+  const candidates = [
+    obj.data,
+    obj.results,
+    obj.offers,
+    obj.flights,
+    obj.hotels,
+    obj.cars,
+    obj.items,
+    obj.response,
+    obj.journeys,
+    obj.itineraries,
+    obj.SearchResults,
+  ];
+
+  for (const c of candidates) {
+    if (Array.isArray(c)) {
+      return c.filter((r): r is Record<string, unknown> => !!r && typeof r === "object");
+    }
+  }
+
+  for (const value of Object.values(obj)) {
+    const nested = normalizeArray(value);
+    if (nested.length) return nested;
+  }
+
+  return [];
+}
+
+function extractError(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const messages = [
+    obj.error,
+    obj.message,
+    (obj.data as Record<string, unknown> | undefined)?.error,
+    (obj.data as Record<string, unknown> | undefined)?.message,
+  ];
+  const first = messages.find((m) => typeof m === "string" && m.trim().length > 0);
+  return typeof first === "string" ? first : null;
+}
+
+function extractPrice(result: Record<string, unknown>): { amount: string; currency: string } {
+  const maybeNumbers = [
+    result.customer_amount,
+    result.total_amount,
+    result.total,
+    result.price,
+    result.amount,
+    (result.pricing as Record<string, unknown> | undefined)?.total,
+    (result.fare as Record<string, unknown> | undefined)?.amount,
+  ];
+  const maybeCurrencies = [
+    result.customer_currency,
+    result.total_currency,
+    result.currency,
+    (result.pricing as Record<string, unknown> | undefined)?.currency,
+    (result.fare as Record<string, unknown> | undefined)?.currency,
+  ];
+
+  const amountValue = maybeNumbers.find((v) => typeof v === "string" || typeof v === "number");
+  const currencyValue = maybeCurrencies.find((v) => typeof v === "string");
+  return {
+    amount: amountValue !== undefined ? String(amountValue) : "Contact for price",
+    currency: typeof currencyValue === "string" ? currencyValue : "",
+  };
+}
+
+function extractProviderUrl(result: Record<string, unknown>): string | null {
+  const direct = [
+    result.booking_url,
+    result.redirect_url,
+    result.checkout_url,
+    result.payment_url,
+    result.deep_link,
+    result.deeplink,
+    result.url,
+  ];
+  const nested = [
+    (result.booking as Record<string, unknown> | undefined)?.url,
+    (result.checkout as Record<string, unknown> | undefined)?.url,
+    (result.links as Record<string, unknown> | undefined)?.checkout,
+    (result.links as Record<string, unknown> | undefined)?.booking,
+  ];
+  const value = [...direct, ...nested].find((v) => typeof v === "string" && v.startsWith("http"));
+  return typeof value === "string" ? value : null;
+}
+
+function extractOfferReference(result: Record<string, unknown>): string | null {
+  const value =
+    (result.id as string | undefined) ??
+    (result.offer_id as string | undefined) ??
+    (result.reference as string | undefined);
+  if (typeof value === "string" && value.trim().length > 0) return value;
+  return null;
+}
+
+function extractRouteTitle(result: Record<string, unknown>): string {
+  const direct =
+    (result.name as string | undefined) ??
+    (result.title as string | undefined) ??
+    (result.route as string | undefined);
+  if (direct && direct.trim()) return direct;
+
+  const origin = result.origin as string | undefined;
+  const destination = result.destination as string | undefined;
+  if (origin && destination) return `${origin} -> ${destination}`;
+
+  const slices = result.slices as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(slices) && slices.length > 0) {
+    const first = slices[0];
+    const last = slices[slices.length - 1];
+    const from = (first?.origin as string | undefined) ?? ((first?.segments as Array<Record<string, unknown>> | undefined)?.[0]?.origin as string | undefined);
+    const to = (last?.destination as string | undefined) ?? ((last?.segments as Array<Record<string, unknown>> | undefined)?.slice(-1)[0]?.destination as string | undefined);
+    if (from && to) return `${from} -> ${to}`;
+  }
+
+  const itineraries = result.itineraries as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(itineraries) && itineraries.length > 0) {
+    const segments = itineraries[0]?.segments as Array<Record<string, unknown>> | undefined;
+    const from = segments?.[0]?.departure as Record<string, unknown> | undefined;
+    const to = segments?.slice(-1)[0]?.arrival as Record<string, unknown> | undefined;
+    const fromCode = (from?.iataCode as string | undefined) ?? (from?.iata_code as string | undefined);
+    const toCode = (to?.iataCode as string | undefined) ?? (to?.iata_code as string | undefined);
+    if (fromCode && toCode) return `${fromCode} -> ${toCode}`;
+  }
+
+  return "Route unavailable";
+}
 
 const Index = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [thinkingPhase, setThinkingPhase] = useState<ThinkingPhase>(null);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [sessionId] = useState(() => getOrCreateSessionId());
+  const navigate = useNavigate();
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [voiceEnabled] = useState(true);
-  const [hasStarted, setHasStarted] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [searchKind, setSearchKind] = useState<SearchKind>("flights");
+  const [tripType, setTripType] = useState<TripType>("round_trip");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<Record<string, unknown>[]>([]);
+  const [bookingLoadingRef, setBookingLoadingRef] = useState<string | null>(null);
 
-
-  const voice = useVoiceChat({
-    onError: (error) => console.error("Voice error:", error),
+  const [flightForm, setFlightForm] = useState({
+    origin: "",
+    destination: "",
+    departure_date: "",
+    return_date: "",
+    adults: 1,
+    cabin_class: "economy",
+  });
+  const [hotelForm, setHotelForm] = useState({
+    location: "DXB",
+    check_in_date: "",
+    check_out_date: "",
+    guests: 2,
+    rooms: 1,
+  });
+  const [carForm, setCarForm] = useState({
+    pickup_location: "DXB",
+    dropoff_location: "DXB",
+    pickup_date: "",
+    pickup_time: "10:00",
+    dropoff_date: "",
+    dropoff_time: "10:00",
+    driver_age: 30,
   });
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        checkStaffOrAdminRole(session.user.id);
+        void checkStaffOrAdminRole(session.user.id);
       } else {
         setIsStaffOrAdmin(false);
       }
@@ -65,9 +219,13 @@ const Index = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        checkStaffOrAdminRole(session.user.id);
+        void checkStaffOrAdminRole(session.user.id);
       }
     });
+
+    return () => {
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   const checkStaffOrAdminRole = async (userId: string) => {
@@ -79,525 +237,152 @@ const Index = () => {
     setIsStaffOrAdmin((data?.length || 0) > 0);
   };
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const validate = (): string | null => {
+    if (searchKind !== "flights") return null;
+    if (!flightForm.origin || flightForm.origin.length !== 3) return "Choose a valid origin airport.";
+    if (!flightForm.destination || flightForm.destination.length !== 3) return "Choose a valid destination airport.";
+    if (flightForm.origin === flightForm.destination) return "Origin and destination must be different.";
+    if (!flightForm.departure_date) return "Departure date is required.";
+    if (tripType === "round_trip" && !flightForm.return_date) return "Return date is required for round-trip.";
+    if (tripType === "round_trip" && flightForm.return_date < flightForm.departure_date) {
+      return "Return date must be after departure date.";
     }
-  }, [messages, thinkingPhase]);
-
-  useEffect(() => {
-    return () => {
-      if (phaseTimerRef.current) {
-        clearTimeout(phaseTimerRef.current);
-      }
-    };
-  }, []);
-
-  const startThinkingPhases = useCallback(() => {
-    setThinkingPhase("thinking");
-    phaseTimerRef.current = setTimeout(() => {
-      setThinkingPhase("researching");
-      phaseTimerRef.current = setTimeout(() => {
-        setThinkingPhase("composing");
-      }, 600 + Math.random() * 400);
-    }, 800 + Math.random() * 400);
-  }, []);
-
-  const stopThinkingPhases = useCallback(() => {
-    if (phaseTimerRef.current) {
-      clearTimeout(phaseTimerRef.current);
-    }
-    setThinkingPhase(null);
-  }, []);
-
-  const startConversation = async (initialMessage?: string) => {
-    setHasStarted(true);
-
-    if (!historyLoaded) {
-      setIsInitializing(true);
-      try {
-        const res = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-init`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-            },
-            body: JSON.stringify({ sessionId }),
-          }
-        );
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.conversationId) setConversationId(data.conversationId);
-
-          if (Array.isArray(data?.messages) && data.messages.length > 0) {
-            setMessages(
-              data.messages.map((m: { role: string; content: string }) => ({
-                role: m.role as "user" | "assistant",
-                content: m.content,
-              }))
-            );
-          } else {
-            setMessages([
-              {
-                role: "assistant",
-                content:
-                  "Hey! 👋 I'm Maya, your personal travel agent. I can find you discounted flights, book tickets, search for deals, and handle everything travel-related. What can I help you with today?",
-              },
-            ]);
-          }
-        } else {
-          setMessages([
-            {
-              role: "assistant",
-              content:
-                "Hey! 👋 I'm Maya, your personal travel agent. I can find you discounted flights, book tickets, search for deals, and handle everything travel-related. What can I help you with today?",
-            },
-          ]);
-        }
-      } catch (e) {
-        console.error("[Index] Failed to init chat session:", e);
-        setMessages([
-          {
-            role: "assistant",
-            content:
-              "Hey! 👋 I'm Maya, your personal travel agent. I can find you discounted flights, book tickets, search for deals, and handle everything travel-related. What can I help you with today?",
-          },
-        ]);
-      } finally {
-        setHistoryLoaded(true);
-        setIsInitializing(false);
-      }
-    }
-
-    if (initialMessage) {
-      setTimeout(() => {
-        setInput(initialMessage);
-        inputRef.current?.focus();
-      }, 100);
-    } else {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
+    return null;
   };
 
-  const sendMessage = async (textOverride?: string, speakResponse = false) => {
-    if (isInitializing || !historyLoaded) return;
+  const runSearch = async () => {
+    const validationError = validate();
+    if (validationError) {
+      setSearchError(validationError);
+      return;
+    }
 
-    const messageText = textOverride || input.trim();
-    if (!messageText || isLoading) return;
-
-    const userMessage: Message = { role: "user", content: messageText };
-    setMessages((prev) => [...prev, userMessage]);
-    if (!textOverride) setInput("");
-    setIsLoading(true);
-    startThinkingPhases();
-
-    let assistantContent = "";
+    setSearchLoading(true);
+    setSearchError(null);
+    setSearchResults([]);
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vapi-chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({
-            input: messageText,
-            sessionId,
-            previousChatId: conversationId,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to get response");
+      let params: Record<string, unknown> = {};
+      if (searchKind === "flights") {
+        params = {
+          ...flightForm,
+          origin: flightForm.origin.trim().toUpperCase(),
+          destination: flightForm.destination.trim().toUpperCase(),
+          return_date: tripType === "round_trip" ? flightForm.return_date : undefined,
+        };
       }
+      if (searchKind === "hotels") params = { ...hotelForm };
+      if (searchKind === "cars") params = { ...carForm };
 
-      const data = await response.json();
-      if (data?.chatId) setConversationId(data.chatId);
-
-      assistantContent = data?.text || "Sorry, I couldn't generate a response.";
-      stopThinkingPhases();
-      setMessages((prev) => [...prev, { role: "assistant", content: assistantContent }]);
-
-      if (speakResponse && voiceEnabled && assistantContent) {
-        await voice.speakText(assistantContent);
-      }
-    } catch (error) {
-      console.error("Chat error:", error);
-      stopThinkingPhases();
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Oops, something went wrong on my end! Mind trying that again?",
+      const { data, error } = await supabase.functions.invoke("booking", {
+        body: {
+          action: "search",
+          product: searchKind,
+          params,
         },
-      ]);
+      });
+
+      if (error) throw new Error(error.message || "Search request failed");
+
+      const payload = data as Record<string, unknown> | null;
+      const message = extractError(payload);
+      if (message) {
+        setSearchError(message);
+      }
+
+      const normalized = normalizeArray(payload);
+      setSearchResults(normalized);
+
+      if (!normalized.length && !message) {
+        setSearchError("No results returned for this search. Try changing route, dates, or travelers.");
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Search failed";
+      setSearchError(msg);
     } finally {
-      setIsLoading(false);
-      voice.setIdle();
+      setSearchLoading(false);
     }
   };
 
-  const handleVoicePress = () => {
-    if (voice.isSpeaking) {
-      voice.stopSpeaking();
+  const swapRoute = () => {
+    setFlightForm((prev) => ({
+      ...prev,
+      origin: prev.destination,
+      destination: prev.origin,
+    }));
+  };
+
+  const continueProviderFlow = async (result: Record<string, unknown>) => {
+    const localRef = extractOfferReference(result) ?? crypto.randomUUID();
+    setBookingLoadingRef(localRef);
+    setSearchError(null);
+    try {
+      const urlDirect = extractProviderUrl(result);
+      if (urlDirect) {
+        window.location.href = urlDirect;
+        return;
+      }
+
+      const offerId = extractOfferReference(result);
+      if (!offerId) {
+        throw new Error("Provider did not return an offer id/link for this result.");
+      }
+
+      // If provider does not expose a direct checkout URL on search results,
+      // continue via the full flights booking page with this offer preselected.
+      const params = new URLSearchParams({
+        origin: flightForm.origin.trim().toUpperCase(),
+        destination: flightForm.destination.trim().toUpperCase(),
+        departure_date: flightForm.departure_date,
+        adults: String(flightForm.adults),
+        cabin_class: flightForm.cabin_class,
+        selected_offer: offerId,
+      });
+      if (tripType === "round_trip" && flightForm.return_date) {
+        params.set("return_date", flightForm.return_date);
+      }
+      navigate(`/flights?${params.toString()}`);
       return;
-    }
-    voice.startRecording();
-  };
-
-  const handleVoiceRelease = async () => {
-    if (!voice.isRecording) return;
-    
-    const audioBlob = await voice.stopRecording();
-    if (!audioBlob || audioBlob.size < 1000) {
-      voice.setIdle();
-      return;
-    }
-
-    const transcription = await voice.transcribeAudio(audioBlob);
-    if (transcription) {
-      voice.setProcessing();
-      await sendMessage(transcription, true);
+    } catch (e: unknown) {
+      setSearchError(e instanceof Error ? e.message : "Could not start provider booking flow.");
+    } finally {
+      setBookingLoadingRef(null);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  const quickActions = [
-    { label: "Find me a cheap flight", icon: Plane },
-    { label: "I need a ticket quote", icon: CreditCard },
-    { label: "How does this work?", icon: HelpCircle },
-  ];
-
-  // Welcome screen before chat starts
-  if (!hasStarted) {
-    return (
-      <div className="min-h-screen bg-background">
-        {/* Header */}
-        <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
-          <div className="container mx-auto px-4">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center gap-2">
-                <img src={logo} alt="Your Travel Agent" className="w-10 h-10 object-contain" />
-                <span className="font-display font-bold text-lg hidden sm:block">Your Travel Agent</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/request-ticket">Flights</Link>
-                </Button>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/car-rental">Car Rental</Link>
-                </Button>
-                {user ? (
-                  <>
-                    {isStaffOrAdmin && (
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link to="/admin">Admin</Link>
-                      </Button>
-                    )}
-                    <Button variant="outline" size="sm" asChild>
-                      <Link to="/dashboard">
-                        <User className="w-4 h-4 mr-2" />
-                        Dashboard
-                      </Link>
-                    </Button>
-                  </>
-                ) : (
-                  <Button variant="outline" size="sm" asChild>
-                    <Link to="/auth">Sign In</Link>
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main className="pt-16">
-          {/* Hero Section - Promotional */}
-          <section className="py-12 md:py-16 bg-gradient-to-b from-background to-muted/30">
-            <div className="container mx-auto px-4">
-              <div className="max-w-4xl mx-auto text-center">
-                <h1 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold text-foreground mb-4">
-                  Fly for Less with <span className="text-success">Your Personal Travel Agent</span>
-                </h1>
-                <p className="text-lg text-muted-foreground mb-6 max-w-2xl mx-auto">
-                  Custom flight quotes and rental cars at unbeatable prices. Find a better deal anywhere and we'll beat it.
-                </p>
-
-                {/* Trust Badges */}
-                <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20">
-                    <Shield className="w-4 h-4 text-success" />
-                    <span className="font-bold text-success">Trusted Concierge</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
-                    <CheckCircle className="w-4 h-4 text-primary" />
-                    <span className="font-bold text-primary">Lowest Price Guaranteed</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20">
-                    <Zap className="w-4 h-4 text-amber-500" />
-                    <span className="font-bold text-amber-600">We Beat Any Price</span>
-                  </div>
-                </div>
-
-                {/* CTA Buttons */}
-                <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
-                  <Button
-                    size="lg"
-                    asChild
-                    className="rounded-full px-8 shadow-xl shadow-primary/20"
-                  >
-                    <Link to="/request-ticket">
-                      <Plane className="w-5 h-5 mr-2" />
-                      Request a Flight
-                    </Link>
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    asChild
-                    className="rounded-full px-8"
-                  >
-                    <Link to="/car-rental">
-                      <Car className="w-5 h-5 mr-2" />
-                      Rent a Car
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-
-          {/* Car Rental Section */}
-          <section className="py-16 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-b from-background via-accent/5 to-background" />
-            <div className="container mx-auto px-4 relative z-10">
-              <div className="max-w-5xl mx-auto">
-                <div className="grid lg:grid-cols-2 gap-8 items-center">
-                  {/* Left: Images */}
-                  <div className="relative">
-                    <img 
-                      src={carRentalSuv} 
-                      alt="Premium SUV rental" 
-                      className="rounded-2xl shadow-2xl w-full object-cover h-[280px]" 
-                    />
-                    <img 
-                      src={carRentalSedan} 
-                      alt="Luxury sedan rental" 
-                      className="absolute -bottom-6 -right-4 w-40 h-40 rounded-xl shadow-xl object-cover border-4 border-background hidden md:block" 
-                    />
-                  </div>
-
-                  {/* Right: Content */}
-                  <div>
-                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 border border-accent/20 mb-4">
-                      <Car className="w-4 h-4 text-accent" />
-                      <span className="text-sm font-bold text-accent">CAR RENTAL SERVICE</span>
-                    </div>
-                    <h2 className="text-2xl md:text-3xl font-display font-bold mb-4">
-                      Need a Car? We've Got You Covered.
-                    </h2>
-                    <p className="text-muted-foreground mb-6">
-                      From compact city cars to luxury SUVs — tell us what you need and we'll find the best rental deal for you. No hidden fees, best price guaranteed.
-                    </p>
-                    
-                    <div className="grid grid-cols-2 gap-4 mb-6">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Shield className="w-4 h-4 text-success flex-shrink-0" />
-                        <span className="text-muted-foreground">Best Price Guarantee</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Zap className="w-4 h-4 text-accent flex-shrink-0" />
-                        <span className="text-muted-foreground">Quote in 24 Hours</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <CheckCircle className="w-4 h-4 text-primary flex-shrink-0" />
-                        <span className="text-muted-foreground">Free Cancellation</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Car className="w-4 h-4 text-primary flex-shrink-0" />
-                        <span className="text-muted-foreground">All Car Types</span>
-                      </div>
-                    </div>
-
-                    <Button size="lg" asChild className="rounded-full px-8">
-                      <Link to="/car-rental">
-                        <Car className="w-5 h-5 mr-2" />
-                        Request a Car Rental
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Request a Ticket Section */}
-          <section className="py-16 bg-muted/30">
-            <div className="container mx-auto px-4">
-              <div className="max-w-3xl mx-auto text-center">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-4">
-                  <Plane className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-bold text-primary">CUSTOM FLIGHT QUOTES</span>
-                </div>
-                <h2 className="text-2xl md:text-3xl font-display font-bold mb-4">
-                  Need a Specific Flight?
-                </h2>
-                <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-                  Tell us where you want to go and we'll find you the best deal. We guarantee the lowest price — if you find cheaper, we'll beat it.
-                </p>
-                
-                <div className="grid md:grid-cols-3 gap-6 mb-8">
-                  <div className="text-center p-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                      <span className="font-bold text-primary">1</span>
-                    </div>
-                    <h3 className="font-semibold mb-1">Submit Your Request</h3>
-                    <p className="text-sm text-muted-foreground">Tell us your destination and dates</p>
-                  </div>
-                  <div className="text-center p-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                      <span className="font-bold text-primary">2</span>
-                    </div>
-                    <h3 className="font-semibold mb-1">Get Your Quote</h3>
-                    <p className="text-sm text-muted-foreground">We find the best discounted price</p>
-                  </div>
-                  <div className="text-center p-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                      <span className="font-bold text-primary">3</span>
-                    </div>
-                    <h3 className="font-semibold mb-1">Book & Save</h3>
-                    <p className="text-sm text-muted-foreground">Pay less than market price</p>
-                  </div>
-                </div>
-
-                <Button size="lg" asChild className="rounded-full px-8">
-                  <Link to="/request-ticket">
-                    <Plane className="w-5 h-5 mr-2" />
-                    Request a Quote Now
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </section>
-
-          {/* Public Concierge Chat */}
-          <section className="py-16 bg-gradient-to-b from-background to-muted/30">
-            <div className="container mx-auto px-4">
-              <div className="max-w-2xl mx-auto text-center">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-success/10 border border-success/20 mb-4">
-                  <MessageSquare className="w-4 h-4 text-success" />
-                  <span className="text-sm font-bold text-success">PUBLIC CONCIERGE</span>
-                </div>
-                <h2 className="text-2xl md:text-3xl font-display font-bold mb-3">
-                  Chat with our Concierge
-                </h2>
-                <p className="text-muted-foreground mb-6">
-                  Ask anything — quotes, deals, destinations. Our AI concierge replies instantly.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
-                  <Input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && input.trim()) {
-                        e.preventDefault();
-                        startConversation(input.trim());
-                      }
-                    }}
-                    placeholder="e.g. LAX to HNL July 4-8 for 2 adults"
-                    className="rounded-full h-12 px-5"
-                  />
-                  <Button
-                    size="lg"
-                    className="rounded-full px-8"
-                    onClick={() => startConversation(input.trim() || undefined)}
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Start Chat
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-        </main>
-
-        {/* Footer */}
-        <footer className="py-6 border-t border-border/50">
-          <div className="container mx-auto px-4 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/faq" className="hover:text-foreground transition-colors">FAQ</Link>
-            <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
-            <Link to="/car-rental" className="hover:text-foreground transition-colors">Car Rental</Link>
-            <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
-            <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-            <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
-          </div>
-        </footer>
-      </div>
-    );
-  }
-
-  // Full Chat Interface
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Chat Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-b border-border">
+    <div className="min-h-screen bg-[#07122a] text-white">
+      <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-700/70 bg-[#07122a]/95 backdrop-blur-xl">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setHasStarted(false)} 
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-              >
-                <img src={logo} alt="Your Travel Agent" className="w-8 h-8 object-contain" />
-              </button>
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground font-bold">
-                    M
-                  </div>
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
-                </div>
-                <div>
-                  <h1 className="font-semibold text-foreground">Maya</h1>
-                  <p className="text-xs text-muted-foreground">
-                    {voice.isRecording ? "🎤 Listening..." : 
-                     voice.isTranscribing ? "Processing..." :
-                     voice.isSpeaking ? "🔊 Speaking..." :
-                     "Online • Your travel agent"}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="flex h-16 items-center justify-between gap-2">
             <div className="flex items-center gap-2">
+              <img src={logo} alt="Your Travel Agent" className="h-10 w-10 object-contain" />
+              <span className="hidden text-lg font-display font-bold sm:block">Your Travel Agent</span>
+            </div>
+            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:gap-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <Button variant="ghost" size="sm" className="h-10 px-3 text-slate-200 hover:bg-slate-800 hover:text-white" asChild>
+                <Link to="/flights">Flights</Link>
+              </Button>
+              <Button variant="ghost" size="sm" className="h-10 px-3 text-slate-200 hover:bg-slate-800 hover:text-white" asChild>
+                <Link to="/car-rental">Cars</Link>
+              </Button>
+              <Button variant="ghost" size="sm" className="h-10 px-3 text-slate-200 hover:bg-slate-800 hover:text-white" asChild>
+                <Link to="/request-ticket">Custom Quote</Link>
+              </Button>
+              {isStaffOrAdmin && (
+                <Button variant="ghost" size="sm" className="h-10 px-3 text-slate-200 hover:bg-slate-800 hover:text-white" asChild>
+                  <Link to="/admin">Admin</Link>
+                </Button>
+              )}
               {user ? (
-                <Button variant="ghost" size="sm" asChild>
+                <Button variant="outline" size="sm" className="h-10 px-3 border-slate-600 text-slate-100 hover:bg-slate-800" asChild>
                   <Link to="/dashboard">
-                    <User className="w-4 h-4" />
+                    <User className="mr-2 h-4 w-4" /> Dashboard
                   </Link>
                 </Button>
               ) : (
-                <Button variant="ghost" size="sm" asChild>
+                <Button variant="outline" size="sm" className="h-10 px-3 border-slate-600 text-slate-100 hover:bg-slate-800" asChild>
                   <Link to="/auth">Sign In</Link>
-                </Button>
-              )}
-              {isStaffOrAdmin && (
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/admin">Admin</Link>
                 </Button>
               )}
             </div>
@@ -605,130 +390,377 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Messages Area */}
-      <main className="flex-1 pt-16 pb-24">
-        <ScrollArea className="h-[calc(100vh-10rem)]" ref={scrollRef}>
-          <div className="container max-w-3xl mx-auto px-4 py-6">
-            <div className="flex flex-col gap-4">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={cn(
-                    "flex",
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  )}
+      <main className="pt-16">
+        <section className="relative overflow-hidden border-b border-slate-700/60">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_15%,rgba(59,130,246,.35),transparent_40%),radial-gradient(circle_at_90%_5%,rgba(34,211,238,.3),transparent_42%),linear-gradient(180deg,#08142f_0%,#07122a_60%,#070f21_100%)]" />
+
+          <div className="relative z-10 container mx-auto px-4 py-8 sm:py-10 md:py-14">
+            <div className="mx-auto grid max-w-6xl gap-6 sm:gap-8 lg:grid-cols-[1.2fr_2fr] lg:items-start">
+              <div className="space-y-4 sm:space-y-5">
+                <p className="inline-flex items-center rounded-full border border-sky-300/35 bg-sky-300/10 px-3 py-1 text-xs tracking-[0.15em] text-sky-200">
+                  Airline Booking Dashboard
+                </p>
+                <h1 className="font-display text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
+                  Build Complete Trips
+                  <span className="mt-1 block text-sky-300">Flights, Hotels, Cars</span>
+                </h1>
+                <p className="max-w-md text-sm text-slate-200 sm:text-base">
+                  Start with airport suggestions as you type, choose one-way or round-trip, then search live inventory in one streamlined form.
+                </p>
+                <div className="grid grid-cols-1 gap-3 pt-1 text-sm sm:grid-cols-3">
+                  <Card className="border-slate-600/60 bg-slate-900/35 p-3 text-center">
+                    <p className="font-semibold text-sky-200">Fast</p>
+                    <p className="text-xs text-slate-300">Autocomplete</p>
+                  </Card>
+                  <Card className="border-slate-600/60 bg-slate-900/35 p-3 text-center">
+                    <p className="font-semibold text-sky-200">Flexible</p>
+                    <p className="text-xs text-slate-300">Trip controls</p>
+                  </Card>
+                  <Card className="border-slate-600/60 bg-slate-900/35 p-3 text-center">
+                    <p className="font-semibold text-sky-200">Unified</p>
+                    <p className="text-xs text-slate-300">One search desk</p>
+                  </Card>
+                </div>
+              </div>
+
+              <Card className="rounded-2xl border-slate-500/60 bg-white p-3 text-slate-900 shadow-[0_30px_90px_rgba(2,6,23,0.5)] sm:p-4 md:p-6">
+                <Tabs
+                  value={searchKind}
+                  onValueChange={(v) => {
+                    setSearchKind(v as SearchKind);
+                    setSearchError(null);
+                    setSearchResults([]);
+                  }}
                 >
-                  <div
-                    className={cn(
-                      "max-w-[85%] md:max-w-[75%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed",
-                      message.role === "user"
-                        ? "bg-primary text-primary-foreground rounded-br-md"
-                        : "bg-muted text-foreground rounded-bl-md"
-                    )}
-                  >
-                    {message.content}
-                  </div>
-                </div>
-              ))}
-              {/* Thinking indicator */}
-              {thinkingPhase && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted-foreground ml-1 font-medium flex items-center gap-1.5">
-                    {thinkingPhase === "thinking" && (
-                      <>
-                        <Brain className="w-3 h-3 animate-pulse" />
-                        Maya is thinking...
-                      </>
-                    )}
-                    {thinkingPhase === "researching" && (
-                      <>
-                        <Search className="w-3 h-3 animate-pulse" />
-                        Looking into this...
-                      </>
-                    )}
-                    {thinkingPhase === "composing" && (
-                      <>
-                        <PenTool className="w-3 h-3 animate-pulse" />
-                        Composing response...
-                      </>
-                    )}
-                  </span>
-                  <div className="flex justify-start">
-                    <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
-                      <div className="flex gap-1.5">
-                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <TabsList className="grid h-auto w-full grid-cols-3 gap-1 bg-slate-100 p-1 text-slate-700">
+                    <TabsTrigger value="flights" className="min-h-11 text-xs sm:text-sm data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+                      <Plane className="mr-2 h-4 w-4" /> Flights
+                    </TabsTrigger>
+                    <TabsTrigger value="hotels" className="min-h-11 text-xs sm:text-sm data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+                      <Building2 className="mr-2 h-4 w-4" /> Hotels
+                    </TabsTrigger>
+                    <TabsTrigger value="cars" className="min-h-11 text-xs sm:text-sm data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+                      <Car className="mr-2 h-4 w-4" /> Cars
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                <div className="mt-5">
+                  {searchKind === "flights" && (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-1">
+                        <div className="grid grid-cols-2 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setTripType("one_way")}
+                            className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                              tripType === "one_way" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-white"
+                            }`}
+                          >
+                            One-way
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTripType("round_trip")}
+                            className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                              tripType === "round_trip" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-white"
+                            }`}
+                          >
+                            <ArrowLeftRight className="mr-2 inline h-4 w-4" /> Round-trip
+                          </button>
+                        </div>
                       </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
+                        <div className="sm:col-span-2 lg:col-span-5">
+                          <Label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">From</Label>
+                          <AirportAutocomplete
+                            id="flight-origin"
+                            value={flightForm.origin}
+                            onChange={(iata) => setFlightForm((p) => ({ ...p, origin: iata.toUpperCase() }))}
+                            placeholder="City or airport"
+                            inputClassName="h-11 border-slate-300 bg-white text-slate-900 placeholder:text-slate-500"
+                            menuClassName="bg-white border-slate-200 text-slate-900"
+                          />
+                        </div>
+
+                        <div className="flex items-end justify-start sm:justify-center lg:col-span-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={swapRoute}
+                            className="h-11 w-11 rounded-full border-slate-300"
+                            title="Swap origin and destination"
+                          >
+                            <Undo2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <div className="sm:col-span-2 lg:col-span-5">
+                          <Label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">To</Label>
+                          <AirportAutocomplete
+                            id="flight-destination"
+                            value={flightForm.destination}
+                            onChange={(iata) => setFlightForm((p) => ({ ...p, destination: iata.toUpperCase() }))}
+                            placeholder="City or airport"
+                            inputClassName="h-11 border-slate-300 bg-white text-slate-900 placeholder:text-slate-500"
+                            menuClassName="bg-white border-slate-200 text-slate-900"
+                          />
+                        </div>
+
+                        <div className="lg:col-span-3">
+                          <Label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">
+                            <CalendarDays className="mr-1 inline h-3.5 w-3.5" /> Departure
+                          </Label>
+                          <Input
+                            type="date"
+                            value={flightForm.departure_date}
+                            onChange={(e) => setFlightForm((p) => ({ ...p, departure_date: e.target.value }))}
+                            className="h-11 bg-white text-slate-900"
+                          />
+                        </div>
+
+                        <div className="lg:col-span-3">
+                          <Label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">Return</Label>
+                          <Input
+                            type="date"
+                            disabled={tripType === "one_way"}
+                            min={flightForm.departure_date || undefined}
+                            value={flightForm.return_date}
+                            onChange={(e) => setFlightForm((p) => ({ ...p, return_date: e.target.value }))}
+                            placeholder={tripType === "one_way" ? "Not needed" : "Select date"}
+                            className={`h-11 bg-white text-slate-900 ${tripType === "one_way" ? "opacity-60" : ""}`}
+                          />
+                        </div>
+
+                        <div className="lg:col-span-3">
+                          <Label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">
+                            <Users className="mr-1 inline h-3.5 w-3.5" /> Adults
+                          </Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={9}
+                            value={flightForm.adults}
+                            onChange={(e) => setFlightForm((p) => ({ ...p, adults: Number(e.target.value || 1) }))}
+                            className="h-11 bg-white text-slate-900"
+                          />
+                        </div>
+
+                        <div className="lg:col-span-3">
+                          <Label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">Cabin</Label>
+                          <Select
+                            value={flightForm.cabin_class}
+                            onValueChange={(v) => setFlightForm((p) => ({ ...p, cabin_class: v }))}
+                          >
+                            <SelectTrigger className="h-11 bg-white text-slate-900">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {cabinOptions.map((o) => (
+                                <SelectItem key={o.value} value={o.value}>
+                                  {o.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-500">Tip: click in From/To fields to see popular airport suggestions instantly.</p>
                     </div>
-                  </div>
+                  )}
+
+                  {searchKind === "hotels" && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                      <Input
+                        value={hotelForm.location}
+                        onChange={(e) => setHotelForm((p) => ({ ...p, location: e.target.value.toUpperCase() }))}
+                        placeholder="City or airport"
+                        className="h-11 bg-white text-slate-900"
+                      />
+                      <Input
+                        type="date"
+                        value={hotelForm.check_in_date}
+                        onChange={(e) => setHotelForm((p) => ({ ...p, check_in_date: e.target.value }))}
+                        className="h-11 bg-white text-slate-900"
+                      />
+                      <Input
+                        type="date"
+                        value={hotelForm.check_out_date}
+                        onChange={(e) => setHotelForm((p) => ({ ...p, check_out_date: e.target.value }))}
+                        className="h-11 bg-white text-slate-900"
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        value={hotelForm.guests}
+                        onChange={(e) => setHotelForm((p) => ({ ...p, guests: Number(e.target.value || 1) }))}
+                        placeholder="Guests"
+                        className="h-11 bg-white text-slate-900"
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        value={hotelForm.rooms}
+                        onChange={(e) => setHotelForm((p) => ({ ...p, rooms: Number(e.target.value || 1) }))}
+                        placeholder="Rooms"
+                        className="h-11 bg-white text-slate-900"
+                      />
+                    </div>
+                  )}
+
+                  {searchKind === "cars" && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <Input
+                        value={carForm.pickup_location}
+                        onChange={(e) => setCarForm((p) => ({ ...p, pickup_location: e.target.value.toUpperCase() }))}
+                        placeholder="Pickup (IATA)"
+                        className="h-11 bg-white text-slate-900"
+                      />
+                      <Input
+                        value={carForm.dropoff_location}
+                        onChange={(e) => setCarForm((p) => ({ ...p, dropoff_location: e.target.value.toUpperCase() }))}
+                        placeholder="Dropoff (IATA)"
+                        className="h-11 bg-white text-slate-900"
+                      />
+                      <Input
+                        type="date"
+                        value={carForm.pickup_date}
+                        onChange={(e) => setCarForm((p) => ({ ...p, pickup_date: e.target.value }))}
+                        className="h-11 bg-white text-slate-900"
+                      />
+                      <Input
+                        type="date"
+                        value={carForm.dropoff_date}
+                        onChange={(e) => setCarForm((p) => ({ ...p, dropoff_date: e.target.value }))}
+                        className="h-11 bg-white text-slate-900"
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
+
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Button
+                    size="lg"
+                    onClick={runSearch}
+                    disabled={searchLoading}
+                    className="h-12 w-full rounded-full bg-slate-900 px-8 font-semibold text-white hover:bg-slate-800 sm:w-auto"
+                  >
+                    {searchLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                    Search {searchKind}
+                  </Button>
+                  <Button variant="outline" size="lg" className="h-12 w-full rounded-full sm:w-auto" asChild>
+                    <Link to="/request-ticket">
+                      <Sparkles className="mr-2 h-4 w-4" /> Concierge Quote
+                    </Link>
+                  </Button>
+                </div>
+
+                {searchError && (
+                  <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{searchError}</div>
+                )}
+
+                {searchResults.length > 0 && (
+                  <div className="mt-5 max-h-[360px] space-y-3 overflow-auto pr-1">
+                    {searchResults.slice(0, 20).map((r, i) => {
+                      const name = extractRouteTitle(r);
+                      const offerPrice = extractPrice(r);
+                      const price = offerPrice.amount;
+                      const currency = offerPrice.currency;
+                      const ref = extractOfferReference(r) ?? "N/A";
+
+                      return (
+                        <Card key={i} className="border border-slate-200 bg-white text-slate-900 p-3 sm:p-4">
+                          <div className="grid gap-3 sm:grid-cols-4">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Route / Title</div>
+                              <div className="text-sm font-semibold text-slate-900">{name}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Price</div>
+                              <div className="text-sm font-semibold text-slate-900">
+                                {price} {currency}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Reference</div>
+                              <div className="truncate text-sm text-slate-700">{ref}</div>
+                            </div>
+                            <div className="flex items-center justify-start sm:justify-end">
+                              {searchKind === "flights" ? (
+                                <Button
+                                  size="sm"
+                                  className="bg-slate-900 text-white hover:bg-slate-800"
+                                  onClick={() => continueProviderFlow(r)}
+                                  disabled={bookingLoadingRef === ref}
+                                >
+                                  {bookingLoadingRef === ref ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                  Continue with Provider
+                                </Button>
+                              ) : (
+                                <Button asChild size="sm" className="bg-slate-900 text-white hover:bg-slate-800">
+                                  <Link
+                                    to="/request-ticket"
+                                    state={{
+                                      prefill: {
+                                        product: searchKind,
+                                        result: r,
+                                        route: name,
+                                        reference: ref,
+                                        price,
+                                        currency,
+                                      },
+                                    }}
+                                  >
+                                    Select Offer
+                                  </Link>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
             </div>
           </div>
-        </ScrollArea>
+        </section>
+
+        <section className="border-t border-slate-800 py-8">
+          <div className="container mx-auto px-4 text-center text-sm text-slate-300">
+            Protected bookings, transparent operations, and real agent assistance when you need it.
+            <div className="mt-2 inline-flex items-center gap-2 text-sky-300">
+              <Shield className="h-4 w-4" /> Agency-grade support
+            </div>
+          </div>
+        </section>
       </main>
 
-      {/* Quick Actions (first message only) */}
-      {messages.length <= 3 && (
-        <div className="fixed bottom-24 left-0 right-0 z-40">
-          <div className="container max-w-3xl mx-auto px-4">
-            <div className="flex flex-wrap gap-2 justify-center">
-              {quickActions.map((action) => (
-                <Button
-                  key={action.label}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setInput(action.label);
-                    inputRef.current?.focus();
-                  }}
-                  className="rounded-full text-xs bg-background/80 backdrop-blur-sm"
-                >
-                  <action.icon className="w-3 h-3 mr-1.5" />
-                  {action.label}
-                </Button>
-              ))}
-            </div>
-          </div>
+      <footer className="border-t border-slate-800 py-6">
+        <div className="container mx-auto flex flex-wrap items-center justify-center gap-6 px-4 text-sm text-slate-400">
+          <Link to="/faq" className="transition-colors hover:text-white">
+            FAQ
+          </Link>
+          <Link to="/about" className="transition-colors hover:text-white">
+            About
+          </Link>
+          <Link to="/car-rental" className="transition-colors hover:text-white">
+            Car Rental
+          </Link>
+          <Link to="/privacy" className="transition-colors hover:text-white">
+            Privacy
+          </Link>
+          <Link to="/terms" className="transition-colors hover:text-white">
+            Terms
+          </Link>
+          <Link to="/contact" className="transition-colors hover:text-white">
+            Contact
+          </Link>
         </div>
-      )}
-
-      {/* Input Area */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-t border-border">
-        <div className="container max-w-3xl mx-auto px-4 py-4">
-          <div className="flex gap-2">
-            <Input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Message Maya..."
-              disabled={isLoading || isInitializing || !historyLoaded}
-              className="flex-1 rounded-full bg-muted border-0 focus-visible:ring-1 h-12 px-5"
-            />
-            <VoiceButton
-              state={voice.state}
-              onPress={handleVoicePress}
-              onRelease={handleVoiceRelease}
-              disabled={isLoading || isInitializing || !historyLoaded}
-              className="h-12 w-12 rounded-full"
-            />
-            <Button
-              onClick={() => sendMessage()}
-              disabled={!input.trim() || isLoading || isInitializing || !historyLoaded}
-              size="icon"
-              className="rounded-full h-12 w-12"
-            >
-              {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Send className="h-5 w-5" />
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
+      </footer>
     </div>
   );
 };
