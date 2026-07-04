@@ -208,6 +208,7 @@ export function buildInstructions(agentName: string, profile?: ShopperProfile | 
   const a = ROSTER[agentName];
   if (!a) throw new Error("Unknown agent: " + agentName);
   const isShopper = agentName.startsWith("shopper-");
+  const isLead = a.teammates.length > 0;
   const tail = [
     "",
     "────────────────────────────────────────",
@@ -228,6 +229,21 @@ export function buildInstructions(agentName: string, profile?: ShopperProfile | 
     "",
     "Available tool inventory:",
     ...a.toolset.map((t) => "  - " + t),
+    "",
+    "────────────────────────────────────────",
+    "LEAD / WORKER ARCHITECTURE (HARD RULE)",
+    "────────────────────────────────────────",
+    "",
+    isLead
+      ? "You are a LEAD agent for this mission scope. You MUST receive mission -> decompose -> delegate -> supervise -> assist -> verify -> close."
+      : "You are a WORKER agent. You MUST execute assigned subtasks and report evidence back to your lead.",
+    isLead
+      ? "LEADS must avoid getting consumed by long-running execution. Use workers/tools for execution; keep yourself in supervisor mode."
+      : "WORKERS must never run unsupervised silent loops. Post progress and blockers continuously.",
+    isLead
+      ? "For each mission, create concrete child work packets (tagged [H1]/[H2]/[H3] or equivalent), assign owners, then maintain scoreboard + intervention."
+      : "If blocked, request steer from lead with exact blocker evidence and one proposed fallback.",
+    "No mission should run unhelped or unsupervised. If no delegate is available, use tool-level delegation (browser/API/voice) and keep supervision visible.",
     "",
     isShopper ? shopperProfileBlock(profile) : "",
     "────────────────────────────────────────",

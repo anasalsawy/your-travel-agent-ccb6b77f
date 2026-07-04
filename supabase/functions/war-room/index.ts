@@ -27,6 +27,7 @@ const sb = createClient(SB_URL, SVC);
 
 const CHIEF = "chief-of-staff";
 const INFRA_AUTHORITY = "internal-app-test-buildrunner";
+const LEAD_AGENTS = new Set(["assistant", "YTA-ASSISTANT", "BUILDEROFAGENTS", "shopper-lead", INFRA_AUTHORITY]);
 const MAX_DIRECTIVE_REPEATS = 2;
 const WORKER_TIMEOUT_MS = 25_000;
 const REASONER_TIMEOUT_MS = 9_000;
@@ -328,17 +329,26 @@ async function runWorker(agentName: string, message: string, source: string): Pr
 function buildWorkerDirective(agentName: string, plan: Plan, ctx: LoadedContext): string {
   const tasks = ctx.tasks.filter((t) => t.assignee === agentName);
   const role = roleForAgent(agentName) ?? "infra";
+  const leadMode = LEAD_AGENTS.has(agentName);
   return [
     "[YTA ORCHESTRATOR DIRECTIVE]",
     `worker: ${agentName}`,
     `worker_role: ${role}`,
     `objective: ${plan.directive || plan.task_description || plan.task_title || "advance assigned task"}`,
+    leadMode ? "operating_mode: lead_supervisor" : "operating_mode: worker_executor",
     "",
     "Rules:",
-    "- Do one concrete next step using real tools when available.",
+    leadMode
+      ? "- You are the lead. Do NOT get consumed by long-running execution. Decompose, delegate, supervise, assist, verify, then close."
+      : "- Do one concrete next step using real tools when available.",
+    leadMode
+      ? "- Ensure no task runs alone: assign an executor (agent/tool), monitor progress, and provide helper injections/coaching during execution."
+      : "- Keep your lead informed with concise progress and blockers.",
+    leadMode
+      ? "- Post progress as a scoreboard (who owns what, state, evidence) and intervene when execution stalls."
+      : "- If blocked, provide exact blocker evidence and safest fallback.",
     "- Post a concise war_room_post update only if there is a meaningful result, blocker, or owner decision needed.",
     "- Do not narrate management stages. Do not spawn pretend sub-agents.",
-    "- If blocked, provide exact blocker evidence and the safest fallback.",
     "- Destructive actions, payments, purchases, credentials, and irreversible infra changes require owner/infra approval.",
     "",
     "Open tasks for you:",
