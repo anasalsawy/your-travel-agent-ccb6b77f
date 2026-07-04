@@ -29,8 +29,13 @@ Deno.serve(async (req) => {
       const role = msg.role ?? "assistant"; // "user" | "assistant"
       const status = msg.transcriptType ?? "partial"; // "partial" | "final"
       const text = msg.transcript ?? "";
-      if (status === "final" && text) {
-        await db.from("vapi_call_events").insert({ call_id, role, content: text, meta: { final: true } });
+      if (text) {
+        await db.from("vapi_call_events").insert({
+          call_id,
+          role,
+          content: text,
+          meta: { final: status === "final", partial: status !== "final", event: "transcript" },
+        });
       }
     } else if (type === "status-update") {
       const status = msg.status;

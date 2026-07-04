@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Phone, PhoneOff, Send } from "lucide-react";
+import { Headphones, Pause, Phone, PhoneOff, Send, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 
 export type VapiCall = {
@@ -24,6 +24,7 @@ type Event = {
   role: string; // user | assistant | system | tool | steer
   content: string;
   at: string;
+  meta?: { monitor_url?: string; final?: boolean; partial?: boolean; event?: string } | null;
 };
 
 const roleColor: Record<string, string> = {
@@ -45,7 +46,11 @@ export function VapiLivePanel({ roomId }: { roomId: string | null }) {
   const [events, setEvents] = useState<Event[]>([]);
   const [steer, setSteer] = useState("");
   const [busy, setBusy] = useState(false);
+  const [monitorUrl, setMonitorUrl] = useState<string | null>(null);
+  const [monitoring, setMonitoring] = useState(false);
+  const [resolvingMonitor, setResolvingMonitor] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   // Subscribe to new calls scoped to this room. Auto-attach to the newest active call.
   useEffect(() => {
@@ -90,6 +95,11 @@ export function VapiLivePanel({ roomId }: { roomId: string | null }) {
 
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [events.length]);
 
+  useEffect(() => {
+    const fromEvent = [...events].reverse().find((e) => typeof e?.meta?.monitor_url === "string")?.meta?.monitor_url ?? null;
+    if (fromEvent && !monitorUrl) setMonitorUrl(fromEvent);
+  }, [events, monitorUrl]);
+
   // Hide when nothing is happening
   const visible = call && call.status !== "ended" && call.status !== "failed";
   if (!visible) return null;
@@ -116,6 +126,58 @@ export function VapiLivePanel({ roomId }: { roomId: string | null }) {
     } finally { setBusy(false); }
   }
 
+  function isLikelyAudioUrl(url: string) {
+    return /\.(mp3|wav|ogg|m4a|aac|webm|m3u8)(\?.*)?$/i.test(url) || url.includes("audio");
+  }
+
+  async function resolveMonitorUrl() {
+    if (!call) return null;
+    setResolvingMonitor(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("vapi-call-monitor", {
+        body: { call_id: call.id },
+      });
+      if (error || data?.ok === false) throw new Error(data?.error ?? error?.message ?? "Failed to resolve live monitor");
+      const url = typeof data?.monitor_url === "string" ? data.monitor_url : null;
+      setMonitorUrl(url);
+      return url;
+    } catch (e) {
+      toast.error((e as Error).message);
+      return null;
+    } finally {
+      setResolvingMonitor(false);
+    }
+  }
+
+  async function toggleMonitor() {
+    if (monitoring) {
+      audioRef.current?.pause();
+      setMonitoring(false);
+      return;
+    }
+    const url = monitorUrl ?? await resolveMonitorUrl();
+    if (!url) {
+      toast.info("No live audio monitor URL available for this call.");
+      return;
+    }
+    if (!isLikelyAudioUrl(url)) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      toast.success("Opened live monitor in new tab.");
+      return;
+    }
+    try {
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        audioRef.current.volume = 1;
+        await audioRef.current.play();
+        setMonitoring(true);
+      }
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+      toast.info("Autoplay blocked. Opened monitor in new tab.");
+    }
+  }
+
   return (
     <Card className="border-emerald-500/40 bg-emerald-500/5 mb-3">
       <div className="p-3 border-b flex items-center gap-2 flex-wrap">
@@ -125,10 +187,18 @@ export function VapiLivePanel({ roomId }: { roomId: string | null }) {
         <Badge variant="outline" className="text-[10px]">{call!.agent_name}</Badge>
         <span className="text-xs text-muted-foreground truncate">{call!.phone_number}</span>
         {call!.goal && <span className="text-xs text-muted-foreground truncate">· {call!.goal}</span>}
+        <Button size="sm" variant="outline" onClick={toggleMonitor} disabled={busy || resolvingMonitor}>
+          {monitoring ? <Pause className="w-3 h-3 mr-1" /> : <Headphones className="w-3 h-3 mr-1" />}
+          {resolvingMonitor ? "Resolving…" : monitoring ? "Stop Live Audio" : "Hear Live"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={resolveMonitorUrl} disabled={busy || resolvingMonitor}>
+          <Volume2 className="w-3 h-3 mr-1" /> Refresh Monitor
+        </Button>
         <Button size="sm" variant="destructive" className="ml-auto" onClick={hangup} disabled={busy}>
           <PhoneOff className="w-3 h-3 mr-1" /> Hang up
         </Button>
       </div>
+      <audio ref={audioRef} hidden onEnded={() => setMonitoring(false)} />
 
       <div className="max-h-[220px] overflow-y-auto p-3 space-y-2">
         {events.length === 0 && (
@@ -142,7 +212,7 @@ export function VapiLivePanel({ roomId }: { roomId: string | null }) {
                 {new Date(e.at).toLocaleTimeString()}
               </span>
             </div>
-            <div className="whitespace-pre-wrap">{e.content}</div>
+            <div className={`whitespace-pre-wrap ${e.meta?.partial ? "opacity-70 italic" : ""}`}>{e.content}</div>
           </div>
         ))}
         <div ref={scrollRef} />
