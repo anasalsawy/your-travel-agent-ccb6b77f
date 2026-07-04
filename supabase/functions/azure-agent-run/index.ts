@@ -18,8 +18,8 @@ const CLIENT_SECRET = Deno.env.get("AZURE_CLIENT_SECRET")!;
 const AI_PROJECT = (Deno.env.get("AZURE_AI_PROJECT_ENDPOINT") ?? "").replace(/\/$/, "");
 const DEFAULT_MODEL = Deno.env.get("AZURE_AI_MODEL_DEFAULT") ?? "gpt-4o-mini";
 const DEFAULT_FLIGHT_PROVIDER = (Deno.env.get("BOOKING_PROVIDER_FLIGHTS") ?? "duffel").toLowerCase();
-const DEFAULT_HOTEL_PROVIDER = (Deno.env.get("BOOKING_PROVIDER_HOTELS") ?? "duffel").toLowerCase();
-const DEFAULT_CAR_PROVIDER = (Deno.env.get("BOOKING_PROVIDER_CARS") ?? "duffel").toLowerCase();
+const DEFAULT_HOTEL_PROVIDER = (Deno.env.get("BOOKING_PROVIDER_HOTELS") ?? "trawex").toLowerCase();
+const DEFAULT_CAR_PROVIDER = (Deno.env.get("BOOKING_PROVIDER_CARS") ?? "trawex").toLowerCase();
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
