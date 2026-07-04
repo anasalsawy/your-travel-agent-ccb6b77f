@@ -79,10 +79,24 @@ async function callFn(name: string, payload: unknown) {
 async function execLocalTool(name: string, args: any, ctx: { agentName: string }): Promise<unknown> {
   if (AZURE_TOOL_NAMES.includes(name as any)) return executeAzureTool(name, args ?? {});
   switch (name) {
-    case "vapi_call":    return callFn("vapi-call", args);
-    case "vapi_inject":  return callFn("vapi-inject", args);
-    case "vapi_hangup":  return callFn("vapi-hangup", args);
-    case "vapi_status":  return callFn("vapi-status", args);
+    case "vapi_call":
+      return callFn("vapi-call-start", {
+        agent: ctx.agentName,
+        number: args?.number,
+        goal: args?.goal,
+        roomId: args?.room_id ?? null,
+        assistantId: args?.assistant_id ?? null,
+      });
+    case "vapi_inject":
+      return callFn("vapi-call-inject", {
+        call_id: args?.call_id,
+        message: args?.message,
+        source: args?.source ?? ctx.agentName,
+      });
+    case "vapi_hangup":
+      return callFn("vapi-call-hangup", { call_id: args?.call_id });
+    case "vapi_status":
+      return callFn("vapi-call-status", { call_id: args?.call_id });
     case "war_room_post": {
       const { content, addressed_to, status } = args ?? {};
       await sb.from("war_room_messages").insert({
