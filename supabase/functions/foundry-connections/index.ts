@@ -319,8 +319,59 @@ Deno.serve(async (req) => {
         }
         return j({ ok: true, action, patched: results });
       }
+      case "add-byom-connection": {
+        // Register a Bring-Your-Own-Model connection in the Foundry project
+        // pointing at a self-hosted OpenAI-compatible endpoint (LiteLLM on the
+        // Mint VM, exposed via cloudflared). Non-destructive: PUT is idempotent
+        // per connection name, and we take a connections backup first.
+        const cbase = armProjectConnectionsBase();
+        if (!cbase) return j({ ok: false, error: "ARM env vars missing", needed: ["AZURE_SUBSCRIPTION_ID","AZURE_RESOURCE_GROUP","AZURE_AI_ACCOUNT_NAME","AZURE_AI_PROJECT_NAME"] }, 400);
+
+        const name    = String(body.name ?? "hf-brain-litellm").trim();
+        const baseUrl = String(body.baseUrl  ?? Deno.env.get("LITELLM_BASE_URL") ?? "").trim();
+        const apiKey  = String(body.apiKey   ?? Deno.env.get("LITELLM_API_KEY")  ?? "").trim();
+        const modelId = String(body.modelName ?? Deno.env.get("HF_MODEL_NAME")   ?? "my-hf-brain").trim();
+        if (!baseUrl) return j({ ok: false, error: "baseUrl required (or set LITELLM_BASE_URL secret)" }, 400);
+        if (!apiKey)  return j({ ok: false, error: "apiKey required (or set LITELLM_API_KEY secret)" }, 400);
+
+        const cx = await arm("GET", cbase);
+        await sb.from("foundry_connection_backups").insert({
+          label: "pre-add-byom:" + name, scope: "connections", agent_name: null, payload: cx.data,
+        });
+
+        // Foundry Serverless connection — OpenAI-compatible model gateway.
+        const putBody = {
+          properties: {
+            category: "Serverless",
+            authType: "ApiKey",
+            target: baseUrl.replace(/\/$/, ""),
+            isSharedToAll: true,
+            credentials: { key: apiKey },
+            metadata: {
+              ApiType: "Azure",
+              Kind: "OpenAI",
+              ModelName: modelId,
+              ModelProvider: "HuggingFace-via-LiteLLM",
+              source: "byom-litellm",
+            },
+          },
+        };
+        const put = await arm("PUT", cbase + "/" + encodeURIComponent(name), putBody);
+        await sb.from("foundry_connection_backups").insert({
+          label: "post-add-byom:" + name, scope: "connection-put", agent_name: null,
+          payload: {
+            request: { ...putBody, properties: { ...putBody.properties, credentials: { key: "***redacted***" } } },
+            response: put.data, status: put.status,
+          },
+        });
+
+        return j({
+          ok: put.ok, action, connection_name: name, status: put.status,
+          target: putBody.properties.target, model_name: modelId, response: put.data,
+        }, put.ok ? 200 : 502);
+      }
       default:
-        return j({ ok: false, error: "unknown action", allowed: ["backup","list-connections","list-agent-tools","probe-current","probe-after","patch-builder","install-azure-tools","make-sp-safe","make-war-room-sp-safe"] }, 400);
+        return j({ ok: false, error: "unknown action", allowed: ["backup","list-connections","list-agent-tools","probe-current","probe-after","patch-builder","install-azure-tools","make-sp-safe","make-war-room-sp-safe","add-byom-connection"] }, 400);
     }
   } catch (e) {
     return j({ ok: false, error: (e as Error).message }, 500);
