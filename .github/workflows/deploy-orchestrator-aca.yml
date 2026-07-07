@@ -1,0 +1,62 @@
+name: Deploy Orchestrator (Azure Container Apps)
+
+on:
+  workflow_dispatch:
+    inputs:
+      subscription_id:
+        description: Azure subscription id
+        required: true
+        type: string
+      resource_group:
+        description: Azure resource group
+        required: true
+        type: string
+      location:
+        description: Azure region
+        required: false
+        default: westeurope
+        type: string
+      container_app_name:
+        description: Container App name
+        required: false
+        default: yta-orchestrator
+        type: string
+      container_env_name:
+        description: Container Apps environment name
+        required: false
+        default: yta-orchestrator-env
+        type: string
+      acr_name:
+        description: Existing ACR name (optional)
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy 24/7 orchestrator
+        shell: pwsh
+        run: |
+          ./scripts/deploy-orchestrator-aca.ps1 `
+            -SubscriptionId "${{ inputs.subscription_id }}" `
+            -ResourceGroup "${{ inputs.resource_group }}" `
+            -Location "${{ inputs.location }}" `
+            -ContainerAppName "${{ inputs.container_app_name }}" `
+            -ContainerEnvName "${{ inputs.container_env_name }}" `
+            -AcrName "${{ inputs.acr_name }}" `
+            -AzureAiProjectEndpoint "${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" `
+            -AzureTenantId "${{ secrets.AZURE_TENANT_ID }}" `
+            -AzureClientId "${{ secrets.AZURE_CLIENT_ID }}" `
+            -AzureClientSecret "${{ secrets.AZURE_CLIENT_SECRET }}"
