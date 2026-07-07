@@ -79,9 +79,8 @@ if (-not $exists) {
     "--system-assigned"
   )
   if ($AzureTenantId -and $AzureClientId -and $AzureClientSecret) {
-    $createArgs += @("--env-vars", "AZURE_TENANT_ID=$AzureTenantId", "AZURE_CLIENT_ID=$AzureClientId")
+    $createArgs += @("--env-vars", "AZURE_TENANT_ID=$AzureTenantId", "AZURE_CLIENT_ID=$AzureClientId", "AZURE_CLIENT_SECRET=secretref:AZURE_CLIENT_SECRET")
     $createArgs += @("--secrets", "AZURE_CLIENT_SECRET=$AzureClientSecret")
-    $createArgs += @("--secret-env-vars", "AZURE_CLIENT_SECRET=AZURE_CLIENT_SECRET")
   }
   & az @createArgs | Out-Null
 } else {
@@ -108,6 +107,11 @@ if (-not $exists) {
       --name $ContainerAppName `
       --resource-group $ResourceGroup `
       --secrets "AZURE_CLIENT_SECRET=$AzureClientSecret" | Out-Null
+
+    az containerapp update `
+      --name $ContainerAppName `
+      --resource-group $ResourceGroup `
+      --set-env-vars "AZURE_CLIENT_SECRET=secretref:AZURE_CLIENT_SECRET" | Out-Null
   }
 }
 
