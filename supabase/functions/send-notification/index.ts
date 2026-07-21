@@ -1026,9 +1026,10 @@ const handler = async (req: Request): Promise<Response> => {
       subject,
       html,
       text: plainText,
-      reply_to: "anasalsawy@gmail.com",
+      // Branded admin address for replies; anasalsawy@gmail.com stays as backup admin owner.
+      reply_to: "admin@your-travel-agent.net",
       headers: {
-        "List-Unsubscribe": `<mailto:anasalsawy@gmail.com?subject=unsubscribe>`,
+        "List-Unsubscribe": `<mailto:admin@your-travel-agent.net?subject=unsubscribe>`,
         "X-Entity-Ref-ID": recordId || `notif-${Date.now()}`,
       },
     };
