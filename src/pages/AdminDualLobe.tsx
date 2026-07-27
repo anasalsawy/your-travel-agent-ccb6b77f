@@ -101,7 +101,8 @@ export default function AdminDualLobe() {
 
 
   const scored = scoreContenders(contenders, results);
-  const dualBest = scored.filter((s) => s.key === "dialogue" || s.key === "motor").sort((a, b) => b.score - a.score)[0];
+  const dualKeys = new Set(["dialogue", "motor", "alternating", "contralateral", "reflex", "asym_sh", "asym_mh", "bandwidth", "brain"]);
+  const dualBest = scored.filter((s) => dualKeys.has(s.key)).sort((a, b) => b.score - a.score)[0];
   const singleBest = scored.filter((s) => s.key.startsWith("single")).sort((a, b) => b.score - a.score)[0];
   const dualWins = dualBest && singleBest ? dualBest.score > singleBest.score : null;
 
@@ -133,7 +134,7 @@ export default function AdminDualLobe() {
           </div>
           <Button onClick={runAll} disabled={loading || !task.trim()}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-            {loading ? "Racing 4 architectures…" : "Run all 4 in parallel"}
+            {loading ? `Racing ${contenders.length} architectures…` : `Run all ${contenders.length} in parallel`}
           </Button>
         </CardContent>
       </Card>
