@@ -26,17 +26,31 @@ type Contender = {
   blurb: string;
 };
 
+const MODELS = [
+  { id: "google/gemini-2.5-flash", label: "gemini-2.5-flash" },
+  { id: "google/gemini-2.5-flash-lite", label: "gemini-2.5-flash-lite" },
+];
+
 export default function AdminDualLobe() {
   const [task, setTask] = useState(EXAMPLES[0]);
   const [mode, setMode] = useState<"safe" | "full">("safe");
   const [loading, setLoading] = useState(false);
+  const [isoLoading, setIsoLoading] = useState(false);
+  const [isoModel, setIsoModel] = useState(MODELS[0].id);
   const [results, setResults] = useState<Record<string, Result>>({});
+  const [iso, setIso] = useState<Record<string, Result>>({});
 
   const contenders: Contender[] = [
     { key: "dialogue", label: "Dual · Dialogue",   fn: "dual-lobe-dialogue", body: { max_turns: 10 },  color: "blue",   icon: MessageCircle, blurb: "Two LLMs talking, sensory ↔ motor." },
     { key: "motor",    label: "Dual · Motor-cortex", fn: "dual-lobe-agent",   body: { max_cycles: 6 }, color: "orange", icon: Cpu,           blurb: "Strategist LLM + reflex dispatcher." },
     { key: "single_flash", label: "Single · gemini-2.5-flash",      fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash" },      color: "slate", icon: Bot, blurb: "Baseline: one strong LLM, all tools." },
     { key: "single_lite",  label: "Single · gemini-2.5-flash-lite", fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash-lite" }, color: "zinc",  icon: Bot, blurb: "Baseline: one fast LLM, all tools." },
+  ];
+
+  const isoContenders = (m: string): Contender[] => [
+    { key: "iso_sensory",  label: "Isolated · SENSORY only", fn: "single-lobe-agent",  body: { max_turns: 10, model: m, scope: "sensory" }, color: "blue",    icon: Brain, blurb: "One LLM, read-only tools. No hands." },
+    { key: "iso_motor",    label: "Isolated · MOTOR only",   fn: "single-lobe-agent",  body: { max_turns: 10, model: m, scope: "motor" },   color: "orange",  icon: Zap,   blurb: "One LLM, mutating tools. No eyes." },
+    { key: "iso_combined", label: "Combined · SENSORY + MOTOR (same model)", fn: "dual-lobe-dialogue", body: { max_turns: 10, model: m }, color: "emerald", icon: MessageCircle, blurb: "Both lobes reunited, dialogue mode." },
   ];
 
   const runAll = async () => {
@@ -57,6 +71,27 @@ export default function AdminDualLobe() {
       setLoading(false);
     }
   };
+
+  const runIsolation = async () => {
+    setIsoLoading(true);
+    setIso({});
+    const list = isoContenders(isoModel);
+    try {
+      const settled = await Promise.allSettled(
+        list.map((c) => supabase.functions.invoke(c.fn, { body: { task, mode, ...c.body } })),
+      );
+      const next: Record<string, Result> = {};
+      settled.forEach((s, i) => {
+        const c = list[i];
+        if (s.status === "fulfilled" && !s.value.error) next[c.key] = s.value.data;
+        else next[c.key] = { run_id: "error", stats: { elapsed_ms: 0, llm_calls: 0, tool_calls: 0, model_of_thought: (s as any)?.reason?.message || (s as any)?.value?.error?.message || "failed" } };
+      });
+      setIso(next);
+    } finally {
+      setIsoLoading(false);
+    }
+  };
+
 
   const scored = scoreContenders(contenders, results);
   const dualBest = scored.filter((s) => s.key === "dialogue" || s.key === "motor").sort((a, b) => b.score - a.score)[0];
