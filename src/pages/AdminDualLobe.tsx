@@ -474,7 +474,7 @@ function scoreContenders(contenders: Contender[], results: Record<string, Result
   });
 }
 
-function scoreComplex(contenders: Contender[], results: Record<string, Result>) {
+function scoreComplex(contenders: Contender[], results: Record<string, Result>, obstacles = false) {
   const rows = contenders
     .filter((c) => results[c.key])
     .map((c) => {
