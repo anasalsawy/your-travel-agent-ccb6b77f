@@ -762,6 +762,69 @@ function scoreComplex(contenders: Contender[], results: Record<string, Result>, 
   });
 }
 
+// Extract inserts in strict ledger-then-transcript order, preserving titles/priority.
+function extractOrderedInserts(r: Result): Array<{ table: string; content?: string; role?: string; title?: string; priority?: number }> {
+  if (!r) return [];
+  const out: Array<{ table: string; content?: string; role?: string; title?: string; priority?: number }> = [];
+  for (const e of r.ledger ?? []) {
+    if (e.kind !== "tool_executed") continue;
+    const args = e.args ?? e.input ?? {};
+    const table = args.table ?? args.tableName;
+    const name = (e.tool ?? e.name ?? "").toString();
+    if (!table && !/insert|write/i.test(name)) continue;
+    const row = args.row ?? {};
+    if (table === "war_room_messages" || /insert.*messages/i.test(name)) {
+      out.push({ table: "war_room_messages", content: args.content ?? row.content, role: args.role ?? row.role });
+    } else if (table === "war_room_tasks") {
+      out.push({ table: "war_room_tasks", title: args.title ?? row.title, priority: args.priority ?? row.priority });
+    } else if (table) {
+      out.push({ table });
+    }
+  }
+  for (const t of r.transcript ?? []) {
+    const tool = (t as any).tool;
+    if (!tool) continue;
+    const args = tool.args ?? {};
+    const table = args.table;
+    if (!table) continue;
+    if (table === "war_room_messages") out.push({ table, content: args.content, role: args.role });
+    else if (table === "war_room_tasks") out.push({ table, title: args.title, priority: args.priority });
+    else out.push({ table });
+  }
+  return out;
+}
+
+function scoreScalingTest(
+  test: ScaleTest,
+  contenders: Contender[],
+  results: Record<string, Result>,
+) {
+  const rows = contenders.filter((c) => results[c.key]).map((c) => {
+    const r = results[c.key]!;
+    const ledger = r.ledger ?? [];
+    const toolCalls = ledger.filter((e: any) => e.kind === "tool_executed");
+    const errors = toolCalls.filter((e: any) => e.ok === false).length
+                 + ledger.filter((e: any) => e.kind === "tool_rejected").length;
+    const inserts = extractOrderedInserts(r);
+    const v = test.verify(inserts);
+    const done = ledger.some((e: any) => e.kind === "task_complete") || (r.transcript ?? []).some((t: any) => t.done);
+    const correct = v.ok && done;
+    const note = !done ? "not done" : v.note;
+    return { key: c.key, label: c.label, correct, ms: r.stats.elapsed_ms, llm: r.stats.llm_calls, errors, note };
+  });
+  const maxMs = Math.max(1, ...rows.map((r) => r.ms));
+  const maxLlm = Math.max(1, ...rows.map((r) => r.llm));
+  return rows.map((r) => {
+    const speedScore = 25 * (1 - r.ms / maxMs);
+    const effScore = 25 * (1 - r.llm / maxLlm);
+    const correctScore = r.correct ? 50 : 0;
+    const errorPenalty = 4 * r.errors;
+    return { ...r, speedScore, effScore, composite: correctScore + speedScore + effScore - errorPenalty };
+  });
+}
+
+
+
 
 function StatsRow({ stats }: { stats: Stats }) {
   return (
