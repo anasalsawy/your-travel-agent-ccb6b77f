@@ -31,6 +31,7 @@ import AdminShopperProfile from "./pages/AdminShopperProfile";
 import AdminWarRoom from "./pages/AdminWarRoom";
 import AdminAutonomyAudit from "./pages/AdminAutonomyAudit";
 import AdminTestLLMProvider from "./pages/AdminTestLLMProvider";
+import AdminDesignLab from "./pages/AdminDesignLab";
 import { lazy, Suspense } from "react";
 
 const MobileLogin = lazy(() => import("./pages/mobile-admin/MobileLogin"));
@@ -95,6 +96,7 @@ const App = () => (
             <Route path="/admin/war-room" element={<AdminWarRoom />} />
             <Route path="/admin/autonomy-audit" element={<AdminAutonomyAudit />} />
             <Route path="/admin/test-llm" element={<AdminTestLLMProvider />} />
+            <Route path="/admin/design-lab" element={<AdminDesignLab />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/about" element={<About />} />
