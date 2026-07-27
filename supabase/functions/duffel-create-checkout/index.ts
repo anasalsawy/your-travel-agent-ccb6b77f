@@ -19,7 +19,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
     if (!DUFFEL_TOKEN) throw new Error("DUFFEL_API_TOKEN not set");
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+    // Prefer a test key when available — the live Stripe account may not yet
+    // be activated for live charges ("Your account cannot currently make live
+    // charges"). Falls back to the primary key otherwise.
+    const stripeKey =
+      Deno.env.get("STRIPE_TEST_SECRET_KEY") || Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY not set");
 
     const { offer_id, passengers, contact_email, contact_phone } = await req.json();
