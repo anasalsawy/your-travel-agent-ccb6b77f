@@ -8,9 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { DuffelPayments as DuffelPaymentsRaw } from "@duffel/components";
-
-const DuffelPayments = DuffelPaymentsRaw as unknown as React.ComponentType<any>;
+import { DuffelCardForm, useDuffelCardFormActions } from "@duffel/components";
 
 const SUPABASE_URL = "https://wpwdxtyufpewdyffxlgo.supabase.co";
 
@@ -147,24 +145,42 @@ export function CustomerCardCheckout({
     );
   }
 
+  return <CardFormInner clientKey={clientKey} booking={booking} onCard={bookWithCard} onFallbackToStripe={onFallbackToStripe} />;
+}
+
+function CardFormInner({
+  clientKey, booking, onCard, onFallbackToStripe,
+}: {
+  clientKey: string;
+  booking: boolean;
+  onCard: (data: any) => void;
+  onFallbackToStripe: () => void;
+}) {
+  const { ref, createCardForTemporaryUse } = useDuffelCardFormActions();
+  const [validated, setValidated] = useState(false);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <ShieldCheck className="w-4 h-4 text-emerald-600" />
         Card entered here is tokenised by Duffel — never touches our servers.
       </div>
-      <DuffelPayments
+      <DuffelCardForm
+        ref={ref}
         clientKey={clientKey}
-        paymentIntentClientToken={clientKey}
-        onSuccessfulPayment={bookWithCard}
-        onFailedPayment={(e: any) => toast.error("Card failed: " + (e?.message || "unknown"))}
-        successPaymentRedirectURL={null}
+        intent="to-create-card-for-temporary-use"
+        onValidateSuccess={() => setValidated(true)}
+        onValidateFailure={() => setValidated(false)}
+        onCreateCardForTemporaryUseSuccess={(data) => onCard(data)}
+        onCreateCardForTemporaryUseFailure={(e) => toast.error("Card failed: " + (e?.message || "unknown"))}
       />
-      {booking && (
-        <div className="flex items-center gap-2 text-sm">
-          <Loader2 className="w-4 h-4 animate-spin" /> Placing your booking with the airline…
-        </div>
-      )}
+      <Button
+        onClick={() => createCardForTemporaryUse()}
+        disabled={!validated || booking}
+        className="w-full"
+      >
+        {booking ? (<><Loader2 className="w-4 h-4 animate-spin mr-2" /> Placing your booking…</>) : "Pay & book"}
+      </Button>
       <div className="text-xs text-muted-foreground">
         Prefer to pay on Stripe?{" "}
         <button className="underline" onClick={onFallbackToStripe} type="button">
