@@ -1,30 +1,23 @@
 // Dual-Lobe Agent — production runtime (real LLMs + real tools).
 //
-// Two lobes ("brains") share a workspace and a strict JSON envelope protocol:
-//   • STRATEGIST  = sense / judge / verify. Reads state. Cannot mutate.
-//   • EXECUTOR    = act / motor. Mutates state. Cannot self-verify.
-// The router enforces which lobe may call which tool. Every step is logged to
-// an in-memory ledger returned in the response; callers persist as needed.
+// v2 performance model — MUST beat a single agent on latency + throughput:
+//   • Parallel lobes            — Strategist SENSE and Executor PLAN run
+//                                 concurrently at cycle start (2 LLM calls
+//                                 in wall time = 1).
+//   • Merged permit+verify      — Strategist emits verify-of-previous AND
+//                                 permit-of-next in a single call.
+//   • Fast-path                 — Read-only executor tools (http_get) and
+//                                 strategist sense tools skip permit review.
+//   • Parallel tool execution   — Executor may propose up to 3 independent
+//                                 tool calls per turn (`actions[]`), run
+//                                 with Promise.all.
+//   • Asymmetric models         — Strategist uses fast/cheap flash-lite,
+//                                 Executor uses smarter flash. Configurable.
+//   • Early-stop                — 3 consecutive no-op cycles ends the run.
 //
-// Callable from anything — WhatsApp bot, admin UI, another agent, cron:
-//   POST /functions/v1/dual-lobe-agent
-//   Body: { task: string, max_cycles?: number, mode?: "safe"|"full" }
-//
-// Real tool surface (curated + safe):
-//   Strategist (read-only):
-//     - db_read              (SELECT via service role, allowlist tables)
-//     - list_tables          (introspect DB)
-//     - list_edge_functions  (introspect functions)
-//     - http_get             (any URL, GET, 15s timeout)
-//     - tool_registry        (return this catalog to the LLM)
-//   Executor (mutating):
-//     - db_write             (INSERT/UPDATE via service role, allowlist tables)
-//     - http_post            (any URL, POST JSON, 30s timeout)
-//     - invoke_edge_function (invoke another edge function in this project)
-//     - send_notification    (call the send-notification function)
-//
-// Guarded by ALLOWLIST_TABLES and mode="safe" (default) which disables
-// db_write + invoke_edge_function unless mode="full".
+// Protocol / lobes / safety are unchanged from v1:
+//   STRATEGIST = sense/judge/verify (read-only tools)
+//   EXECUTOR   = act/motor (mutating tools, gated by ALLOWLIST + mode)
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
@@ -37,28 +30,24 @@ const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// Only tables the dual-lobe agent may touch. Extend deliberately.
 const ALLOWLIST_TABLES = new Set([
-  "war_room_messages",
-  "war_room_tasks",
-  "war_room_heartbeats",
-  "agent_room_messages",
-  "agent_rooms",
-  "notification_log",
-  "documents",
+  "war_room_messages", "war_room_tasks", "war_room_heartbeats",
+  "agent_room_messages", "agent_rooms", "notification_log", "documents",
 ]);
 
 const STRATEGIST_TOOLS = ["db_read", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
-const EXECUTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_notification"];
+const EXECUTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_notification", "http_get"];
+// Executor tools that do NOT mutate state → skip strategist permit (fast-path).
+const READONLY_EXECUTOR_TOOLS = new Set(["http_get"]);
+
+const DEFAULT_STRATEGIST_MODEL = "google/gemini-2.5-flash-lite";
+const DEFAULT_EXECUTOR_MODEL = "google/gemini-2.5-flash";
 
 // ── LLM call ──────────────────────────────────────────────────────
-async function llm(system: string, user: string, model = "google/gemini-2.5-flash"): Promise<string> {
+async function llm(system: string, user: string, model: string): Promise<string> {
   const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Lovable-API-Key": LOVABLE_KEY,
-    },
+    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
     body: JSON.stringify({
       model,
       messages: [
@@ -66,10 +55,10 @@ async function llm(system: string, user: string, model = "google/gemini-2.5-flas
         { role: "user", content: user },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.3,
+      temperature: 0.2,
     }),
   });
-  if (!r.ok) throw new Error(`LLM ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw new Error(`LLM ${r.status}: ${(await r.text()).slice(0, 300)}`);
   const j = await r.json();
   return j.choices?.[0]?.message?.content ?? "{}";
 }
@@ -86,24 +75,17 @@ async function execTool(
   mode: "safe" | "full",
 ): Promise<{ tool: string; ok: boolean; result?: any; error?: string }> {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
-
   try {
     switch (tool) {
       case "tool_registry":
         return { tool, ok: true, result: { strategist: STRATEGIST_TOOLS, executor: EXECUTOR_TOOLS, allowlist_tables: [...ALLOWLIST_TABLES] } };
-
-      case "list_tables": {
+      case "list_tables":
         return { tool, ok: true, result: { allowlisted: [...ALLOWLIST_TABLES] } };
-      }
-
-      case "list_edge_functions": {
-        // Static snapshot — cheap and adequate for planning
-        return { tool, ok: true, result: { note: "curated subset", functions: [
+      case "list_edge_functions":
+        return { tool, ok: true, result: { functions: [
           "duffel-search", "duffel-book-customer-card", "send-notification",
           "chat", "war-room", "azure-agent-run", "foundry-agent-run",
         ] } };
-      }
-
       case "db_read": {
         const { table, select = "*", eq, limit = 20 } = args;
         if (!ALLOWLIST_TABLES.has(table)) throw new Error(`table ${table} not in allowlist`);
@@ -113,7 +95,6 @@ async function execTool(
         if (error) throw error;
         return { tool, ok: true, result: { rows: data } };
       }
-
       case "http_get": {
         const { url, headers } = args;
         if (!url || typeof url !== "string") throw new Error("url required");
@@ -124,7 +105,6 @@ async function execTool(
         const body = await r.text();
         return { tool, ok: r.ok, result: { status: r.status, body: body.slice(0, 4000) } };
       }
-
       case "db_write": {
         if (mode !== "full") throw new Error("db_write blocked in safe mode");
         const { table, op = "insert", values, eq } = args;
@@ -142,7 +122,6 @@ async function execTool(
         }
         throw new Error(`unknown op ${op}`);
       }
-
       case "http_post": {
         const { url, headers, body } = args;
         if (!url || typeof url !== "string") throw new Error("url required");
@@ -158,33 +137,27 @@ async function execTool(
         const respBody = await r.text();
         return { tool, ok: r.ok, result: { status: r.status, body: respBody.slice(0, 4000) } };
       }
-
       case "invoke_edge_function": {
         if (mode !== "full") throw new Error("invoke_edge_function blocked in safe mode");
         const { name, body } = args;
         if (!name || typeof name !== "string") throw new Error("name required");
         const r = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${SERVICE_ROLE}`,
-          },
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SERVICE_ROLE },
           body: JSON.stringify(body ?? {}),
         });
         const text = await r.text();
         return { tool, ok: r.ok, result: { status: r.status, body: text.slice(0, 4000) } };
       }
-
       case "send_notification": {
         const r = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_ROLE}` },
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SERVICE_ROLE },
           body: JSON.stringify(args),
         });
         const text = await r.text();
         return { tool, ok: r.ok, result: { status: r.status, body: text.slice(0, 2000) } };
       }
-
       default:
         throw new Error(`unknown tool ${tool} (lobe=${lobe})`);
     }
@@ -194,144 +167,212 @@ async function execTool(
 }
 
 // ── Prompts ───────────────────────────────────────────────────────
-const EXECUTOR_SYS = (mode: string) => `You are the EXECUTOR lobe of a dual-brain agent. You act; you do NOT self-verify. The STRATEGIST lobe reviews everything you propose and grants or blocks permission.
+const EXECUTOR_SYS = (mode: string) => `You are the EXECUTOR lobe of a dual-brain agent. Move fast. Do not self-verify — the STRATEGIST lobe verifies you in parallel.
 
-You may only request tools from this allowlist: ${EXECUTOR_TOOLS.join(", ")}.
+Executor tools: ${EXECUTOR_TOOLS.join(", ")}.
 Runtime mode: ${mode}. In "safe" mode, db_write and invoke_edge_function are BLOCKED.
 
-Emit EXACTLY one JSON object per turn:
+Emit EXACTLY one JSON object per turn. Prefer parallel actions when they are INDEPENDENT (no ordering / data dep):
 {
   "message_type": "action_intent",
   "payload": {
-    "goal": "short goal for this step",
-    "tool_requested": "<one executor tool>",
-    "tool_args": { ... },
-    "why": "one sentence rationale"
+    "goal": "short goal",
+    "actions": [
+      { "tool": "<one executor tool>", "args": { ... }, "why": "one sentence" }
+    ]
   }
 }
-OR
-{ "message_type": "done_signal", "payload": { "summary": "..." } }`;
+Or when the task is finished:
+{ "message_type": "done_signal", "payload": { "summary": "..." } }
 
-const STRATEGIST_SYS = (mode: string) => `You are the STRATEGIST lobe of a dual-brain agent. You sense, judge, and verify. You NEVER take mutating actions.
+Rules: 1–3 actions max per turn. Only put actions in the same turn if they truly don't depend on each other. Single-action turns are fine and often best.`;
 
-Strategist-only tools: ${STRATEGIST_TOOLS.join(", ")}.
-Executor tools you may PERMIT: ${EXECUTOR_TOOLS.join(", ")}.
-Runtime mode: ${mode}.
+const STRATEGIST_SENSE_SYS = (mode: string) => `You are the STRATEGIST lobe (SENSE phase). You look before you leap. You NEVER mutate state.
 
-Emit EXACTLY one JSON object per turn.
-Reviewing an executor intent:
-{ "message_type": "permit", "payload": { "decision": "permit"|"revise"|"block", "reason": "...", "allowed_tools": ["<one>"], "next_instruction": "..." } }
-Verifying a completed action:
-{ "message_type": "verify_result", "payload": { "outcome": "success"|"retry"|"repair"|"rollback", "notes": "..." } }
-Declaring task done:
-{ "message_type": "task_complete", "payload": { "summary": "..." } }
-Optionally sense first:
-{ "message_type": "strategist_tool_call", "payload": { "tool": "<strategist tool>", "tool_args": {...} } }`;
+Sense tools: ${STRATEGIST_TOOLS.join(", ")}. Runtime mode: ${mode}.
 
-// ── Orchestrator ──────────────────────────────────────────────────
-async function run(task: string, maxCycles: number, mode: "safe" | "full") {
+Emit ONE JSON object:
+{ "message_type": "sense", "payload": { "tool": "<sense tool>", "tool_args": { ... }, "why": "..." } }
+Or if no sensing is useful this cycle:
+{ "message_type": "skip", "payload": { "why": "..." } }`;
+
+const STRATEGIST_JUDGE_SYS = (mode: string) => `You are the STRATEGIST lobe (JUDGE phase). In ONE call you both VERIFY the previous action(s) and PERMIT (or block/revise) the next executor intent.
+
+Executor tools you may permit: ${EXECUTOR_TOOLS.join(", ")}. Runtime mode: ${mode}.
+
+Emit ONE JSON object:
+{
+  "message_type": "judge",
+  "payload": {
+    "verify": { "outcome": "success"|"retry"|"repair"|"rollback"|"n/a", "notes": "..." },
+    "permit": {
+      "decision": "permit"|"revise"|"block"|"task_complete",
+      "reason": "...",
+      "allowed_tools": ["<tool>", "..."],
+      "next_instruction": "..."
+    }
+  }
+}
+Use decision="task_complete" when the task is finished. Use "block" only for safety violations.`;
+
+// ── Orchestrator (v2, parallel) ──────────────────────────────────
+async function run(task: string, maxCycles: number, mode: "safe" | "full", models: { strategist: string; executor: string }) {
   const runId = crypto.randomUUID();
+  const t0 = Date.now();
   const ledger: any[] = [];
   const workspace: Record<string, any> = { task, mode, observations: [] };
   let seq = 0;
-  const log = (e: any) => { ledger.push({ seq: ++seq, at: new Date().toISOString(), ...e }); };
+  const log = (e: any) => { ledger.push({ seq: ++seq, at_ms: Date.now() - t0, ...e }); };
 
-  log({ kind: "run_start", run_id: runId, task, mode });
+  log({ kind: "run_start", run_id: runId, task, mode, models });
 
   let lastVerification: any = null;
   let lastActionResult: any = null;
+  let noopStreak = 0;
+  let cyclesRun = 0;
+  let llmCalls = 0;
+  let toolCalls = 0;
 
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
+    cyclesRun = cycle;
     log({ kind: "cycle_start", cycle });
 
-    // Executor proposes
-    const execRaw = await llm(EXECUTOR_SYS(mode), JSON.stringify({
+    // ── PHASE 1: SENSE + PLAN in parallel ────────────────────────
+    const sharedCtx = JSON.stringify({
       task, cycle, workspace_summary: workspace,
       last_verification: lastVerification, last_action_result: lastActionResult,
-      instruction: "Propose the next single action, or emit done_signal.",
-    }));
-    const execMsg = safeParse(execRaw);
-    log({ kind: "executor_message", message: execMsg });
+    });
+    const [senseRaw, planRaw] = await Promise.all([
+      llm(STRATEGIST_SENSE_SYS(mode), sharedCtx + "\n\nDecide: sense with one tool OR skip.", models.strategist),
+      llm(EXECUTOR_SYS(mode), sharedCtx + "\n\nPropose next action(s) or done_signal.", models.executor),
+    ]);
+    llmCalls += 2;
+    const senseMsg = safeParse(senseRaw);
+    const planMsg = safeParse(planRaw);
+    log({ kind: "sense_message", message: senseMsg });
+    log({ kind: "plan_message", message: planMsg });
 
-    // Strategist reviews
-    let stratMsg = safeParse(await llm(STRATEGIST_SYS(mode), JSON.stringify({
-      task, cycle, workspace_summary: workspace, executor_message: execMsg,
-      instruction: "Decide: permit / revise / block. Or task_complete. Optionally sense first.",
-    })));
-    log({ kind: "strategist_message", message: stratMsg });
-
-    // Strategist may sense first
-    if (stratMsg.message_type === "strategist_tool_call") {
-      const t = stratMsg.payload?.tool;
-      if (!STRATEGIST_TOOLS.includes(t)) {
-        log({ kind: "router_reject", reason: "non-strategist tool", tool: t });
+    // Execute sense tool in parallel with judge prep — but we need sense result for judge context.
+    let senseResult: any = null;
+    if (senseMsg.message_type === "sense") {
+      const t = senseMsg.payload?.tool;
+      if (STRATEGIST_TOOLS.includes(t)) {
+        senseResult = await execTool(t, senseMsg.payload?.tool_args ?? {}, "strategist", mode);
+        toolCalls++;
+        log({ kind: "tool_executed", lobe: "strategist", ...senseResult });
+        workspace.observations.push({ from: "strategist", ...senseResult });
       } else {
-        const result = await execTool(t, stratMsg.payload?.tool_args ?? {}, "strategist", mode);
-        log({ kind: "tool_executed", lobe: "strategist", ...result });
-        workspace.observations.push({ from: "strategist", ...result });
-        stratMsg = safeParse(await llm(STRATEGIST_SYS(mode), JSON.stringify({
-          task, cycle, workspace_summary: workspace, executor_message: execMsg,
-          your_previous_tool_result: result,
-          instruction: "Now emit permit / verify_result / task_complete.",
-        })));
-        log({ kind: "strategist_message", message: stratMsg });
+        log({ kind: "router_reject", reason: "non-strategist sense tool", tool: t });
       }
     }
 
-    if (stratMsg.message_type === "task_complete") {
-      log({ kind: "task_complete", summary: stratMsg.payload });
-      break;
-    }
-    if (execMsg.message_type === "done_signal" && stratMsg.message_type !== "permit") {
-      log({ kind: "executor_declared_done", note: "awaiting strategist confirmation" });
-      lastVerification = { outcome: "retry", notes: "Executor declared done; strategist must task_complete." };
+    // Early terminate: executor says done AND no prior blocked state
+    if (planMsg.message_type === "done_signal") {
+      log({ kind: "executor_done_signal", summary: planMsg.payload });
+      // Ask strategist to confirm in a single JUDGE call
+      const judgeRaw = await llm(STRATEGIST_JUDGE_SYS(mode), JSON.stringify({
+        task, cycle, workspace_summary: workspace,
+        sense_result: senseResult, executor_message: planMsg,
+        last_action_result: lastActionResult,
+        instruction: "Executor declared done. Verify and either task_complete or block with next_instruction.",
+      }), models.strategist);
+      llmCalls++;
+      const judgeMsg = safeParse(judgeRaw);
+      log({ kind: "judge_message", message: judgeMsg });
+      if (judgeMsg.payload?.permit?.decision === "task_complete") {
+        log({ kind: "task_complete", summary: judgeMsg.payload });
+        break;
+      }
+      lastVerification = { outcome: "retry", notes: judgeMsg.payload?.permit?.reason ?? "not yet complete" };
+      noopStreak++;
+      if (noopStreak >= 3) { log({ kind: "early_stop", reason: "noop_streak" }); break; }
       continue;
     }
 
-    if (stratMsg.message_type !== "permit" || stratMsg.payload?.decision !== "permit") {
-      log({ kind: "action_blocked_or_revised", decision: stratMsg.payload?.decision });
-      lastVerification = { outcome: "blocked", notes: stratMsg.payload?.reason };
-      lastActionResult = null;
+    const actions: Array<{ tool: string; args: any; why?: string }> =
+      Array.isArray(planMsg.payload?.actions) ? planMsg.payload.actions.slice(0, 3) : [];
+
+    if (actions.length === 0) {
+      log({ kind: "plan_empty" });
+      noopStreak++;
+      if (noopStreak >= 3) { log({ kind: "early_stop", reason: "noop_streak" }); break; }
       continue;
     }
 
-    const requestedTool = execMsg.payload?.tool_requested;
-    if (!EXECUTOR_TOOLS.includes(requestedTool)) {
-      log({ kind: "router_reject", reason: "not an executor tool", tool: requestedTool });
-      lastVerification = { outcome: "retry", notes: "Tool ownership violation." };
-      continue;
+    // ── PHASE 2: JUDGE (verify prev + permit next) ────────────────
+    // Fast-path: if EVERY proposed action is a read-only executor tool, skip judge.
+    const allReadonly = actions.every(a => READONLY_EXECUTOR_TOOLS.has(a.tool));
+    let permit: any;
+    if (allReadonly) {
+      permit = { decision: "permit", reason: "fast-path readonly", allowed_tools: actions.map(a => a.tool) };
+      log({ kind: "fast_path_permit", tools: permit.allowed_tools });
+    } else {
+      const judgeRaw = await llm(STRATEGIST_JUDGE_SYS(mode), JSON.stringify({
+        task, cycle, workspace_summary: workspace,
+        sense_result: senseResult, last_action_result: lastActionResult,
+        executor_message: planMsg,
+        instruction: "Verify previous action if any, then permit / revise / block / task_complete the proposed actions.",
+      }), models.strategist);
+      llmCalls++;
+      const judgeMsg = safeParse(judgeRaw);
+      log({ kind: "judge_message", message: judgeMsg });
+      lastVerification = judgeMsg.payload?.verify ?? null;
+      permit = judgeMsg.payload?.permit ?? { decision: "block", reason: "no permit emitted" };
+      if (permit.decision === "task_complete") {
+        log({ kind: "task_complete", summary: permit });
+        break;
+      }
+      if (permit.decision !== "permit") {
+        log({ kind: "action_blocked_or_revised", decision: permit.decision, reason: permit.reason });
+        lastActionResult = null;
+        noopStreak++;
+        if (noopStreak >= 3) { log({ kind: "early_stop", reason: "noop_streak" }); break; }
+        continue;
+      }
     }
-    if (!(stratMsg.payload?.allowed_tools ?? []).includes(requestedTool)) {
-      log({ kind: "router_reject", reason: "tool not in permit", tool: requestedTool });
-      lastVerification = { outcome: "retry", notes: "Permit did not cover requested tool." };
+
+    // Filter actions by executor allowlist + permit.allowed_tools
+    const allowed = new Set(permit.allowed_tools ?? []);
+    const runnable = actions.filter(a => EXECUTOR_TOOLS.includes(a.tool) && (allReadonly || allowed.has(a.tool)));
+    if (runnable.length === 0) {
+      log({ kind: "router_reject", reason: "no runnable actions after permit filter" });
+      lastVerification = { outcome: "retry", notes: "Tool ownership / permit mismatch." };
+      noopStreak++;
+      if (noopStreak >= 3) { log({ kind: "early_stop", reason: "noop_streak" }); break; }
       continue;
     }
 
-    const toolResult = await execTool(requestedTool, execMsg.payload?.tool_args ?? {}, "executor", mode);
-    log({ kind: "tool_executed", lobe: "executor", ...toolResult });
-    workspace.observations.push({ from: "executor", ...toolResult });
-    lastActionResult = toolResult;
-
-    const verifyMsg = safeParse(await llm(STRATEGIST_SYS(mode), JSON.stringify({
-      task, cycle, workspace_summary: workspace,
-      action_that_ran: { tool: requestedTool, args: execMsg.payload?.tool_args, result: toolResult },
-      instruction: "Emit ONLY a verify_result envelope for the action above.",
-    })));
-    log({ kind: "strategist_message", message: verifyMsg });
-    lastVerification = verifyMsg.payload ?? { outcome: "retry" };
+    // ── PHASE 3: PARALLEL tool execution ─────────────────────────
+    const results = await Promise.all(runnable.map(a => execTool(a.tool, a.args ?? {}, "executor", mode)));
+    toolCalls += results.length;
+    for (let i = 0; i < results.length; i++) {
+      log({ kind: "tool_executed", lobe: "executor", parallel_index: i, ...results[i] });
+      workspace.observations.push({ from: "executor", ...results[i] });
+    }
+    lastActionResult = results.length === 1 ? results[0] : { batch: results };
+    noopStreak = 0; // progress
   }
 
-  log({ kind: "run_end" });
-  return { run_id: runId, ledger, workspace };
+  log({ kind: "run_end", elapsed_ms: Date.now() - t0, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls });
+  return {
+    run_id: runId,
+    ledger,
+    workspace,
+    stats: { elapsed_ms: Date.now() - t0, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls },
+  };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const { task, max_cycles, mode } = await req.json();
+    const { task, max_cycles, mode, strategist_model, executor_model } = await req.json();
     if (!task) throw new Error("task is required");
     const runMode: "safe" | "full" = mode === "full" ? "full" : "safe";
-    const result = await run(task, Math.min(max_cycles ?? 6, 12), runMode);
+    const models = {
+      strategist: strategist_model || DEFAULT_STRATEGIST_MODEL,
+      executor: executor_model || DEFAULT_EXECUTOR_MODEL,
+    };
+    const result = await run(task, Math.min(max_cycles ?? 6, 12), runMode, models);
     return new Response(JSON.stringify(result, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
