@@ -117,7 +117,7 @@ function hippoRecall(brain: Brain, k = 5): Episode[] {
 // ─────────────────────────────────────────────────────────────────
 type Candidate = { tool: string; args: any; why: string; expected: string; utility: number; risk: number; cost: number };
 
-async function pfc(brain: Brain, mode: string, model: string): Promise<{ candidates: Candidate[]; goal_progress: string; done: boolean; note: string }> {
+async function pfc(brain: Brain, mode: string, model: string, consult?: string): Promise<{ candidates: Candidate[]; goal_progress: string; done: boolean; note: string; request_consult: boolean }> {
   const memory = hippoRecall(brain, 5)
     .map((e) => "- [" + new Date(e.at).toISOString().slice(11, 19) + "] " + e.kind + ": " + e.summary)
     .join("\n") || "(none)";
