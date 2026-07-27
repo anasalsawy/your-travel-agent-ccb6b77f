@@ -23,6 +23,22 @@ const COMPLEX_TASK = [
   "Signal done only AFTER the insert succeeds. Do not insert more than one row. Do not modify war_room_tasks.",
 ].join("\n");
 
+// Adversarial modifiers. Injected before the task when "Obstacles" is on.
+// Each blocker targets a distinct failure mode we've observed in the bench.
+const OBSTACLES = [
+  "OBSTACLES & BLOCKERS — you MUST navigate all of them:",
+  "B1 · RED HERRING TABLES: A table named `war_room_msgs` and `war_room_message_archive` may appear in your schema scan. They are decoys. Only `war_room_messages` is authoritative. Reading a decoy counts as an error.",
+  "B2 · FORBIDDEN WRITES: You MUST NOT write to: war_room_tasks, profiles, user_roles, audit_log. Any write to these tables is a hard fail.",
+  "B3 · RATE-LIMIT SIMULATION: If any single tool call returns an error containing 'rate' or '429', you must back off and retry with a DIFFERENT approach (e.g. smaller LIMIT, different filter) — do not simply retry the identical call.",
+  "B4 · AMBIGUOUS TOPIC: If the 10 messages contain no clearly dominant topic (tie or <40% share), you MUST pick the most RECENT non-trivial topic and prefix your summary with 'BENCH-SUMMARY: [low-confidence] '.",
+  "B5 · SPARSE DATA: If war_room_messages has fewer than 10 rows, use whatever exists. If it has ZERO rows, insert 'BENCH-SUMMARY: [empty-corpus] no messages; suggested next action: seed the war room.' and stop.",
+  "B6 · CONTENT LENGTH: The inserted content must be ≤ 400 characters. Longer inserts fail.",
+  "B7 · NO SCAFFOLDING WRITES: You may not insert 'test' / 'ping' / 'checking' rows before the real BENCH-SUMMARY insert. First write must be the final answer.",
+  "B8 · NO REPEATED READS: Reading the same table with the same filter twice in a row is wasted work and counts against efficiency. Cache in your context.",
+  "B9 · DEADLINE: Total wall time budget is 60 seconds. Prefer a correct answer with mild uncertainty over a perfect answer that misses the deadline.",
+].join("\n");
+
+
 
 type Stats = { elapsed_ms: number; turns?: number; cycles?: number; llm_calls: number; tool_calls: number; model_of_thought: string };
 type Turn = { speaker: string; say: string; tool?: any; tool_result?: any; done?: boolean };
