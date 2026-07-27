@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plane, ArrowRight, Search } from "lucide-react";
 import { format } from "date-fns";
 import { AirportAutocomplete } from "@/components/flights/AirportAutocomplete";
+import { CustomerCardCheckout } from "@/components/flights/CustomerCardCheckout";
 import { useSearchParams } from "react-router-dom";
 
 interface Segment {
@@ -93,6 +94,8 @@ export default function Flights() {
   const [contactPhone, setContactPhone] = useState("");
   const [paxForms, setPaxForms] = useState<any[]>([]);
   const [bookingError, setBookingError] = useState<BookingUiError | null>(null);
+  const [paymentMode, setPaymentMode] = useState<"card" | "stripe">("card");
+  const [passengersReady, setPassengersReady] = useState(false);
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
@@ -315,9 +318,26 @@ export default function Flights() {
     setBookingOffer(offer);
     setContactEmail("");
     setContactPhone("");
+    setPaymentMode("card");
+    setPassengersReady(false);
     setPaxForms(Array.from({ length: offer.passenger_count }, () => ({
       title: "mr", gender: "m", given_name: "", family_name: "", born_on: "",
     })));
+  };
+
+  const validatePassengers = (): boolean => {
+    if (!bookingOffer) return false;
+    for (const p of paxForms) {
+      if (!p.given_name || !p.family_name || !p.born_on) {
+        toast({ title: "Missing info", description: "Fill all passenger fields.", variant: "destructive" });
+        return false;
+      }
+    }
+    if (!contactEmail) {
+      toast({ title: "Email required", variant: "destructive" });
+      return false;
+    }
+    return true;
   };
 
   const handleBook = async () => {
@@ -599,13 +619,66 @@ export default function Flights() {
                   <Input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+1..." />
                 </div>
               </Card>
+
+              <Card className="p-4 space-y-3">
+                <div className="font-semibold">Payment</div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={paymentMode === "card" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPaymentMode("card")}
+                  >
+                    Pay by card (instant)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={paymentMode === "stripe" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPaymentMode("stripe")}
+                  >
+                    Stripe checkout
+                  </Button>
+                </div>
+
+                {paymentMode === "card" && !passengersReady && (
+                  <Button
+                    type="button"
+                    variant="hero"
+                    className="w-full"
+                    onClick={() => { if (validatePassengers()) setPassengersReady(true); }}
+                  >
+                    Enter card details →
+                  </Button>
+                )}
+
+                {paymentMode === "card" && passengersReady && bookingOffer && (
+                  <CustomerCardCheckout
+                    offerId={bookingOffer.id}
+                    amount={parseFloat((bookingOffer as any).total_amount)}
+                    currency={bookingOffer.total_currency}
+                    passengers={paxForms}
+                    contactEmail={contactEmail}
+                    contactPhone={contactPhone}
+                    mode="test"
+                    onSuccess={(r) => {
+                      setBookingOffer(null);
+                      toast({ title: "Booked!", description: `Ref: ${r.booking_reference || r.order_id}` });
+                      window.location.href = `/dashboard?duffel_success=true&booking=${r.booking_id}`;
+                    }}
+                    onFallbackToStripe={() => setPaymentMode("stripe")}
+                  />
+                )}
+              </Card>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setBookingOffer(null)}>Cancel</Button>
-            <Button variant="hero" onClick={handleBook} disabled={bookingLoading}>
-              {bookingLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : "Continue to Payment"}
-            </Button>
+            {paymentMode === "stripe" && (
+              <Button variant="hero" onClick={handleBook} disabled={bookingLoading}>
+                {bookingLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : "Continue to Stripe"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
