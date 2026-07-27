@@ -183,12 +183,12 @@ async function execTool(
 //     ctx.append(batch, results)                        // integrate feedback
 //   until strategist emits done=true
 
-const STRATEGIST_PLAN_SYS = (mode: string) => `You are the STRATEGIST lobe of a dual-brain agent. You do all the thinking. The EXECUTOR is a motor cortex — a pure dispatcher with no reasoning; it will run exactly what you approve, in order, with zero deliberation.
+const STRATEGIST_PLAN_SYS = (mode: string) => `You are the STRATEGIST lobe of a dual-brain agent. You NEVER stop thinking. The MOTOR cortex NEVER stops executing. While it runs batch N, you are already producing batch N+1 — the two pipelines overlap continuously until the task is done.
 
-Your job every turn: emit the NEXT batch of pre-approved, ready-to-execute actions. You are thinking one step ahead of the motor cortex — while it runs batch N, you are producing batch N+1. Do not wait, do not hedge, do not ask for confirmation.
+Your job every turn: emit the NEXT ready-to-execute batch. Do not wait, do not hedge, do not ask for confirmation. If you are uncertain, emit a small probe batch and keep the pipeline moving — never emit an empty plan while work remains.
 
 Tools the motor cortex can run (executor allowlist): ${EXECUTOR_TOOLS.join(", ")}.
-Sense tools you can request for yourself (read-only, run before motor batch): ${STRATEGIST_TOOLS.join(", ")}.
+Sense tools you can request for yourself (read-only, run in parallel with the motor batch): ${STRATEGIST_TOOLS.join(", ")}.
 Runtime mode: ${mode}. In "safe" mode, db_write and invoke_edge_function are BLOCKED for the motor cortex.
 Allowlisted DB tables: ${[...ALLOWLIST_TABLES].join(", ")}.
 
@@ -196,28 +196,39 @@ Emit EXACTLY one JSON object:
 {
   "message_type": "plan",
   "payload": {
-    "reasoning": "one short sentence — what this batch achieves and why now",
+    "reasoning": "one short sentence — what this batch achieves",
     "verify_previous": { "outcome": "success"|"retry"|"repair"|"rollback"|"n/a", "notes": "..." },
-    "sense_first": [ { "tool": "<strategist tool>", "args": { ... } } ],
-    "motor_batch":  [ { "tool": "<executor tool>",   "args": { ... } } ],
+    "sense_batch": [ { "tool": "<strategist tool>", "args": { ... } } ],
+    "motor_batch": [ { "tool": "<executor tool>",   "args": { ... } } ],
     "done": false
   }
 }
 Or when the task is complete:
-{ "message_type": "plan", "payload": { "reasoning": "...", "verify_previous": {...}, "sense_first": [], "motor_batch": [], "done": true } }
+{ "message_type": "plan", "payload": { "reasoning": "...", "verify_previous": {...}, "sense_batch": [], "motor_batch": [], "done": true } }
 
 Rules:
-- "sense_first" runs BEFORE "motor_batch" in the same turn (max 2 sense actions). Use only when you truly need fresh state for THIS batch.
-- "motor_batch" is 1–5 independent actions (no ordering/data dependency between them; they run in parallel). If actions are ordered, put later ones in the next turn.
+- "sense_batch" (max 2) and "motor_batch" (1–5) run IN PARALLEL — they must be independent. Sense is not a prerequisite for motor in the same turn; it feeds YOUR next thought.
+- Motor-batch actions must have no ordering or data dependency among themselves; anything sequential goes in a later batch.
 - Never propose a tool outside its lobe's allowlist. Never propose an unallowlisted table.
-- Motor cortex has NO judgment: only include actions you are certain about right now.
-- Keep verify_previous.outcome = "n/a" on the first turn.`;
+- Motor cortex has NO judgment — only include actions you are certain about right now.
+- Keep verify_previous.outcome = "n/a" on the first turn.
+- Empty batches are wasted cycles; if you cannot advance yet, emit done=true or a small diagnostic probe.`;
 
-// ── Orchestrator (v3, pipelined motor cortex) ────────────────────
+// ── Orchestrator (v4, true non-stop pipeline) ────────────────────
+// Timeline per cycle:
+//
+//   t0 ─ receive plan N (await planPromise)                        [strategist thought done]
+//   t0 ─ kick plan N+1 (fire-and-forget)                            [strategist starts thinking again]
+//   t0 ─ dispatch sense_batch N + motor_batch N in parallel        [motor starts executing]
+//        ⋯ both streams run concurrently ⋯
+//   t1 ─ tools done (Promise.all) AND plan N+1 done (planPromise)
+//        Whichever finishes later gates the cycle. If motor is
+//        faster than strategist we log motor_idle_ms; if strategist
+//        is faster we log plan_idle_ms. In steady state both ≈ 0.
 async function planNext(ctx: any, mode: string, model: string): Promise<any> {
   const raw = await llm(STRATEGIST_PLAN_SYS(mode), JSON.stringify(ctx), model);
   const msg = safeParse(raw);
-  return msg?.payload ?? { reasoning: "invalid", verify_previous: { outcome: "retry" }, sense_first: [], motor_batch: [], done: false, _raw: msg };
+  return msg?.payload ?? { reasoning: "invalid", verify_previous: { outcome: "retry" }, sense_batch: [], motor_batch: [], done: false, _raw: msg };
 }
 
 async function run(task: string, maxCycles: number, mode: "safe" | "full", models: { strategist: string; executor: string }) {
@@ -228,42 +239,46 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
   let seq = 0;
   const log = (e: any) => { ledger.push({ seq: ++seq, at_ms: Date.now() - t0, ...e }); };
 
-  log({ kind: "run_start", run_id: runId, task, mode, models, model_of_thought: "pipelined_motor_cortex" });
+  log({ kind: "run_start", run_id: runId, task, mode, models, model_of_thought: "pipelined_nonstop_v4" });
 
   let llmCalls = 0;
   let toolCalls = 0;
   let cyclesRun = 0;
   let emptyStreak = 0;
+  let overlapMs = 0;      // wall-time saved by planning during execution
+  let motorIdleMs = 0;    // motor finished but next plan not ready → pipeline stall (strategist bottleneck)
+  let planIdleMs = 0;     // plan ready but motor still running (motor bottleneck; fine — we WANT this)
+  let motorTotalMs = 0;
+  let planTotalMs = 0;
 
-  // Kick off the very first plan.
+  // Kick off the very first plan. Nothing to overlap with yet.
   let planPromise: Promise<any> = planNext({
     task, cycle: 0, workspace_summary: workspace,
     last_batch: null, last_results: null, last_sense: null,
-    instruction: "Emit the FIRST plan batch.",
+    instruction: "Emit the FIRST plan batch. Keep it small and concrete — the pipeline starts from here.",
   }, mode, models.strategist);
   llmCalls++;
 
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
     cyclesRun = cycle;
+    const cycleStart = Date.now();
     log({ kind: "cycle_start", cycle });
 
-    // ── Await current plan (strategist thought) ──────────────────
+    // ── Await the plan for THIS cycle (already inflight from last cycle) ──
     const plan = await planPromise;
     log({ kind: "plan", cycle, plan });
 
     if (plan?.done) { log({ kind: "task_complete", reasoning: plan.reasoning }); break; }
 
-    const senseBatch: Array<{ tool: string; args: any }> = Array.isArray(plan?.sense_first) ? plan.sense_first.slice(0, 2) : [];
+    const senseBatch: Array<{ tool: string; args: any }> = Array.isArray(plan?.sense_batch) ? plan.sense_batch.slice(0, 2) : [];
     const motorBatch: Array<{ tool: string; args: any }> = Array.isArray(plan?.motor_batch) ? plan.motor_batch.slice(0, 5) : [];
 
     if (senseBatch.length === 0 && motorBatch.length === 0) {
       emptyStreak++;
       log({ kind: "empty_plan", streak: emptyStreak });
       if (emptyStreak >= 2) { log({ kind: "early_stop", reason: "empty_streak" }); break; }
-      // Ask strategist to try again with same ctx.
       planPromise = planNext({
         task, cycle, workspace_summary: workspace,
-        last_batch: null, last_results: null, last_sense: null,
         instruction: "Previous plan was empty. Emit a concrete batch or done=true.",
       }, mode, models.strategist);
       llmCalls++;
@@ -271,56 +286,100 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
     }
     emptyStreak = 0;
 
-    // ── Sense (blocking, feeds strategist next turn) ─────────────
-    let senseResults: any[] = [];
-    if (senseBatch.length > 0) {
-      const runnable = senseBatch.filter(a => STRATEGIST_TOOLS.includes(a.tool));
-      senseResults = await Promise.all(runnable.map(a => execTool(a.tool, a.args ?? {}, "strategist", mode)));
-      toolCalls += senseResults.length;
-      senseResults.forEach((r, i) => log({ kind: "tool_executed", lobe: "strategist", parallel_index: i, ...r }));
-    }
-
-    // ── PIPELINE: start N+1 planning BEFORE motor runs batch N ───
-    // Strategist gets the plan it just emitted + sense results as context and
-    // begins producing batch N+1 while the motor cortex executes batch N.
-    planPromise = planNext({
+    // ── KICK NEXT PLAN IMMEDIATELY — non-stop thinking ──────────
+    // Strategist starts producing batch N+1 right now, given the plan just
+    // emitted. It will not see the tool results until cycle N+2 — that's the
+    // cost of overlap and it's fine: verify_previous handles corrections.
+    const planStart = Date.now();
+    const nextPlanPromise: Promise<any> = planNext({
       task, cycle: cycle + 1, workspace_summary: workspace,
-      last_batch_pending: motorBatch,
-      last_sense: senseResults,
-      instruction: "Motor cortex is executing the previous batch now. Produce the NEXT batch to run immediately after, or done=true.",
+      inflight_batch: motorBatch,
+      inflight_sense: senseBatch,
+      instruction: "The motor cortex is executing the previous batch right now. Produce the NEXT batch to run immediately after, or done=true. Do not idle.",
     }, mode, models.strategist);
     llmCalls++;
 
-    // ── Motor cortex: pure dispatch, no LLM ──────────────────────
+    // ── DISPATCH ALL TOOLS IN PARALLEL (sense + motor, no gate) ──
+    const toolStart = Date.now();
+    const runnableSense = senseBatch.filter(a => STRATEGIST_TOOLS.includes(a.tool));
     const runnableMotor = motorBatch.filter(a => EXECUTOR_TOOLS.includes(a.tool));
-    if (runnableMotor.length < motorBatch.length) {
-      log({ kind: "router_reject", reason: "unknown executor tool(s)", dropped: motorBatch.length - runnableMotor.length });
+    const droppedSense = senseBatch.length - runnableSense.length;
+    const droppedMotor = motorBatch.length - runnableMotor.length;
+    if (droppedSense || droppedMotor) {
+      log({ kind: "router_reject", dropped_sense: droppedSense, dropped_motor: droppedMotor });
     }
-    const motorResults = runnableMotor.length > 0
-      ? await Promise.all(runnableMotor.map(a => execTool(a.tool, a.args ?? {}, "executor", mode)))
-      : [];
-    toolCalls += motorResults.length;
-    motorResults.forEach((r, i) => log({ kind: "tool_executed", lobe: "executor", parallel_index: i, ...r }));
 
-    // Trim workspace to last few observations to keep prompt small & fast.
+    const senseP = Promise.all(runnableSense.map(a => execTool(a.tool, a.args ?? {}, "strategist", mode)));
+    const motorP = Promise.all(runnableMotor.map(a => execTool(a.tool, a.args ?? {}, "executor", mode)));
+
+    // ── Whichever finishes first tells us where the bottleneck is ──
+    let toolsDoneAt = 0, planDoneAt = 0;
+    const [senseResults, motorResults] = await Promise.all([
+      senseP.then(r => { toolsDoneAt = Date.now(); return r; }),
+      motorP.then(r => { toolsDoneAt = Math.max(toolsDoneAt, Date.now()); return r; }),
+    ]);
+    // Now wait for next plan — this is the pipeline overlap window.
+    await nextPlanPromise.then(() => { planDoneAt = Date.now(); });
+
+    const toolElapsed = toolsDoneAt - toolStart;
+    const planElapsed = planDoneAt - planStart;
+    motorTotalMs += toolElapsed;
+    planTotalMs += planElapsed;
+    const overlapThisCycle = Math.min(toolElapsed, planElapsed);
+    overlapMs += overlapThisCycle;
+    if (toolsDoneAt < planDoneAt) motorIdleMs += (planDoneAt - toolsDoneAt);
+    else planIdleMs += (toolsDoneAt - planDoneAt);
+
+    toolCalls += senseResults.length + motorResults.length;
+    senseResults.forEach((r, i) => log({ kind: "tool_executed", lobe: "strategist", parallel_index: i, ...r }));
+    motorResults.forEach((r, i) => log({ kind: "tool_executed", lobe: "executor", parallel_index: i, ...r }));
+    log({
+      kind: "pipeline_cycle_stats", cycle,
+      tool_ms: toolElapsed, plan_ms: planElapsed,
+      overlap_ms: overlapThisCycle,
+      motor_idle_ms: toolsDoneAt < planDoneAt ? planDoneAt - toolsDoneAt : 0,
+      plan_idle_ms: toolsDoneAt >= planDoneAt ? toolsDoneAt - planDoneAt : 0,
+      cycle_wall_ms: Date.now() - cycleStart,
+    });
+
+    // Hand off next plan to the outer loop.
+    planPromise = Promise.resolve(await nextPlanPromise);
+
     workspace.recent = [
       ...(workspace.recent ?? []),
       { cycle, motor_batch: runnableMotor, motor_results: motorResults, sense_results: senseResults },
     ].slice(-3);
   }
 
-  // Drain any in-flight plan so we don't leak an unhandled rejection.
   try { await planPromise; } catch { /* ignore */ }
 
   const elapsed = Date.now() - t0;
-  log({ kind: "run_end", elapsed_ms: elapsed, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls });
+  // Naive "serial baseline": what wall time would have been if we ran plan
+  // then tools sequentially every cycle. overlap_ms is the saving.
+  const serialBaselineMs = motorTotalMs + planTotalMs;
+  log({
+    kind: "run_end", elapsed_ms: elapsed, cycles: cyclesRun,
+    llm_calls: llmCalls, tool_calls: toolCalls,
+    overlap_ms: overlapMs, motor_idle_ms: motorIdleMs, plan_idle_ms: planIdleMs,
+    motor_total_ms: motorTotalMs, plan_total_ms: planTotalMs,
+    serial_baseline_ms: serialBaselineMs,
+    pipeline_efficiency: serialBaselineMs > 0 ? +(overlapMs / serialBaselineMs).toFixed(3) : 0,
+  });
   return {
     run_id: runId,
     ledger,
     workspace,
-    stats: { elapsed_ms: elapsed, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls, model_of_thought: "pipelined_motor_cortex" },
+    stats: {
+      elapsed_ms: elapsed, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls,
+      overlap_ms: overlapMs, motor_idle_ms: motorIdleMs, plan_idle_ms: planIdleMs,
+      motor_total_ms: motorTotalMs, plan_total_ms: planTotalMs,
+      serial_baseline_ms: serialBaselineMs,
+      pipeline_efficiency: serialBaselineMs > 0 ? +(overlapMs / serialBaselineMs).toFixed(3) : 0,
+      model_of_thought: "pipelined_nonstop_v4",
+    },
   };
 }
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
