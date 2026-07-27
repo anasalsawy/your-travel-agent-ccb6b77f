@@ -351,7 +351,144 @@ export default function AdminDualLobe() {
         <TabsList>
           <TabsTrigger value="standard"><PlayCircle className="w-3 h-3 mr-1" /> Standard bench</TabsTrigger>
           <TabsTrigger value="complex"><Beaker className="w-3 h-3 mr-1" /> Complex Suite</TabsTrigger>
+          <TabsTrigger value="scaling"><Network className="w-3 h-3 mr-1" /> Scaling (5 tests)</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="scaling" className="space-y-4 mt-4">
+          <Card className="border-cyan-500/30 bg-cyan-500/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Network className="w-4 h-4 text-cyan-600" />
+                Scaling Suite — 5 tests, escalating complexity
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Runs every architecture against 5 tests in ascending difficulty (T1 trivial → T5 dependent multi-write).
+                Each test is scored 0-100 (50 correctness + 25 speed + 25 llm-efficiency − 4·errors).
+                Final leaderboard sums per-test composite scores (max 500).
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2">
+                {SCALE_TESTS.map((t) => (
+                  <div key={t.id} className="text-[11px] flex items-start gap-2 border rounded p-2 bg-background/60">
+                    <Badge variant="outline" className="mt-0.5">T{t.tier}</Badge>
+                    <div className="flex-1">
+                      <div className="font-medium">{t.label}</div>
+                      <div className="text-muted-foreground line-clamp-2">{t.prompt.split("\n")[1] ?? ""}</div>
+                    </div>
+                    {scalingLoading === t.id && <Loader2 className="w-3 h-3 animate-spin text-cyan-600" />}
+                    {scaling[t.id] && <Badge variant="outline" className="text-emerald-600 border-emerald-500/50">done</Badge>}
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={runScalingAll} disabled={scalingLoading !== null}>
+                  {scalingLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                  {scalingLoading
+                    ? `Running ${scalingProgress.done}/${scalingProgress.total}…`
+                    : `Run all 5 tests × ${contenders.length} architectures`}
+                </Button>
+                <span className="text-[11px] text-muted-foreground">
+                  {contenders.length * SCALE_TESTS.length} total runs, sequenced test-by-test to avoid overload.
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {Object.keys(scaling).length > 0 && (() => {
+            const perTest = SCALE_TESTS.map((t) => ({ test: t, scored: scaling[t.id] ? scoreScalingTest(t, contenders, scaling[t.id]) : [] }));
+            const totals = new Map<string, { label: string; total: number; correctCount: number; ms: number; llm: number }>();
+            for (const c of contenders) totals.set(c.key, { label: c.label, total: 0, correctCount: 0, ms: 0, llm: 0 });
+            perTest.forEach(({ scored }) => scored.forEach((s) => {
+              const agg = totals.get(s.key)!;
+              agg.total += s.composite;
+              agg.correctCount += s.correct ? 1 : 0;
+              agg.ms += s.ms;
+              agg.llm += s.llm;
+            }));
+            const leaderboard = [...totals.entries()].map(([key, v]) => ({ key, ...v })).sort((a, b) => b.total - a.total);
+            const maxTotal = 100 * SCALE_TESTS.length;
+
+            return (
+              <>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Trophy className="w-4 h-4" /> Final leaderboard (sum over completed tests)</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="text-muted-foreground text-left">
+                          <tr>
+                            <th className="py-1 pr-2">#</th>
+                            <th className="py-1 pr-2">Architecture</th>
+                            <th className="py-1 pr-2">Total / {maxTotal}</th>
+                            <th className="py-1 pr-2">Passed</th>
+                            <th className="py-1 pr-2">Σ ms</th>
+                            <th className="py-1 pr-2">Σ LLM</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {leaderboard.map((r, i) => (
+                            <tr key={r.key} className={i === 0 ? "font-semibold" : ""}>
+                              <td className="py-1 pr-2">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</td>
+                              <td className="py-1 pr-2">{r.label}</td>
+                              <td className="py-1 pr-2">{r.total.toFixed(1)}</td>
+                              <td className="py-1 pr-2">{r.correctCount}/{SCALE_TESTS.length}</td>
+                              <td className="py-1 pr-2">{r.ms}</td>
+                              <td className="py-1 pr-2">{r.llm}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {perTest.filter((p) => p.scored.length > 0).map(({ test, scored }) => (
+                  <Card key={test.id}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Badge variant="outline">T{test.tier}</Badge> {test.label}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="text-muted-foreground text-left">
+                            <tr>
+                              <th className="py-1 pr-2">#</th>
+                              <th className="py-1 pr-2">Architecture</th>
+                              <th className="py-1 pr-2">Composite</th>
+                              <th className="py-1 pr-2">Correct</th>
+                              <th className="py-1 pr-2">ms</th>
+                              <th className="py-1 pr-2">LLM</th>
+                              <th className="py-1 pr-2">Errors</th>
+                              <th className="py-1 pr-2">Note</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...scored].sort((a, b) => b.composite - a.composite).map((s, i) => (
+                              <tr key={s.key} className={i === 0 ? "font-semibold" : ""}>
+                                <td className="py-1 pr-2">{i === 0 ? "🥇" : i + 1}</td>
+                                <td className="py-1 pr-2">{s.label}</td>
+                                <td className="py-1 pr-2">{s.composite.toFixed(1)}</td>
+                                <td className="py-1 pr-2">{s.correct ? "✓" : "—"}</td>
+                                <td className="py-1 pr-2">{s.ms}</td>
+                                <td className="py-1 pr-2">{s.llm}</td>
+                                <td className="py-1 pr-2">{s.errors}</td>
+                                <td className="py-1 pr-2 text-muted-foreground">{s.note}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </>
+            );
+          })()}
+        </TabsContent>
+
 
         <TabsContent value="complex" className="space-y-4 mt-4">
           <Card className="border-fuchsia-500/30 bg-fuchsia-500/5">
