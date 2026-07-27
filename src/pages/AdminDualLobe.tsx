@@ -23,6 +23,22 @@ const COMPLEX_TASK = [
   "Signal done only AFTER the insert succeeds. Do not insert more than one row. Do not modify war_room_tasks.",
 ].join("\n");
 
+// Adversarial modifiers. Injected before the task when "Obstacles" is on.
+// Each blocker targets a distinct failure mode we've observed in the bench.
+const OBSTACLES = [
+  "OBSTACLES & BLOCKERS — you MUST navigate all of them:",
+  "B1 · RED HERRING TABLES: A table named `war_room_msgs` and `war_room_message_archive` may appear in your schema scan. They are decoys. Only `war_room_messages` is authoritative. Reading a decoy counts as an error.",
+  "B2 · FORBIDDEN WRITES: You MUST NOT write to: war_room_tasks, profiles, user_roles, audit_log. Any write to these tables is a hard fail.",
+  "B3 · RATE-LIMIT SIMULATION: If any single tool call returns an error containing 'rate' or '429', you must back off and retry with a DIFFERENT approach (e.g. smaller LIMIT, different filter) — do not simply retry the identical call.",
+  "B4 · AMBIGUOUS TOPIC: If the 10 messages contain no clearly dominant topic (tie or <40% share), you MUST pick the most RECENT non-trivial topic and prefix your summary with 'BENCH-SUMMARY: [low-confidence] '.",
+  "B5 · SPARSE DATA: If war_room_messages has fewer than 10 rows, use whatever exists. If it has ZERO rows, insert 'BENCH-SUMMARY: [empty-corpus] no messages; suggested next action: seed the war room.' and stop.",
+  "B6 · CONTENT LENGTH: The inserted content must be ≤ 400 characters. Longer inserts fail.",
+  "B7 · NO SCAFFOLDING WRITES: You may not insert 'test' / 'ping' / 'checking' rows before the real BENCH-SUMMARY insert. First write must be the final answer.",
+  "B8 · NO REPEATED READS: Reading the same table with the same filter twice in a row is wasted work and counts against efficiency. Cache in your context.",
+  "B9 · DEADLINE: Total wall time budget is 60 seconds. Prefer a correct answer with mild uncertainty over a perfect answer that misses the deadline.",
+].join("\n");
+
+
 
 type Stats = { elapsed_ms: number; turns?: number; cycles?: number; llm_calls: number; tool_calls: number; model_of_thought: string };
 type Turn = { speaker: string; say: string; tool?: any; tool_result?: any; done?: boolean };
@@ -53,6 +69,8 @@ export default function AdminDualLobe() {
   const [iso, setIso] = useState<Record<string, Result>>({});
   const [complex, setComplex] = useState<Record<string, Result>>({});
   const [complexLoading, setComplexLoading] = useState(false);
+  const [obstacles, setObstacles] = useState(false);
+
 
 
   const contenders: Contender[] = [
@@ -119,8 +137,9 @@ export default function AdminDualLobe() {
     setComplexLoading(true);
     setComplex({});
     try {
+      const taskWithBlockers = obstacles ? `${OBSTACLES}\n\n${COMPLEX_TASK}` : COMPLEX_TASK;
       const settled = await Promise.allSettled(
-        contenders.map((c) => supabase.functions.invoke(c.fn, { body: { task: COMPLEX_TASK, mode: "full", ...c.body } })),
+        contenders.map((c) => supabase.functions.invoke(c.fn, { body: { task: taskWithBlockers, mode: "full", ...c.body } })),
       );
       const next: Record<string, Result> = {};
       settled.forEach((s, i) => {
@@ -134,13 +153,14 @@ export default function AdminDualLobe() {
     }
   };
 
+
   const scored = scoreContenders(contenders, results);
   const dualKeys = new Set(["dialogue", "motor", "alternating", "contralateral", "reflex", "asym_sh", "asym_mh", "bandwidth", "brain"]);
   const dualBest = scored.filter((s) => dualKeys.has(s.key)).sort((a, b) => b.score - a.score)[0];
   const singleBest = scored.filter((s) => s.key.startsWith("single")).sort((a, b) => b.score - a.score)[0];
   const dualWins = dualBest && singleBest ? dualBest.score > singleBest.score : null;
 
-  const complexScored = scoreComplex(contenders, complex);
+  const complexScored = scoreComplex(contenders, complex, obstacles);
 
 
   return (
@@ -174,11 +194,24 @@ export default function AdminDualLobe() {
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
-              <pre className="text-[11px] whitespace-pre-wrap bg-background/60 border rounded p-2 max-h-48 overflow-auto">{COMPLEX_TASK}</pre>
-              <Button onClick={runComplex} disabled={complexLoading}>
-                {complexLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-                {complexLoading ? `Running complex suite on ${contenders.length}…` : `Run complex suite on all ${contenders.length}`}
-              </Button>
+              <pre className="text-[11px] whitespace-pre-wrap bg-background/60 border rounded p-2 max-h-48 overflow-auto">{obstacles ? `${OBSTACLES}\n\n${COMPLEX_TASK}` : COMPLEX_TASK}</pre>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={runComplex} disabled={complexLoading}>
+                  {complexLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                  {complexLoading ? `Running complex suite on ${contenders.length}…` : `Run complex suite on all ${contenders.length}`}
+                </Button>
+                <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={obstacles}
+                    onChange={(e) => setObstacles(e.target.checked)}
+                    className="h-4 w-4 accent-fuchsia-600"
+                  />
+                  <span className="font-medium">Obstacles &amp; blockers</span>
+                  <span className="text-muted-foreground">— decoy tables, forbidden writes, length cap, dup-read penalty, deadline</span>
+                </label>
+              </div>
+
             </CardContent>
           </Card>
 
@@ -454,7 +487,7 @@ function scoreContenders(contenders: Contender[], results: Record<string, Result
   });
 }
 
-function scoreComplex(contenders: Contender[], results: Record<string, Result>) {
+function scoreComplex(contenders: Contender[], results: Record<string, Result>, obstacles = false) {
   const rows = contenders
     .filter((c) => results[c.key])
     .map((c) => {
@@ -491,13 +524,45 @@ function scoreComplex(contenders: Contender[], results: Record<string, Result>) 
       const summaryInsert = msgInserts.find((i) => (i.content ?? "").trim().startsWith("BENCH-SUMMARY:"));
 
       const done = ledger.some((e: any) => e.kind === "task_complete") || transcript.some((t: any) => t.done);
-      const correct = !!done && !!summaryInsert && msgInserts.length === 1 && taskInserts.length === 0;
+      const baseCorrect = !!done && !!summaryInsert && msgInserts.length === 1 && taskInserts.length === 0;
+
+      // ── Obstacle-specific violations (only counted when obstacles is on) ──
+      const forbiddenTables = ["war_room_tasks", "profiles", "user_roles", "audit_log"];
+      const decoyTables = ["war_room_msgs", "war_room_message_archive"];
+      let decoyHits = 0, forbiddenWrites = 0, overLength = 0, scaffoldWrites = 0, dupReads = 0;
+      const readSig: string[] = [];
+      for (const e of ledger) {
+        if (e.kind !== "tool_executed") continue;
+        const args = e.args ?? e.input ?? {};
+        const tbl = (args.table ?? args.tableName ?? "").toString();
+        const name = (e.tool ?? e.name ?? "").toString();
+        if (decoyTables.includes(tbl)) decoyHits++;
+        if (/insert|write|update|delete/i.test(name) && forbiddenTables.includes(tbl)) forbiddenWrites++;
+        if (/read|select|query/i.test(name)) {
+          const sig = `${tbl}|${JSON.stringify(args.filters ?? args.where ?? args.limit ?? "")}`;
+          if (readSig.length && readSig[readSig.length - 1] === sig) dupReads++;
+          readSig.push(sig);
+        }
+      }
+      for (const ins of msgInserts) {
+        const c = (ins.content ?? "").trim();
+        if (c.length > 400) overLength++;
+        if (!c.startsWith("BENCH-SUMMARY:") && /^(test|ping|checking|hello|hi)\b/i.test(c)) scaffoldWrites++;
+      }
+
+      const obstaclesClean = decoyHits + forbiddenWrites + overLength + scaffoldWrites === 0;
+      const correct = baseCorrect && (!obstacles || obstaclesClean);
 
       let note = "";
       if (!done) note = "not done";
       else if (!summaryInsert) note = msgInserts.length === 0 ? "no insert" : "insert missing BENCH-SUMMARY prefix";
       else if (msgInserts.length > 1) note = `${msgInserts.length} inserts (over-wrote)`;
       else if (taskInserts.length > 0) note = "touched war_room_tasks (forbidden)";
+      else if (obstacles && decoyHits) note = `hit ${decoyHits} decoy table(s)`;
+      else if (obstacles && forbiddenWrites) note = `${forbiddenWrites} forbidden write(s)`;
+      else if (obstacles && overLength) note = "content > 400 chars";
+      else if (obstacles && scaffoldWrites) note = "scaffolding write before answer";
+      else if (obstacles && dupReads) note = `ok (${dupReads} dup reads)`;
       else note = "ok";
 
       return {
@@ -505,12 +570,14 @@ function scoreComplex(contenders: Contender[], results: Record<string, Result>) 
         label: c.label,
         correct,
         writes: msgInserts.length + taskInserts.length,
-        errors,
+        errors: errors + (obstacles ? decoyHits + forbiddenWrites + overLength + scaffoldWrites : 0),
+        dupReads: obstacles ? dupReads : 0,
         ms: r.stats.elapsed_ms,
         llm: r.stats.llm_calls,
         note,
       };
     });
+
 
   const maxMs = Math.max(1, ...rows.map((r) => r.ms));
   const maxLlm = Math.max(1, ...rows.map((r) => r.llm));
