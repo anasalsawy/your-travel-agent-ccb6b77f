@@ -4,13 +4,25 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Brain, Zap, PlayCircle, MessageCircle, Cpu, Bot, Trophy, Network } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Loader2, Brain, Zap, PlayCircle, MessageCircle, Cpu, Bot, Trophy, Network, Beaker } from "lucide-react";
 
 const EXAMPLES = [
   "Look up how many rows are in war_room_messages and send a summary notification.",
   "Fetch https://api.github.com/zen and store the quote in documents.",
   "Check what edge functions exist, then propose one to add next.",
 ];
+
+const COMPLEX_TASK = [
+  "COMPLEX BENCH TASK — multi-step research + write.",
+  "1) Read the 10 most recent rows from war_room_messages (ordered by created_at desc).",
+  "2) Read the 20 most recent rows from war_room_tasks.",
+  "3) Identify the single dominant topic across those messages.",
+  "4) Count how many open (status != 'done') tasks relate to that topic.",
+  "5) Insert exactly ONE row into war_room_messages with role='assistant' and content that STARTS with the literal token 'BENCH-SUMMARY:' followed by: the topic, the related-open-task count, and one proposed next action — all in a single line.",
+  "Signal done only AFTER the insert succeeds. Do not insert more than one row. Do not modify war_room_tasks.",
+].join("\n");
+
 
 type Stats = { elapsed_ms: number; turns?: number; cycles?: number; llm_calls: number; tool_calls: number; model_of_thought: string };
 type Turn = { speaker: string; say: string; tool?: any; tool_result?: any; done?: boolean };
@@ -39,6 +51,9 @@ export default function AdminDualLobe() {
   const [isoModel, setIsoModel] = useState(MODELS[0].id);
   const [results, setResults] = useState<Record<string, Result>>({});
   const [iso, setIso] = useState<Record<string, Result>>({});
+  const [complex, setComplex] = useState<Record<string, Result>>({});
+  const [complexLoading, setComplexLoading] = useState(false);
+
 
   const contenders: Contender[] = [
     { key: "brain",         label: "Brain · 7-region",         fn: "brain-agent",         body: { max_cycles: 8 }, color: "purple",  icon: Network,       blurb: "Thalamus→amygdala→hippocampus→PFC→basal-ganglia→motor→cerebellum." },
@@ -100,11 +115,33 @@ export default function AdminDualLobe() {
   };
 
 
+  const runComplex = async () => {
+    setComplexLoading(true);
+    setComplex({});
+    try {
+      const settled = await Promise.allSettled(
+        contenders.map((c) => supabase.functions.invoke(c.fn, { body: { task: COMPLEX_TASK, mode: "full", ...c.body } })),
+      );
+      const next: Record<string, Result> = {};
+      settled.forEach((s, i) => {
+        const c = contenders[i];
+        if (s.status === "fulfilled" && !s.value.error) next[c.key] = s.value.data;
+        else next[c.key] = { run_id: "error", stats: { elapsed_ms: 0, llm_calls: 0, tool_calls: 0, model_of_thought: (s as any)?.reason?.message || (s as any)?.value?.error?.message || "failed" } };
+      });
+      setComplex(next);
+    } finally {
+      setComplexLoading(false);
+    }
+  };
+
   const scored = scoreContenders(contenders, results);
   const dualKeys = new Set(["dialogue", "motor", "alternating", "contralateral", "reflex", "asym_sh", "asym_mh", "bandwidth", "brain"]);
   const dualBest = scored.filter((s) => dualKeys.has(s.key)).sort((a, b) => b.score - a.score)[0];
   const singleBest = scored.filter((s) => s.key.startsWith("single")).sort((a, b) => b.score - a.score)[0];
   const dualWins = dualBest && singleBest ? dualBest.score > singleBest.score : null;
+
+  const complexScored = scoreComplex(contenders, complex);
+
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -117,6 +154,104 @@ export default function AdminDualLobe() {
           Same task, same tools, same mode. Success = a dual-lobe architecture scores higher than the best single-LLM run.
         </p>
       </div>
+
+      <Tabs defaultValue="standard" className="w-full">
+        <TabsList>
+          <TabsTrigger value="standard"><PlayCircle className="w-3 h-3 mr-1" /> Standard bench</TabsTrigger>
+          <TabsTrigger value="complex"><Beaker className="w-3 h-3 mr-1" /> Complex Suite</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="complex" className="space-y-4 mt-4">
+          <Card className="border-fuchsia-500/30 bg-fuchsia-500/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Beaker className="w-4 h-4 text-fuchsia-600" />
+                Complex Suite — multi-step research + write
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Fixed task. Requires 2 reads → reason → 1 constrained write. Runs in <b>full</b> mode across all {contenders.length} architectures.
+                Composite score = 50·correctness + 25·speed + 25·llm-efficiency. Correctness requires a single insert into <code>war_room_messages</code> whose content starts with <code>BENCH-SUMMARY:</code>.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <pre className="text-[11px] whitespace-pre-wrap bg-background/60 border rounded p-2 max-h-48 overflow-auto">{COMPLEX_TASK}</pre>
+              <Button onClick={runComplex} disabled={complexLoading}>
+                {complexLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                {complexLoading ? `Running complex suite on ${contenders.length}…` : `Run complex suite on all ${contenders.length}`}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {complexScored.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Trophy className="w-4 h-4" /> Composite scoreboard
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-muted-foreground text-left">
+                      <tr>
+                        <th className="py-1 pr-2">#</th>
+                        <th className="py-1 pr-2">Architecture</th>
+                        <th className="py-1 pr-2">Composite</th>
+                        <th className="py-1 pr-2">Correct</th>
+                        <th className="py-1 pr-2">Speed</th>
+                        <th className="py-1 pr-2">Efficiency</th>
+                        <th className="py-1 pr-2">ms</th>
+                        <th className="py-1 pr-2">LLM</th>
+                        <th className="py-1 pr-2">Writes</th>
+                        <th className="py-1 pr-2">Errors</th>
+                        <th className="py-1 pr-2">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {complexScored.sort((a, b) => b.composite - a.composite).map((s, i) => (
+                        <tr key={s.key} className={i === 0 ? "font-semibold" : ""}>
+                          <td className="py-1 pr-2">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</td>
+                          <td className="py-1 pr-2">{s.label}</td>
+                          <td className="py-1 pr-2">{s.composite.toFixed(1)}</td>
+                          <td className="py-1 pr-2">{s.correct ? "✓" : "—"}</td>
+                          <td className="py-1 pr-2">{s.speedScore.toFixed(0)}</td>
+                          <td className="py-1 pr-2">{s.effScore.toFixed(0)}</td>
+                          <td className="py-1 pr-2">{s.ms}</td>
+                          <td className="py-1 pr-2">{s.llm}</td>
+                          <td className="py-1 pr-2">{s.writes}</td>
+                          <td className="py-1 pr-2">{s.errors}</td>
+                          <td className="py-1 pr-2 text-muted-foreground">{s.note}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  composite = 50·correct + 25·(1 − ms/maxMs) + 25·(1 − llm/maxLlm). Correct requires exactly 1 insert into war_room_messages with content starting <code>BENCH-SUMMARY:</code> and 0 writes to war_room_tasks.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {contenders.map((c) => (
+              <div key={c.key} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <c.icon className={`w-4 h-4 text-${c.color}-600`} />
+                  <h2 className="text-sm font-semibold">{c.label}</h2>
+                  {complex[c.key]?.stats && <StatsRow stats={complex[c.key]!.stats} />}
+                </div>
+                {!complex[c.key] && !complexLoading && <EmptyHint text="Waiting…" />}
+                {complexLoading && !complex[c.key] && <EmptyHint text="Running…" />}
+                {complex[c.key]?.transcript?.map((t, i) => <Bubble key={i} t={t} color={c.color} />)}
+                {!complex[c.key]?.transcript && complex[c.key]?.ledger?.map((e: any) => <LedgerRow key={e.seq} e={e} />)}
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="standard" className="space-y-6 mt-4">
+
 
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Task</CardTitle></CardHeader>
@@ -283,9 +418,12 @@ export default function AdminDualLobe() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
+
 
 function scoreContenders(contenders: Contender[], results: Record<string, Result>) {
   const rows = contenders
@@ -315,6 +453,76 @@ function scoreContenders(contenders: Contender[], results: Record<string, Result
     return { ...r, score };
   });
 }
+
+function scoreComplex(contenders: Contender[], results: Record<string, Result>) {
+  const rows = contenders
+    .filter((c) => results[c.key])
+    .map((c) => {
+      const r = results[c.key]!;
+      const ledger = r.ledger ?? [];
+      const transcript = r.transcript ?? [];
+      const toolCalls = ledger.filter((e: any) => e.kind === "tool_executed");
+      const errors = toolCalls.filter((e: any) => e.ok === false).length
+                   + ledger.filter((e: any) => e.kind === "tool_rejected").length;
+
+      // Extract every insert-like op from ledger + transcript
+      const inserts: Array<{ table?: string; content?: string; role?: string }> = [];
+      for (const e of ledger) {
+        if (e.kind !== "tool_executed") continue;
+        const args = e.args ?? e.input ?? {};
+        const table = args.table ?? args.tableName;
+        const name = (e.tool ?? e.name ?? "").toString();
+        if (table === "war_room_messages" || /insert.*messages|db_insert|table_insert/i.test(name)) {
+          inserts.push({ table: "war_room_messages", content: args.content ?? args.row?.content, role: args.role ?? args.row?.role });
+        } else if (table === "war_room_tasks") {
+          inserts.push({ table: "war_room_tasks" });
+        }
+      }
+      for (const t of transcript) {
+        const tool = (t as any).tool;
+        if (!tool) continue;
+        const args = tool.args ?? {};
+        if (args.table === "war_room_messages") inserts.push({ table: "war_room_messages", content: args.content, role: args.role });
+        else if (args.table === "war_room_tasks") inserts.push({ table: "war_room_tasks" });
+      }
+
+      const msgInserts = inserts.filter((i) => i.table === "war_room_messages");
+      const taskInserts = inserts.filter((i) => i.table === "war_room_tasks");
+      const summaryInsert = msgInserts.find((i) => (i.content ?? "").trim().startsWith("BENCH-SUMMARY:"));
+
+      const done = ledger.some((e: any) => e.kind === "task_complete") || transcript.some((t: any) => t.done);
+      const correct = !!done && !!summaryInsert && msgInserts.length === 1 && taskInserts.length === 0;
+
+      let note = "";
+      if (!done) note = "not done";
+      else if (!summaryInsert) note = msgInserts.length === 0 ? "no insert" : "insert missing BENCH-SUMMARY prefix";
+      else if (msgInserts.length > 1) note = `${msgInserts.length} inserts (over-wrote)`;
+      else if (taskInserts.length > 0) note = "touched war_room_tasks (forbidden)";
+      else note = "ok";
+
+      return {
+        key: c.key,
+        label: c.label,
+        correct,
+        writes: msgInserts.length + taskInserts.length,
+        errors,
+        ms: r.stats.elapsed_ms,
+        llm: r.stats.llm_calls,
+        note,
+      };
+    });
+
+  const maxMs = Math.max(1, ...rows.map((r) => r.ms));
+  const maxLlm = Math.max(1, ...rows.map((r) => r.llm));
+  return rows.map((r) => {
+    const speedScore = 25 * (1 - r.ms / maxMs);
+    const effScore = 25 * (1 - r.llm / maxLlm);
+    const correctScore = r.correct ? 50 : 0;
+    const errorPenalty = 4 * r.errors;
+    return { ...r, speedScore, effScore, composite: correctScore + speedScore + effScore - errorPenalty };
+  });
+}
+
 
 function StatsRow({ stats }: { stats: Stats }) {
   return (
