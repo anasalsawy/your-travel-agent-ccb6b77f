@@ -418,9 +418,12 @@ export default function AdminDualLobe() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
+
 
 function scoreContenders(contenders: Contender[], results: Record<string, Result>) {
   const rows = contenders
