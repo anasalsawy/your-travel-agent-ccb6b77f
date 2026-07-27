@@ -129,9 +129,14 @@ async function execTool(tool: string, args: Record<string, any>, mode: "safe" | 
   }
 }
 
-const SYS = (mode: string) => `You are a single autonomous agent. You have full awareness AND full control — sense the world with reads, act on it with writes. No partner, no dialogue.
+const SYS = (mode: string, scope: string, tools: string[]) => {
+  const role =
+    scope === "sensory" ? "You are a SENSORY-only agent — awareness and perception. You can only read the world; you cannot act on it."
+  : scope === "motor"   ? "You are a MOTOR-only agent — action. You act on the world with the tools you have; you have limited awareness."
+  :                       "You are a single autonomous agent with full awareness AND full control — sense with reads, act with writes.";
+  return `${role}
 
-Tools: ${ALL_TOOLS.join(", ")}.
+Tools available to you: ${tools.join(", ")}.
 Allowlisted DB tables: ${[...ALLOWLIST_TABLES].join(", ")}.
 Mode: ${mode}. In "safe" mode, db_write and invoke_edge_function are BLOCKED.
 
@@ -142,17 +147,19 @@ Every turn emit ONE JSON object:
   "done": false
 }
 Set done=true when the task is fully complete; still include a final "say" summary.
-Be direct and efficient. One tool per turn.`;
+Be direct and efficient. One tool per turn. If a step needs a tool you don't have, say so and set done=true.`;
+};
 
-async function run(task: string, maxTurns: number, mode: "safe" | "full", model: string) {
+async function run(task: string, maxTurns: number, mode: "safe" | "full", model: string, scope: string) {
   const runId = crypto.randomUUID();
   const t0 = Date.now();
+  const tools = toolsFor(scope);
   const transcript: Array<{ speaker: "agent" | "system"; say: string; tool?: any; tool_result?: any; done?: boolean }> = [];
   const ledger: any[] = [];
   let seq = 0;
   const log = (e: any) => { ledger.push({ seq: ++seq, at_ms: Date.now() - t0, ...e }); };
 
-  log({ kind: "run_start", run_id: runId, task, mode, model, model_of_thought: "single" });
+  log({ kind: "run_start", run_id: runId, task, mode, model, scope, model_of_thought: "single:" + scope });
   transcript.push({ speaker: "system", say: "TASK: " + task });
 
   let llmCalls = 0, toolCalls = 0, turn = 0, done = false;
@@ -165,7 +172,7 @@ async function run(task: string, maxTurns: number, mode: "safe" | "full", model:
       return { role: "assistant", content: t.say + toolNote };
     });
 
-    const raw = await llm(SYS(mode), messages, model);
+    const raw = await llm(SYS(mode, scope, tools), messages, model);
     llmCalls++;
     const msg = safeParse(raw);
     const say = String(msg?.say ?? "").slice(0, 2000);
@@ -175,9 +182,9 @@ async function run(task: string, maxTurns: number, mode: "safe" | "full", model:
 
     let toolResult: any = undefined;
     if (toolReq) {
-      if (!ALL_TOOLS.includes(toolReq.name)) {
-        toolResult = { ok: false, error: "unknown tool " + toolReq.name };
-        log({ kind: "tool_rejected", tool: toolReq.name });
+      if (!tools.includes(toolReq.name)) {
+        toolResult = { ok: false, error: "tool " + toolReq.name + " not in " + scope + " scope" };
+        log({ kind: "tool_rejected", tool: toolReq.name, scope });
       } else {
         const r = await execTool(toolReq.name, toolReq.args ?? {}, mode);
         toolCalls++;
@@ -196,17 +203,18 @@ async function run(task: string, maxTurns: number, mode: "safe" | "full", model:
     run_id: runId,
     transcript,
     ledger,
-    stats: { elapsed_ms: elapsed, turns: turn, llm_calls: llmCalls, tool_calls: toolCalls, model_of_thought: "single:" + model },
+    stats: { elapsed_ms: elapsed, turns: turn, llm_calls: llmCalls, tool_calls: toolCalls, model_of_thought: "single:" + scope + ":" + model },
   };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const { task, max_turns, mode, model } = await req.json();
+    const { task, max_turns, mode, model, scope } = await req.json();
     if (!task) throw new Error("task is required");
     const runMode: "safe" | "full" = mode === "full" ? "full" : "safe";
-    const result = await run(task, Math.min(max_turns ?? 12, 20), runMode, model || "google/gemini-2.5-flash");
+    const runScope = scope === "sensory" || scope === "motor" ? scope : "all";
+    const result = await run(task, Math.min(max_turns ?? 12, 20), runMode, model || "google/gemini-2.5-flash", runScope);
     return new Response(JSON.stringify(result, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -216,3 +224,4 @@ serve(async (req) => {
     });
   }
 });
+
