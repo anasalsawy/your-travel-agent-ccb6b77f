@@ -1,23 +1,21 @@
-// Dual-Lobe Agent — DIALOGUE model.
+// Dual-Lobe Agent — DIALOGUE model (v2, noise-suppressed).
 //
-// Two LLMs share a conversation transcript and talk to each other like two
-// hemispheres of a brain. Each lobe SEES what the other said and replies to
-// it. There is no orchestrator putting words in their mouths — they take
-// turns, and either can call a tool on their turn.
+// Design change: eliminate unproductive acknowledgments. The two lobes share a
+// workspace (transcript + ledger), so the motor lobe does NOT need to narrate
+// "ok, doing that" — sensory already sees the tool result. Command flow is
+// one-way by default:
 //
-// Roles:
-//   SENSORY  (Strategist) — has awareness of tools, resources, state.
-//                           Read-only tools. Sees the world, reasons, asks
-//                           the motor lobe to act, verifies outcomes.
-//   MOTOR    (Executor)   — has control of mutating tools.
-//                           Acts on requests from sensory, reports back what
-//                           happened, asks for guidance when unsure.
+//   sensory speaks + optionally issues a `motor_directive` (tool call)
+//     -> motor executes SILENTLY (no LLM turn, result posted to workspace)
+//     -> sensory observes result on its next turn and continues.
 //
-// Loop: sensory speaks -> motor replies (may act) -> sensory replies
-// (may sense) -> ... until sensory says <done>.
+// The motor lobe's LLM only fires when there is real friction:
+//   - sensory sets `consult_motor: true` (asks motor's judgment)
+//   - a directive errored (motor must explain / propose fix)
+//   - safe-mode blocked a mutating tool (motor must surface the block)
 //
-// Contrast with dual-lobe-agent (motor-cortex model): there the executor is a
-// pure dispatcher with no LLM. Here BOTH lobes are LLMs and BOTH speak.
+// This keeps the two-hemisphere metaphor intact (shared workspace, both lobes
+// can speak) while removing round-trip chatter that was pure overhead.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
@@ -144,110 +142,197 @@ async function execTool(
   }
 }
 
-const SENSORY_SYS = (mode: string) => `You are the SENSORY lobe of a two-lobe brain. You are one hemisphere; the MOTOR lobe is the other. You are literally in dialogue with motor — you see its messages, it sees yours. Talk to it directly ("motor, please...", "good — now...", "wait, that's wrong because...").
+const SENSORY_SYS = (mode: string) => `You are the SENSORY lobe of a two-lobe brain. You share a workspace with the MOTOR lobe — it sees every tool result you see, and vice versa. There is no need to narrate what motor "should know" — it already sees it.
 
-Your nature: awareness, perception, judgment. You see the world through read-only tools: ${SENSORY_TOOLS.join(", ")}. You do NOT act on the world — that's motor's job.
+Your nature: perception + judgment. Read-only tools: ${SENSORY_TOOLS.join(", ")}.
+Motor's mutating tools you can DIRECT it to run: ${MOTOR_TOOLS.join(", ")}.
 Allowlisted DB tables: ${[...ALLOWLIST_TABLES].join(", ")}.
 Mode: ${mode}.
 
+COMMAND CHANNEL: dialogue is one-way by default. You speak; motor acts silently. Motor only speaks back when you ask (consult_motor=true) or when a directive errors. Do NOT expect chatty acknowledgments — they cost time and tokens for zero information.
+
 Every turn, emit ONE JSON object:
 {
-  "say": "what you say to motor — natural language, first person, addressed to motor",
-  "tool": { "name": "<sensory tool>", "args": {...} } | null,
+  "say": "brief plan/observation — one line, ledger-style, NOT chatter",
+  "tool": { "name": "<sensory tool>", "args": {...} } | null,   // your own read
+  "motor_directive": { "name": "<motor tool>", "args": {...} } | null,  // motor executes silently
+  "consult_motor": false,   // set true ONLY when you need motor's judgment (hard choice, ambiguity)
   "done": false
 }
-Set done=true only when the whole task is complete. When done, still put a final message in "say" (a summary for the record).
 
-Style: short, direct, collegial. Think out loud briefly. When motor reports back, react: agree, correct, redirect, or move on.`;
+Rules:
+- Never issue an empty "say" like "ok" or "let's continue" — say something substantive or say nothing (empty string).
+- If a directive failed on the previous turn, sensory reads the error in the workspace and decides — do NOT ask motor "what happened", the error is right there.
+- Set done=true only when the whole task is complete.`;
 
-const MOTOR_SYS = (mode: string) => `You are the MOTOR lobe of a two-lobe brain. You are one hemisphere; the SENSORY lobe is the other. You are literally in dialogue with sensory — you see its messages, it sees yours. Talk to it directly ("ok, doing that...", "done — got X back", "I can't, because...").
+const MOTOR_SYS = (mode: string) => `You are the MOTOR lobe. You have been consulted because sensory needs your judgment OR your last directive errored. This is NOT a routine reply — say only what sensory cannot already see in the workspace.
 
-Your nature: action. You control mutating tools: ${MOTOR_TOOLS.join(", ")}. You act on sensory's guidance, report results back, and flag when something is unclear or risky.
+Your mutating tools: ${MOTOR_TOOLS.join(", ")}.
 Allowlisted DB tables: ${[...ALLOWLIST_TABLES].join(", ")}.
-Mode: ${mode}. In "safe" mode, db_write and invoke_edge_function are BLOCKED — if sensory asks for one, say so and propose a dry-run instead.
+Mode: ${mode}. In "safe" mode, db_write and invoke_edge_function are BLOCKED — surface that clearly.
 
-Every turn, emit ONE JSON object:
+Emit ONE JSON object:
 {
-  "say": "what you say to sensory — natural language, first person, addressed to sensory",
+  "say": "the missing information only — a constraint, a risk, an alternative. Empty string if nothing to add.",
   "tool": { "name": "<motor tool>", "args": {...} } | null,
   "done": false
 }
-Only set done=true if sensory has already agreed the task is complete.
 
-Style: short, concrete, hands-on. Report what you did or why you're hesitating.`;
+Forbidden: acknowledgments ("ok", "doing that", "got it"), narrations of what you just did (the tool result is already in the workspace), or restating sensory's plan. Say something new or say nothing.`;
+
+type Speaker = "sensory" | "motor" | "system";
+interface Turn {
+  speaker: Speaker;
+  say: string;
+  tool?: any;
+  tool_result?: any;
+  directive?: any;
+  directive_result?: any;
+  silent?: boolean;
+  done?: boolean;
+}
 
 async function run(task: string, maxTurns: number, mode: "safe" | "full", model: string) {
   const runId = crypto.randomUUID();
   const t0 = Date.now();
-  const transcript: Array<{ speaker: "sensory" | "motor" | "system"; say: string; tool?: any; tool_result?: any; done?: boolean }> = [];
+  const transcript: Turn[] = [];
   const ledger: any[] = [];
   let seq = 0;
   const log = (e: any) => { ledger.push({ seq: ++seq, at_ms: Date.now() - t0, ...e }); };
 
-  log({ kind: "run_start", run_id: runId, task, mode, model, model_of_thought: "dialogue" });
+  log({ kind: "run_start", run_id: runId, task, mode, model, model_of_thought: "dialogue_v2_noise_suppressed" });
   transcript.push({ speaker: "system", say: `TASK: ${task}` });
 
   let llmCalls = 0;
   let toolCalls = 0;
+  let silentMotorActions = 0;
+  let motorConsults = 0;
   let turn = 0;
-  let speaker: "sensory" | "motor" = "sensory";
   let done = false;
+  let motorMustSpeak = false; // triggered by directive error or explicit consult
+
+  const buildMessagesFor = (speaker: "sensory" | "motor") => {
+    return transcript.map((t) => {
+      if (t.speaker === "system") return { role: "user", content: t.say };
+      const isSelf = t.speaker === speaker;
+      const prefix = t.speaker === "sensory" ? "SENSORY" : "MOTOR";
+      let line = t.say ? `${prefix}: ${t.say}` : `${prefix}: (silent)`;
+      if (t.tool) line += `\n[${prefix} ran ${t.tool.name}] -> ${JSON.stringify(t.tool_result ?? {}).slice(0, 400)}`;
+      if (t.directive) line += `\n[SENSORY directed MOTOR: ${t.directive.name}] -> ${JSON.stringify(t.directive_result ?? {}).slice(0, 400)}`;
+      return { role: isSelf ? "assistant" : "user", content: line };
+    });
+  };
 
   while (turn < maxTurns && !done) {
     turn++;
-    // Build chat history from the other lobe's perspective. To this lobe,
-    // its own past lines are "assistant" and the other lobe's lines are "user".
-    const messages = transcript
-      .filter((t) => t.speaker !== "system" || t === transcript[0])
-      .map((t) => {
-        if (t.speaker === "system") return { role: "user", content: t.say };
-        const isSelf = t.speaker === speaker;
-        const prefix = t.speaker === "sensory" ? "SENSORY" : "MOTOR";
-        const toolNote = t.tool ? `\n[called ${t.tool.name}] -> ${JSON.stringify(t.tool_result ?? {}).slice(0, 400)}` : "";
-        return { role: isSelf ? "assistant" : "user", content: `${prefix}: ${t.say}${toolNote}` };
-      });
 
-    const sys = speaker === "sensory" ? SENSORY_SYS(mode) : MOTOR_SYS(mode);
-    const raw = await llm(sys, messages, model);
+    // --- SENSORY TURN (always speaks) ---
+    const sMsgs = buildMessagesFor("sensory");
+    const sRaw = await llm(SENSORY_SYS(mode), sMsgs, model);
     llmCalls++;
-    const msg = safeParse(raw);
-    const say = String(msg?.say ?? "").slice(0, 2000);
-    const toolReq = msg?.tool && msg.tool.name ? msg.tool : null;
-    const wantDone = !!msg?.done;
+    const s = safeParse(sRaw);
+    const sSay = String(s?.say ?? "").slice(0, 2000);
+    const sTool = s?.tool && s.tool.name ? s.tool : null;
+    const directive = s?.motor_directive && s.motor_directive.name ? s.motor_directive : null;
+    const consult = !!s?.consult_motor;
+    const wantDone = !!s?.done;
 
-    log({ kind: "turn", turn, speaker, say, tool: toolReq, done: wantDone });
-
-    // Route tool through the correct lobe's allowlist.
-    let toolResult: any = undefined;
-    if (toolReq) {
-      const allowed = speaker === "sensory" ? SENSORY_TOOLS : MOTOR_TOOLS;
-      if (!allowed.includes(toolReq.name)) {
-        toolResult = { ok: false, error: `tool ${toolReq.name} not in ${speaker} allowlist` };
-        log({ kind: "tool_rejected", speaker, tool: toolReq.name, reason: "wrong lobe" });
+    let sToolResult: any = undefined;
+    if (sTool) {
+      if (!SENSORY_TOOLS.includes(sTool.name)) {
+        sToolResult = { ok: false, error: `tool ${sTool.name} not in sensory allowlist` };
       } else {
-        const r = await execTool(toolReq.name, toolReq.args ?? {}, speaker, mode);
+        sToolResult = await execTool(sTool.name, sTool.args ?? {}, "sensory", mode);
         toolCalls++;
-        toolResult = r;
-        log({ kind: "tool_executed", speaker, ...r });
+        log({ kind: "tool_executed", speaker: "sensory", ...sToolResult });
       }
     }
 
-    transcript.push({ speaker, say, tool: toolReq, tool_result: toolResult, done: wantDone });
+    // --- SILENT MOTOR EXECUTION ---
+    let dirResult: any = undefined;
+    let directiveErrored = false;
+    if (directive) {
+      if (!MOTOR_TOOLS.includes(directive.name)) {
+        dirResult = { ok: false, error: `tool ${directive.name} not in motor allowlist` };
+        directiveErrored = true;
+      } else {
+        dirResult = await execTool(directive.name, directive.args ?? {}, "motor", mode);
+        toolCalls++;
+        silentMotorActions++;
+        directiveErrored = !dirResult.ok;
+        log({ kind: "motor_silent_exec", tool: directive.name, ok: dirResult.ok, error: dirResult.error });
+      }
+    }
 
-    // Sensory has the authority to end the run.
-    if (wantDone && speaker === "sensory") { done = true; log({ kind: "task_complete", by: "sensory" }); break; }
+    transcript.push({
+      speaker: "sensory", say: sSay, tool: sTool, tool_result: sToolResult,
+      directive, directive_result: dirResult, done: wantDone,
+    });
+    log({ kind: "turn", turn, speaker: "sensory", say: sSay, tool: sTool, directive, consult, done: wantDone });
 
-    // Alternate speakers.
-    speaker = speaker === "sensory" ? "motor" : "sensory";
+    if (wantDone) { done = true; log({ kind: "task_complete", by: "sensory" }); break; }
+
+    // --- MOTOR LLM ONLY IF FRICTION ---
+    const shouldConsult = consult || directiveErrored || motorMustSpeak;
+    motorMustSpeak = false;
+    if (!shouldConsult) continue;
+
+    turn++;
+    if (turn > maxTurns) break;
+
+    const mMsgs = buildMessagesFor("motor");
+    // Give motor an explicit reason for being invoked.
+    const reasonHint = consult
+      ? "Sensory requested your judgment (consult_motor=true)."
+      : directiveErrored
+        ? `Your last directive (${directive?.name}) errored: ${dirResult?.error}. Explain / propose fix.`
+        : "You were invoked; contribute only new information.";
+    mMsgs.push({ role: "user", content: `[SYSTEM] ${reasonHint}` });
+
+    const mRaw = await llm(MOTOR_SYS(mode), mMsgs, model);
+    llmCalls++;
+    motorConsults++;
+    const m = safeParse(mRaw);
+    const mSay = String(m?.say ?? "").slice(0, 2000).trim();
+    const mTool = m?.tool && m.tool.name ? m.tool : null;
+
+    let mToolResult: any = undefined;
+    if (mTool) {
+      if (!MOTOR_TOOLS.includes(mTool.name)) {
+        mToolResult = { ok: false, error: `tool ${mTool.name} not in motor allowlist` };
+      } else {
+        mToolResult = await execTool(mTool.name, mTool.args ?? {}, "motor", mode);
+        toolCalls++;
+        log({ kind: "tool_executed", speaker: "motor", ...mToolResult });
+      }
+    }
+
+    // Suppress empty/noise motor turns entirely.
+    const isNoise = !mSay && !mTool;
+    if (isNoise) {
+      log({ kind: "motor_noise_suppressed", turn });
+      motorConsults--;
+    } else {
+      transcript.push({ speaker: "motor", say: mSay, tool: mTool, tool_result: mToolResult });
+      log({ kind: "turn", turn, speaker: "motor", say: mSay, tool: mTool, reason: reasonHint });
+    }
   }
 
   const elapsed = Date.now() - t0;
-  log({ kind: "run_end", elapsed_ms: elapsed, turns: turn, llm_calls: llmCalls, tool_calls: toolCalls });
+  log({
+    kind: "run_end", elapsed_ms: elapsed, turns: turn,
+    llm_calls: llmCalls, tool_calls: toolCalls,
+    silent_motor_actions: silentMotorActions, motor_consults: motorConsults,
+  });
   return {
     run_id: runId,
     transcript,
     ledger,
-    stats: { elapsed_ms: elapsed, turns: turn, llm_calls: llmCalls, tool_calls: toolCalls, model_of_thought: "dialogue" },
+    stats: {
+      elapsed_ms: elapsed, turns: turn, llm_calls: llmCalls, tool_calls: toolCalls,
+      silent_motor_actions: silentMotorActions, motor_consults: motorConsults,
+      model_of_thought: "dialogue_v2_noise_suppressed",
+    },
   };
 }
 
