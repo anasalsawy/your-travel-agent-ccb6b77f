@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plane, ArrowRight, Search } from "lucide-react";
 import { format } from "date-fns";
 import { AirportAutocomplete } from "@/components/flights/AirportAutocomplete";
+import { CustomerCardCheckout } from "@/components/flights/CustomerCardCheckout";
 import { useSearchParams } from "react-router-dom";
 
 interface Segment {
