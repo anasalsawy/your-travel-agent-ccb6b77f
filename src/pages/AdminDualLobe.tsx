@@ -41,6 +41,7 @@ export default function AdminDualLobe() {
   const [iso, setIso] = useState<Record<string, Result>>({});
 
   const contenders: Contender[] = [
+    { key: "brain",    label: "Brain · 7-region",    fn: "brain-agent",        body: { max_cycles: 8 },  color: "purple", icon: Network,       blurb: "Thalamus→amygdala→hippocampus→PFC→basal-ganglia→motor→cerebellum." },
     { key: "dialogue", label: "Dual · Dialogue",   fn: "dual-lobe-dialogue", body: { max_turns: 10 },  color: "blue",   icon: MessageCircle, blurb: "Two LLMs talking, sensory ↔ motor." },
     { key: "motor",    label: "Dual · Motor-cortex", fn: "dual-lobe-agent",   body: { max_cycles: 6 }, color: "orange", icon: Cpu,           blurb: "Strategist LLM + reflex dispatcher." },
     { key: "single_flash", label: "Single · gemini-2.5-flash",      fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash" },      color: "slate", icon: Bot, blurb: "Baseline: one strong LLM, all tools." },
