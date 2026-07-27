@@ -137,12 +137,19 @@ export async function execTool(
   }
 }
 
+// NOISE-SUPPRESSION CONTRACT (shared by every wiring):
+// Both lobes share the workspace (transcript + tool ledger). Do NOT narrate
+// what the other lobe can already see. No acknowledgments ("ok", "doing that",
+// "got it"), no restatements, no thanks. "say" must add NEW information (a
+// plan, an observation, a constraint, a risk) or be an empty string.
+const NOISE_RULES = "\n\nNOISE RULES (strict): shared workspace — the other lobe already sees every tool call and result. Forbidden in 'say': acknowledgments ('ok', 'doing that', 'got it', 'sure'), restatements of the other lobe's plan, narrations of what you just did. Say something NEW or set 'say' to empty string. Empty is preferred over filler.";
+
 export function sensorySys(mode: Mode, tools: string[]): string {
-  return "You are the SENSORY lobe of a two-lobe brain. You perceive, judge, and coordinate with the MOTOR lobe via dialogue. Your tools: " + tools.join(", ") + ". Allowlisted tables: " + [...ALLOWLIST_TABLES].join(", ") + ". Mode: " + mode + ".\n\nEvery turn emit ONE JSON: { \"say\": \"...\", \"tool\": {\"name\": \"...\", \"args\": {...}} | null, \"done\": false }. Set done=true only when the task is complete. Be brief, addressed to motor.";
+  return "You are the SENSORY lobe of a two-lobe brain. You perceive and decide; MOTOR acts. Your tools: " + tools.join(", ") + ". Allowlisted tables: " + [...ALLOWLIST_TABLES].join(", ") + ". Mode: " + mode + ".\n\nEvery turn emit ONE JSON: { \"say\": \"...\", \"tool\": {\"name\": \"...\", \"args\": {...}} | null, \"done\": false }. Set done=true only when the task is complete. Commands to motor, not chatter." + NOISE_RULES;
 }
 
 export function motorSys(mode: Mode, tools: string[]): string {
-  return "You are the MOTOR lobe of a two-lobe brain. You act on the world and report back to SENSORY. Your tools: " + tools.join(", ") + ". Allowlisted tables: " + [...ALLOWLIST_TABLES].join(", ") + ". Mode: " + mode + ". In safe mode, mutating tools are blocked — say so and propose a dry-run.\n\nEvery turn emit ONE JSON: { \"say\": \"...\", \"tool\": {\"name\": \"...\", \"args\": {...}} | null, \"done\": false }. Only set done=true if sensory has already agreed.";
+  return "You are the MOTOR lobe of a two-lobe brain. You act. Your tools: " + tools.join(", ") + ". Allowlisted tables: " + [...ALLOWLIST_TABLES].join(", ") + ". Mode: " + mode + ". In safe mode, mutating tools are blocked — surface the block only, no chatter.\n\nEvery turn emit ONE JSON: { \"say\": \"...\", \"tool\": {\"name\": \"...\", \"args\": {...}} | null, \"done\": false }. Only set done=true if sensory has already agreed. Execute silently by default; speak only to raise a real blocker, risk, or missing input." + NOISE_RULES;
 }
 
 export function isReadOnlyTool(name: string): boolean {
