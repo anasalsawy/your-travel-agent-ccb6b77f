@@ -19,15 +19,18 @@ export default function AdminDualLobe() {
   const [loading, setLoading] = useState(false);
   const [ledger, setLedger] = useState<Entry[]>([]);
   const [runId, setRunId] = useState<string>("");
+  const [runtime, setRuntime] = useState<"demo" | "agent">("agent");
+  const [mode, setMode] = useState<"safe" | "full">("safe");
 
   const run = async () => {
     setLoading(true);
     setLedger([]);
     setRunId("");
     try {
-      const { data, error } = await supabase.functions.invoke("dual-lobe-demo", {
-        body: { task, max_cycles: 6 },
-      });
+      const fn = runtime === "agent" ? "dual-lobe-agent" : "dual-lobe-demo";
+      const body: any = { task, max_cycles: 6 };
+      if (runtime === "agent") body.mode = mode;
+      const { data, error } = await supabase.functions.invoke(fn, { body });
       if (error) throw error;
       setLedger(data.ledger ?? []);
       setRunId(data.run_id ?? "");
