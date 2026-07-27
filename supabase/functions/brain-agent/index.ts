@@ -196,7 +196,42 @@ ${consult ? "\nCONSULT from motor-lobe (advisory, use if useful):\n" + consult :
     goal_progress: String(parsed.goal_progress || brain.goal_progress).slice(0, 200),
     done: !!parsed.done,
     note: String(parsed.note || "").slice(0, 200),
+    request_consult: !!parsed.request_consult,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// MOTOR-LOBE CONSULT — second LLM, only invoked when gated.
+// Gate opens on: PFC asks, ≥2 recent prediction errors, same tool failed twice,
+// or 2 cycles of unchanged goal_progress. Otherwise this stays silent.
+// Keep the prompt tiny — this is an advisory, not a re-plan.
+// ─────────────────────────────────────────────────────────────────
+async function motorConsult(brain: Brain, lastCandidates: Candidate[], model: string): Promise<string> {
+  const sys = `You are the MOTOR LOBE offering a brief second opinion to the PFC.
+The PFC is stuck or facing a hard choice. Reply in ONE or TWO short sentences:
+- Point out the concrete tool + args that would break the deadlock, OR
+- Name the assumption that seems wrong, OR
+- Say "no better option, proceed" if PFC's plan looks fine.
+No preamble, no JSON, plain text under 240 chars.`;
+  const cands = lastCandidates.map((c) => "- " + c.tool + " (u=" + c.utility + ", r=" + c.risk + "): " + c.why).join("\n") || "(none)";
+  const user = `GOAL: ${brain.task}
+Progress: ${brain.goal_progress}
+Recent prediction errors: ${brain.cerebellum_deltas.slice(-3).join(" | ") || "(none)"}
+PFC's current candidates:
+${cands}`;
+  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+      temperature: 0.4,
+      max_tokens: 120,
+    }),
+  });
+  if (!r.ok) return "(consult unavailable: " + r.status + ")";
+  const j = await r.json();
+  return String(j.choices?.[0]?.message?.content ?? "").trim().slice(0, 240);
 }
 function clamp01(x: any, d: number) { const n = Number(x); return isFinite(n) ? Math.max(0, Math.min(1, n)) : d; }
 
