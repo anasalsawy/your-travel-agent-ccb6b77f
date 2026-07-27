@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Brain, Zap, PlayCircle, MessageCircle, Cpu, Bot, Trophy } from "lucide-react";
+import { Loader2, Brain, Zap, PlayCircle, MessageCircle, Cpu, Bot, Trophy, Network } from "lucide-react";
 
 const EXAMPLES = [
   "Look up how many rows are in war_room_messages and send a summary notification.",
