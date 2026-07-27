@@ -160,7 +160,7 @@ export default function AdminDualLobe() {
   const singleBest = scored.filter((s) => s.key.startsWith("single")).sort((a, b) => b.score - a.score)[0];
   const dualWins = dualBest && singleBest ? dualBest.score > singleBest.score : null;
 
-  const complexScored = scoreComplex(contenders, complex);
+  const complexScored = scoreComplex(contenders, complex, obstacles);
 
 
   return (
