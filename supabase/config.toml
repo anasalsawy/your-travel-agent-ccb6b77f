@@ -50,6 +50,16 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.dual-lobe-dialogue]
     verify_jwt = false
+  [functions.lobe-alternating]
+    verify_jwt = false
+  [functions.lobe-contralateral]
+    verify_jwt = false
+  [functions.lobe-reflex-arc]
+    verify_jwt = false
+  [functions.lobe-asymmetric]
+    verify_jwt = false
+  [functions.lobe-bandwidth]
+    verify_jwt = false
   [functions.claude-agent]
     verify_jwt = false
   [functions.claude-quote]

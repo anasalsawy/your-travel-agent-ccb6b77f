@@ -41,11 +41,17 @@ export default function AdminDualLobe() {
   const [iso, setIso] = useState<Record<string, Result>>({});
 
   const contenders: Contender[] = [
-    { key: "brain",    label: "Brain · 7-region",    fn: "brain-agent",        body: { max_cycles: 8 },  color: "purple", icon: Network,       blurb: "Thalamus→amygdala→hippocampus→PFC→basal-ganglia→motor→cerebellum." },
-    { key: "dialogue", label: "Dual · Dialogue",   fn: "dual-lobe-dialogue", body: { max_turns: 10 },  color: "blue",   icon: MessageCircle, blurb: "Two LLMs talking, sensory ↔ motor." },
-    { key: "motor",    label: "Dual · Motor-cortex", fn: "dual-lobe-agent",   body: { max_cycles: 6 }, color: "orange", icon: Cpu,           blurb: "Strategist LLM + reflex dispatcher." },
-    { key: "single_flash", label: "Single · gemini-2.5-flash",      fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash" },      color: "slate", icon: Bot, blurb: "Baseline: one strong LLM, all tools." },
-    { key: "single_lite",  label: "Single · gemini-2.5-flash-lite", fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash-lite" }, color: "zinc",  icon: Bot, blurb: "Baseline: one fast LLM, all tools." },
+    { key: "brain",         label: "Brain · 7-region",         fn: "brain-agent",         body: { max_cycles: 8 }, color: "purple",  icon: Network,       blurb: "Thalamus→amygdala→hippocampus→PFC→basal-ganglia→motor→cerebellum." },
+    { key: "dialogue",      label: "Dual · Dialogue",          fn: "dual-lobe-dialogue",  body: { max_turns: 10 }, color: "blue",    icon: MessageCircle, blurb: "Two LLMs talking, sensory ↔ motor." },
+    { key: "motor",         label: "Dual · Motor-cortex",      fn: "dual-lobe-agent",     body: { max_cycles: 6 }, color: "orange",  icon: Cpu,           blurb: "Strategist LLM + reflex dispatcher." },
+    { key: "alternating",   label: "Dual · Alternating",       fn: "lobe-alternating",    body: { max_turns: 12 }, color: "cyan",    icon: MessageCircle, blurb: "Strict L/R cadence, no back-channel. Each lobe sees only last 2 turns." },
+    { key: "contralateral", label: "Dual · Contralateral",     fn: "lobe-contralateral",  body: { max_turns: 12 }, color: "pink",    icon: Network,       blurb: "Sensory holds motor tools, motor holds sensory tools. Optic-chiasm crossover." },
+    { key: "reflex",        label: "Dual · Reflex Arc",        fn: "lobe-reflex-arc",     body: { max_turns: 10 }, color: "amber",   icon: Zap,           blurb: "Motor auto-fires reads. Sensory only consulted on writes." },
+    { key: "asym_sh",       label: "Dual · Sensory-heavy",     fn: "lobe-asymmetric",     body: { max_turns: 10, profile: "sensory-heavy" }, color: "emerald", icon: Brain, blurb: "Big model on eyes (gpt-5.5), cheap model on hands (flash-lite)." },
+    { key: "asym_mh",       label: "Dual · Motor-heavy",       fn: "lobe-asymmetric",     body: { max_turns: 10, profile: "motor-heavy" },   color: "rose",    icon: Cpu,   blurb: "Cheap eyes, careful hands. Good for booking/payment flows." },
+    { key: "bandwidth",     label: "Dual · Bandwidth-gated",   fn: "lobe-bandwidth",      body: { max_turns: 12 }, color: "indigo",  icon: MessageCircle, blurb: "Corpus-callosum budget: ~40 tokens per cross-lobe message." },
+    { key: "single_flash",  label: "Single · gemini-2.5-flash",      fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash" },      color: "slate", icon: Bot, blurb: "Baseline: one strong LLM, all tools." },
+    { key: "single_lite",   label: "Single · gemini-2.5-flash-lite", fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash-lite" }, color: "zinc",  icon: Bot, blurb: "Baseline: one fast LLM, all tools." },
   ];
 
   const isoContenders = (m: string): Contender[] => [
