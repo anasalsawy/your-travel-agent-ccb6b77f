@@ -54,10 +54,12 @@ export default function AdminDualLobe() {
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Brain className="w-6 h-6 text-primary" />
-          Dual-Lobe Agent — Demo Runtime
+          Dual-Lobe Agent
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Two real LLM lobes (Strategist + Executor) with a hard tool router. Tools are <b>mocked</b> — they announce intent and return synthetic results. No real side effects.
+          Two LLM lobes (Strategist + Executor) share a workspace and enforce a hard tool router.
+          Switch <b>Runtime</b> to <code>agent</code> for real tools (db, http, edge functions);
+          <code>demo</code> uses mocks. <b>Mode</b> <code>safe</code> disables mutations.
         </p>
       </div>
 
@@ -70,12 +72,25 @@ export default function AdminDualLobe() {
             ))}
           </div>
           <Textarea value={task} onChange={(e) => setTask(e.target.value)} rows={3} />
+          <div className="flex flex-wrap gap-2 items-center text-xs">
+            <span className="text-muted-foreground">Runtime:</span>
+            <Button size="sm" variant={runtime === "agent" ? "default" : "outline"} onClick={() => setRuntime("agent")}>agent (real tools)</Button>
+            <Button size="sm" variant={runtime === "demo" ? "default" : "outline"} onClick={() => setRuntime("demo")}>demo (mock)</Button>
+            {runtime === "agent" && (
+              <>
+                <span className="text-muted-foreground ml-4">Mode:</span>
+                <Button size="sm" variant={mode === "safe" ? "default" : "outline"} onClick={() => setMode("safe")}>safe</Button>
+                <Button size="sm" variant={mode === "full" ? "destructive" : "outline"} onClick={() => setMode("full")}>full (mutations)</Button>
+              </>
+            )}
+          </div>
           <Button onClick={run} disabled={loading || !task.trim()}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
             {loading ? "Running lobes…" : "Run dual-lobe cycle"}
           </Button>
         </CardContent>
       </Card>
+
 
       {runId && (
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
