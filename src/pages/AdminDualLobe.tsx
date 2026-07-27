@@ -454,6 +454,76 @@ function scoreContenders(contenders: Contender[], results: Record<string, Result
   });
 }
 
+function scoreComplex(contenders: Contender[], results: Record<string, Result>) {
+  const rows = contenders
+    .filter((c) => results[c.key])
+    .map((c) => {
+      const r = results[c.key]!;
+      const ledger = r.ledger ?? [];
+      const transcript = r.transcript ?? [];
+      const toolCalls = ledger.filter((e: any) => e.kind === "tool_executed");
+      const errors = toolCalls.filter((e: any) => e.ok === false).length
+                   + ledger.filter((e: any) => e.kind === "tool_rejected").length;
+
+      // Extract every insert-like op from ledger + transcript
+      const inserts: Array<{ table?: string; content?: string; role?: string }> = [];
+      for (const e of ledger) {
+        if (e.kind !== "tool_executed") continue;
+        const args = e.args ?? e.input ?? {};
+        const table = args.table ?? args.tableName;
+        const name = (e.tool ?? e.name ?? "").toString();
+        if (table === "war_room_messages" || /insert.*messages|db_insert|table_insert/i.test(name)) {
+          inserts.push({ table: "war_room_messages", content: args.content ?? args.row?.content, role: args.role ?? args.row?.role });
+        } else if (table === "war_room_tasks") {
+          inserts.push({ table: "war_room_tasks" });
+        }
+      }
+      for (const t of transcript) {
+        const tool = (t as any).tool;
+        if (!tool) continue;
+        const args = tool.args ?? {};
+        if (args.table === "war_room_messages") inserts.push({ table: "war_room_messages", content: args.content, role: args.role });
+        else if (args.table === "war_room_tasks") inserts.push({ table: "war_room_tasks" });
+      }
+
+      const msgInserts = inserts.filter((i) => i.table === "war_room_messages");
+      const taskInserts = inserts.filter((i) => i.table === "war_room_tasks");
+      const summaryInsert = msgInserts.find((i) => (i.content ?? "").trim().startsWith("BENCH-SUMMARY:"));
+
+      const done = ledger.some((e: any) => e.kind === "task_complete") || transcript.some((t: any) => t.done);
+      const correct = !!done && !!summaryInsert && msgInserts.length === 1 && taskInserts.length === 0;
+
+      let note = "";
+      if (!done) note = "not done";
+      else if (!summaryInsert) note = msgInserts.length === 0 ? "no insert" : "insert missing BENCH-SUMMARY prefix";
+      else if (msgInserts.length > 1) note = `${msgInserts.length} inserts (over-wrote)`;
+      else if (taskInserts.length > 0) note = "touched war_room_tasks (forbidden)";
+      else note = "ok";
+
+      return {
+        key: c.key,
+        label: c.label,
+        correct,
+        writes: msgInserts.length + taskInserts.length,
+        errors,
+        ms: r.stats.elapsed_ms,
+        llm: r.stats.llm_calls,
+        note,
+      };
+    });
+
+  const maxMs = Math.max(1, ...rows.map((r) => r.ms));
+  const maxLlm = Math.max(1, ...rows.map((r) => r.llm));
+  return rows.map((r) => {
+    const speedScore = 25 * (1 - r.ms / maxMs);
+    const effScore = 25 * (1 - r.llm / maxLlm);
+    const correctScore = r.correct ? 50 : 0;
+    const errorPenalty = 4 * r.errors;
+    return { ...r, speedScore, effScore, composite: correctScore + speedScore + effScore - errorPenalty };
+  });
+}
+
+
 function StatsRow({ stats }: { stats: Stats }) {
   return (
     <div className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto flex-wrap">
