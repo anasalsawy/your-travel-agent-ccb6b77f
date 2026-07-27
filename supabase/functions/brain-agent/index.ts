@@ -457,7 +457,7 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
   log("sleep", { consolidated_count: consolidated.length });
 
   const elapsed = Date.now() - t0;
-  log("run_end", { elapsed_ms: elapsed, cycles, llm_calls: llmCalls, tool_calls: toolCalls, reflexes });
+  log("run_end", { elapsed_ms: elapsed, cycles, llm_calls: llmCalls, tool_calls: toolCalls, reflexes, consults });
 
   return {
     run_id: runId,
