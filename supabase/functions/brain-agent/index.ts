@@ -475,6 +475,7 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
       llm_calls: llmCalls,
       tool_calls: toolCalls,
       reflexes,
+      consults,
       model_of_thought: "brain:7-region",
     },
   };
