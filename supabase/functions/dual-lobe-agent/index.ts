@@ -167,198 +167,158 @@ async function execTool(
 }
 
 // ── Prompts ───────────────────────────────────────────────────────
-const EXECUTOR_SYS = (mode: string) => `You are the EXECUTOR lobe of a dual-brain agent. Move fast. Do not self-verify — the STRATEGIST lobe verifies you in parallel.
+// v3: MOTOR-CORTEX model.
+// The EXECUTOR is no longer an LLM. It is a pure tool dispatcher — a spinal
+// reflex arc. It drains a queue of pre-approved actions with ZERO thinking
+// latency. All thought lives in the STRATEGIST, which runs non-stop in a
+// pipelined loop, producing the next batch of pre-approved actions while the
+// motor cortex is still executing the current batch.
+//
+// Loop shape:
+//   plan_promise = strategist.plan(ctx)                 // think
+//   loop:
+//     batch = await plan_promise                        // receive plan
+//     next_plan_promise = strategist.plan(ctx+batch)    // START thinking N+1
+//     results = await Promise.all(dispatch(batch))      // motor executes N
+//     ctx.append(batch, results)                        // integrate feedback
+//   until strategist emits done=true
 
-Executor tools: ${EXECUTOR_TOOLS.join(", ")}.
-Runtime mode: ${mode}. In "safe" mode, db_write and invoke_edge_function are BLOCKED.
+const STRATEGIST_PLAN_SYS = (mode: string) => `You are the STRATEGIST lobe of a dual-brain agent. You do all the thinking. The EXECUTOR is a motor cortex — a pure dispatcher with no reasoning; it will run exactly what you approve, in order, with zero deliberation.
 
-Emit EXACTLY one JSON object per turn. Prefer parallel actions when they are INDEPENDENT (no ordering / data dep):
+Your job every turn: emit the NEXT batch of pre-approved, ready-to-execute actions. You are thinking one step ahead of the motor cortex — while it runs batch N, you are producing batch N+1. Do not wait, do not hedge, do not ask for confirmation.
+
+Tools the motor cortex can run (executor allowlist): ${EXECUTOR_TOOLS.join(", ")}.
+Sense tools you can request for yourself (read-only, run before motor batch): ${STRATEGIST_TOOLS.join(", ")}.
+Runtime mode: ${mode}. In "safe" mode, db_write and invoke_edge_function are BLOCKED for the motor cortex.
+Allowlisted DB tables: ${[...ALLOWLIST_TABLES].join(", ")}.
+
+Emit EXACTLY one JSON object:
 {
-  "message_type": "action_intent",
+  "message_type": "plan",
   "payload": {
-    "goal": "short goal",
-    "actions": [
-      { "tool": "<one executor tool>", "args": { ... }, "why": "one sentence" }
-    ]
+    "reasoning": "one short sentence — what this batch achieves and why now",
+    "verify_previous": { "outcome": "success"|"retry"|"repair"|"rollback"|"n/a", "notes": "..." },
+    "sense_first": [ { "tool": "<strategist tool>", "args": { ... } } ],
+    "motor_batch":  [ { "tool": "<executor tool>",   "args": { ... } } ],
+    "done": false
   }
 }
-Or when the task is finished:
-{ "message_type": "done_signal", "payload": { "summary": "..." } }
+Or when the task is complete:
+{ "message_type": "plan", "payload": { "reasoning": "...", "verify_previous": {...}, "sense_first": [], "motor_batch": [], "done": true } }
 
-Rules: 1–3 actions max per turn. Only put actions in the same turn if they truly don't depend on each other. Single-action turns are fine and often best.`;
+Rules:
+- "sense_first" runs BEFORE "motor_batch" in the same turn (max 2 sense actions). Use only when you truly need fresh state for THIS batch.
+- "motor_batch" is 1–5 independent actions (no ordering/data dependency between them; they run in parallel). If actions are ordered, put later ones in the next turn.
+- Never propose a tool outside its lobe's allowlist. Never propose an unallowlisted table.
+- Motor cortex has NO judgment: only include actions you are certain about right now.
+- Keep verify_previous.outcome = "n/a" on the first turn.`;
 
-const STRATEGIST_SENSE_SYS = (mode: string) => `You are the STRATEGIST lobe (SENSE phase). You look before you leap. You NEVER mutate state.
-
-Sense tools: ${STRATEGIST_TOOLS.join(", ")}. Runtime mode: ${mode}.
-
-Emit ONE JSON object:
-{ "message_type": "sense", "payload": { "tool": "<sense tool>", "tool_args": { ... }, "why": "..." } }
-Or if no sensing is useful this cycle:
-{ "message_type": "skip", "payload": { "why": "..." } }`;
-
-const STRATEGIST_JUDGE_SYS = (mode: string) => `You are the STRATEGIST lobe (JUDGE phase). In ONE call you both VERIFY the previous action(s) and PERMIT (or block/revise) the next executor intent.
-
-Executor tools you may permit: ${EXECUTOR_TOOLS.join(", ")}. Runtime mode: ${mode}.
-
-Emit ONE JSON object:
-{
-  "message_type": "judge",
-  "payload": {
-    "verify": { "outcome": "success"|"retry"|"repair"|"rollback"|"n/a", "notes": "..." },
-    "permit": {
-      "decision": "permit"|"revise"|"block"|"task_complete",
-      "reason": "...",
-      "allowed_tools": ["<tool>", "..."],
-      "next_instruction": "..."
-    }
-  }
+// ── Orchestrator (v3, pipelined motor cortex) ────────────────────
+async function planNext(ctx: any, mode: string, model: string): Promise<any> {
+  const raw = await llm(STRATEGIST_PLAN_SYS(mode), JSON.stringify(ctx), model);
+  const msg = safeParse(raw);
+  return msg?.payload ?? { reasoning: "invalid", verify_previous: { outcome: "retry" }, sense_first: [], motor_batch: [], done: false, _raw: msg };
 }
-Use decision="task_complete" when the task is finished. Use "block" only for safety violations.`;
 
-// ── Orchestrator (v2, parallel) ──────────────────────────────────
 async function run(task: string, maxCycles: number, mode: "safe" | "full", models: { strategist: string; executor: string }) {
   const runId = crypto.randomUUID();
   const t0 = Date.now();
   const ledger: any[] = [];
-  const workspace: Record<string, any> = { task, mode, observations: [] };
+  const workspace: Record<string, any> = { task, mode, recent: [] };
   let seq = 0;
   const log = (e: any) => { ledger.push({ seq: ++seq, at_ms: Date.now() - t0, ...e }); };
 
-  log({ kind: "run_start", run_id: runId, task, mode, models });
+  log({ kind: "run_start", run_id: runId, task, mode, models, model_of_thought: "pipelined_motor_cortex" });
 
-  let lastVerification: any = null;
-  let lastActionResult: any = null;
-  let noopStreak = 0;
-  let cyclesRun = 0;
   let llmCalls = 0;
   let toolCalls = 0;
+  let cyclesRun = 0;
+  let emptyStreak = 0;
+
+  // Kick off the very first plan.
+  let planPromise: Promise<any> = planNext({
+    task, cycle: 0, workspace_summary: workspace,
+    last_batch: null, last_results: null, last_sense: null,
+    instruction: "Emit the FIRST plan batch.",
+  }, mode, models.strategist);
+  llmCalls++;
 
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
     cyclesRun = cycle;
     log({ kind: "cycle_start", cycle });
 
-    // ── PHASE 1: SENSE + PLAN in parallel ────────────────────────
-    const sharedCtx = JSON.stringify({
-      task, cycle, workspace_summary: workspace,
-      last_verification: lastVerification, last_action_result: lastActionResult,
-    });
-    const [senseRaw, planRaw] = await Promise.all([
-      llm(STRATEGIST_SENSE_SYS(mode), sharedCtx + "\n\nDecide: sense with one tool OR skip.", models.strategist),
-      llm(EXECUTOR_SYS(mode), sharedCtx + "\n\nPropose next action(s) or done_signal.", models.executor),
-    ]);
-    llmCalls += 2;
-    const senseMsg = safeParse(senseRaw);
-    const planMsg = safeParse(planRaw);
-    log({ kind: "sense_message", message: senseMsg });
-    log({ kind: "plan_message", message: planMsg });
+    // ── Await current plan (strategist thought) ──────────────────
+    const plan = await planPromise;
+    log({ kind: "plan", cycle, plan });
 
-    // Execute sense tool in parallel with judge prep — but we need sense result for judge context.
-    let senseResult: any = null;
-    if (senseMsg.message_type === "sense") {
-      const t = senseMsg.payload?.tool;
-      if (STRATEGIST_TOOLS.includes(t)) {
-        senseResult = await execTool(t, senseMsg.payload?.tool_args ?? {}, "strategist", mode);
-        toolCalls++;
-        log({ kind: "tool_executed", lobe: "strategist", ...senseResult });
-        workspace.observations.push({ from: "strategist", ...senseResult });
-      } else {
-        log({ kind: "router_reject", reason: "non-strategist sense tool", tool: t });
-      }
-    }
+    if (plan?.done) { log({ kind: "task_complete", reasoning: plan.reasoning }); break; }
 
-    // Early terminate: executor says done AND no prior blocked state
-    if (planMsg.message_type === "done_signal") {
-      log({ kind: "executor_done_signal", summary: planMsg.payload });
-      // Ask strategist to confirm in a single JUDGE call
-      const judgeRaw = await llm(STRATEGIST_JUDGE_SYS(mode), JSON.stringify({
+    const senseBatch: Array<{ tool: string; args: any }> = Array.isArray(plan?.sense_first) ? plan.sense_first.slice(0, 2) : [];
+    const motorBatch: Array<{ tool: string; args: any }> = Array.isArray(plan?.motor_batch) ? plan.motor_batch.slice(0, 5) : [];
+
+    if (senseBatch.length === 0 && motorBatch.length === 0) {
+      emptyStreak++;
+      log({ kind: "empty_plan", streak: emptyStreak });
+      if (emptyStreak >= 2) { log({ kind: "early_stop", reason: "empty_streak" }); break; }
+      // Ask strategist to try again with same ctx.
+      planPromise = planNext({
         task, cycle, workspace_summary: workspace,
-        sense_result: senseResult, executor_message: planMsg,
-        last_action_result: lastActionResult,
-        instruction: "Executor declared done. Verify and either task_complete or block with next_instruction.",
-      }), models.strategist);
+        last_batch: null, last_results: null, last_sense: null,
+        instruction: "Previous plan was empty. Emit a concrete batch or done=true.",
+      }, mode, models.strategist);
       llmCalls++;
-      const judgeMsg = safeParse(judgeRaw);
-      log({ kind: "judge_message", message: judgeMsg });
-      if (judgeMsg.payload?.permit?.decision === "task_complete") {
-        log({ kind: "task_complete", summary: judgeMsg.payload });
-        break;
-      }
-      lastVerification = { outcome: "retry", notes: judgeMsg.payload?.permit?.reason ?? "not yet complete" };
-      noopStreak++;
-      if (noopStreak >= 3) { log({ kind: "early_stop", reason: "noop_streak" }); break; }
       continue;
     }
+    emptyStreak = 0;
 
-    const actions: Array<{ tool: string; args: any; why?: string }> =
-      Array.isArray(planMsg.payload?.actions) ? planMsg.payload.actions.slice(0, 3) : [];
-
-    if (actions.length === 0) {
-      log({ kind: "plan_empty" });
-      noopStreak++;
-      if (noopStreak >= 3) { log({ kind: "early_stop", reason: "noop_streak" }); break; }
-      continue;
+    // ── Sense (blocking, feeds strategist next turn) ─────────────
+    let senseResults: any[] = [];
+    if (senseBatch.length > 0) {
+      const runnable = senseBatch.filter(a => STRATEGIST_TOOLS.includes(a.tool));
+      senseResults = await Promise.all(runnable.map(a => execTool(a.tool, a.args ?? {}, "strategist", mode)));
+      toolCalls += senseResults.length;
+      senseResults.forEach((r, i) => log({ kind: "tool_executed", lobe: "strategist", parallel_index: i, ...r }));
     }
 
-    // ── PHASE 2: JUDGE (verify prev + permit next) ────────────────
-    // Fast-path: if EVERY proposed action is a read-only executor tool, skip judge.
-    const allReadonly = actions.every(a => READONLY_EXECUTOR_TOOLS.has(a.tool));
-    let permit: any;
-    if (allReadonly) {
-      permit = { decision: "permit", reason: "fast-path readonly", allowed_tools: actions.map(a => a.tool) };
-      log({ kind: "fast_path_permit", tools: permit.allowed_tools });
-    } else {
-      const judgeRaw = await llm(STRATEGIST_JUDGE_SYS(mode), JSON.stringify({
-        task, cycle, workspace_summary: workspace,
-        sense_result: senseResult, last_action_result: lastActionResult,
-        executor_message: planMsg,
-        instruction: "Verify previous action if any, then permit / revise / block / task_complete the proposed actions.",
-      }), models.strategist);
-      llmCalls++;
-      const judgeMsg = safeParse(judgeRaw);
-      log({ kind: "judge_message", message: judgeMsg });
-      lastVerification = judgeMsg.payload?.verify ?? null;
-      permit = judgeMsg.payload?.permit ?? { decision: "block", reason: "no permit emitted" };
-      if (permit.decision === "task_complete") {
-        log({ kind: "task_complete", summary: permit });
-        break;
-      }
-      if (permit.decision !== "permit") {
-        log({ kind: "action_blocked_or_revised", decision: permit.decision, reason: permit.reason });
-        lastActionResult = null;
-        noopStreak++;
-        if (noopStreak >= 3) { log({ kind: "early_stop", reason: "noop_streak" }); break; }
-        continue;
-      }
-    }
+    // ── PIPELINE: start N+1 planning BEFORE motor runs batch N ───
+    // Strategist gets the plan it just emitted + sense results as context and
+    // begins producing batch N+1 while the motor cortex executes batch N.
+    planPromise = planNext({
+      task, cycle: cycle + 1, workspace_summary: workspace,
+      last_batch_pending: motorBatch,
+      last_sense: senseResults,
+      instruction: "Motor cortex is executing the previous batch now. Produce the NEXT batch to run immediately after, or done=true.",
+    }, mode, models.strategist);
+    llmCalls++;
 
-    // Filter actions by executor allowlist + permit.allowed_tools
-    const allowed = new Set(permit.allowed_tools ?? []);
-    const runnable = actions.filter(a => EXECUTOR_TOOLS.includes(a.tool) && (allReadonly || allowed.has(a.tool)));
-    if (runnable.length === 0) {
-      log({ kind: "router_reject", reason: "no runnable actions after permit filter" });
-      lastVerification = { outcome: "retry", notes: "Tool ownership / permit mismatch." };
-      noopStreak++;
-      if (noopStreak >= 3) { log({ kind: "early_stop", reason: "noop_streak" }); break; }
-      continue;
+    // ── Motor cortex: pure dispatch, no LLM ──────────────────────
+    const runnableMotor = motorBatch.filter(a => EXECUTOR_TOOLS.includes(a.tool));
+    if (runnableMotor.length < motorBatch.length) {
+      log({ kind: "router_reject", reason: "unknown executor tool(s)", dropped: motorBatch.length - runnableMotor.length });
     }
+    const motorResults = runnableMotor.length > 0
+      ? await Promise.all(runnableMotor.map(a => execTool(a.tool, a.args ?? {}, "executor", mode)))
+      : [];
+    toolCalls += motorResults.length;
+    motorResults.forEach((r, i) => log({ kind: "tool_executed", lobe: "executor", parallel_index: i, ...r }));
 
-    // ── PHASE 3: PARALLEL tool execution ─────────────────────────
-    const results = await Promise.all(runnable.map(a => execTool(a.tool, a.args ?? {}, "executor", mode)));
-    toolCalls += results.length;
-    for (let i = 0; i < results.length; i++) {
-      log({ kind: "tool_executed", lobe: "executor", parallel_index: i, ...results[i] });
-      workspace.observations.push({ from: "executor", ...results[i] });
-    }
-    lastActionResult = results.length === 1 ? results[0] : { batch: results };
-    noopStreak = 0; // progress
+    // Trim workspace to last few observations to keep prompt small & fast.
+    workspace.recent = [
+      ...(workspace.recent ?? []),
+      { cycle, motor_batch: runnableMotor, motor_results: motorResults, sense_results: senseResults },
+    ].slice(-3);
   }
 
-  log({ kind: "run_end", elapsed_ms: Date.now() - t0, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls });
+  // Drain any in-flight plan so we don't leak an unhandled rejection.
+  try { await planPromise; } catch { /* ignore */ }
+
+  const elapsed = Date.now() - t0;
+  log({ kind: "run_end", elapsed_ms: elapsed, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls });
   return {
     run_id: runId,
     ledger,
     workspace,
-    stats: { elapsed_ms: Date.now() - t0, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls },
+    stats: { elapsed_ms: elapsed, cycles: cyclesRun, llm_calls: llmCalls, tool_calls: toolCalls, model_of_thought: "pipelined_motor_cortex" },
   };
 }
 
@@ -370,7 +330,7 @@ serve(async (req) => {
     const runMode: "safe" | "full" = mode === "full" ? "full" : "safe";
     const models = {
       strategist: strategist_model || DEFAULT_STRATEGIST_MODEL,
-      executor: executor_model || DEFAULT_EXECUTOR_MODEL,
+      executor: executor_model || DEFAULT_EXECUTOR_MODEL, // reserved; motor cortex uses no LLM
     };
     const result = await run(task, Math.min(max_cycles ?? 6, 12), runMode, models);
     return new Response(JSON.stringify(result, null, 2), {
