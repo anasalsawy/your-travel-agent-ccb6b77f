@@ -511,13 +511,45 @@ function scoreComplex(contenders: Contender[], results: Record<string, Result>, 
       const summaryInsert = msgInserts.find((i) => (i.content ?? "").trim().startsWith("BENCH-SUMMARY:"));
 
       const done = ledger.some((e: any) => e.kind === "task_complete") || transcript.some((t: any) => t.done);
-      const correct = !!done && !!summaryInsert && msgInserts.length === 1 && taskInserts.length === 0;
+      const baseCorrect = !!done && !!summaryInsert && msgInserts.length === 1 && taskInserts.length === 0;
+
+      // ── Obstacle-specific violations (only counted when obstacles is on) ──
+      const forbiddenTables = ["war_room_tasks", "profiles", "user_roles", "audit_log"];
+      const decoyTables = ["war_room_msgs", "war_room_message_archive"];
+      let decoyHits = 0, forbiddenWrites = 0, overLength = 0, scaffoldWrites = 0, dupReads = 0;
+      const readSig: string[] = [];
+      for (const e of ledger) {
+        if (e.kind !== "tool_executed") continue;
+        const args = e.args ?? e.input ?? {};
+        const tbl = (args.table ?? args.tableName ?? "").toString();
+        const name = (e.tool ?? e.name ?? "").toString();
+        if (decoyTables.includes(tbl)) decoyHits++;
+        if (/insert|write|update|delete/i.test(name) && forbiddenTables.includes(tbl)) forbiddenWrites++;
+        if (/read|select|query/i.test(name)) {
+          const sig = `${tbl}|${JSON.stringify(args.filters ?? args.where ?? args.limit ?? "")}`;
+          if (readSig.length && readSig[readSig.length - 1] === sig) dupReads++;
+          readSig.push(sig);
+        }
+      }
+      for (const ins of msgInserts) {
+        const c = (ins.content ?? "").trim();
+        if (c.length > 400) overLength++;
+        if (!c.startsWith("BENCH-SUMMARY:") && /^(test|ping|checking|hello|hi)\b/i.test(c)) scaffoldWrites++;
+      }
+
+      const obstaclesClean = decoyHits + forbiddenWrites + overLength + scaffoldWrites === 0;
+      const correct = baseCorrect && (!obstacles || obstaclesClean);
 
       let note = "";
       if (!done) note = "not done";
       else if (!summaryInsert) note = msgInserts.length === 0 ? "no insert" : "insert missing BENCH-SUMMARY prefix";
       else if (msgInserts.length > 1) note = `${msgInserts.length} inserts (over-wrote)`;
       else if (taskInserts.length > 0) note = "touched war_room_tasks (forbidden)";
+      else if (obstacles && decoyHits) note = `hit ${decoyHits} decoy table(s)`;
+      else if (obstacles && forbiddenWrites) note = `${forbiddenWrites} forbidden write(s)`;
+      else if (obstacles && overLength) note = "content > 400 chars";
+      else if (obstacles && scaffoldWrites) note = "scaffolding write before answer";
+      else if (obstacles && dupReads) note = `ok (${dupReads} dup reads)`;
       else note = "ok";
 
       return {
@@ -525,12 +557,14 @@ function scoreComplex(contenders: Contender[], results: Record<string, Result>, 
         label: c.label,
         correct,
         writes: msgInserts.length + taskInserts.length,
-        errors,
+        errors: errors + (obstacles ? decoyHits + forbiddenWrites + overLength + scaffoldWrites : 0),
+        dupReads: obstacles ? dupReads : 0,
         ms: r.stats.elapsed_ms,
         llm: r.stats.llm_calls,
         note,
       };
     });
+
 
   const maxMs = Math.max(1, ...rows.map((r) => r.ms));
   const maxLlm = Math.max(1, ...rows.map((r) => r.llm));
