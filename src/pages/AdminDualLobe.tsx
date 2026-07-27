@@ -137,8 +137,9 @@ export default function AdminDualLobe() {
     setComplexLoading(true);
     setComplex({});
     try {
+      const taskWithBlockers = obstacles ? `${OBSTACLES}\n\n${COMPLEX_TASK}` : COMPLEX_TASK;
       const settled = await Promise.allSettled(
-        contenders.map((c) => supabase.functions.invoke(c.fn, { body: { task: COMPLEX_TASK, mode: "full", ...c.body } })),
+        contenders.map((c) => supabase.functions.invoke(c.fn, { body: { task: taskWithBlockers, mode: "full", ...c.body } })),
       );
       const next: Record<string, Result> = {};
       settled.forEach((s, i) => {
@@ -151,6 +152,7 @@ export default function AdminDualLobe() {
       setComplexLoading(false);
     }
   };
+
 
   const scored = scoreContenders(contenders, results);
   const dualKeys = new Set(["dialogue", "motor", "alternating", "contralateral", "reflex", "asym_sh", "asym_mh", "bandwidth", "brain"]);
