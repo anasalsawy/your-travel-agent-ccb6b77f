@@ -245,3 +245,109 @@
   background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(172 66% 40%) 100%);
   color: hsl(var(--background));
 }
+
+/* ═════════════════════════════════════════════════════════════════
+   NEURAL NOIR — scoped admin theme
+   Deep charcoal · twin-hemisphere · ember accent · editorial serif
+   Wrap any admin surface in `<div className="neural-noir">…</div>`.
+   ═════════════════════════════════════════════════════════════════ */
+.neural-noir {
+  --nn-void:      #0a0a0f;
+  --nn-graphite:  #12121a;
+  --nn-slate:     #1a1a24;
+  --nn-fog:       #2d2d3a;
+  --nn-mist:      #4a4a5c;
+  --nn-bone:      #e8e6df;
+  --nn-paper:     #f5f3ee;
+  --nn-ember:     #e85d3a;
+  --nn-ember-dim: #a0442a;
+  --nn-sensory:   #6ba3c8;   /* cool cyan hemisphere */
+  --nn-motor:     #e85d3a;   /* warm ember hemisphere */
+
+  background: var(--nn-void);
+  color: var(--nn-bone);
+  font-family: 'Work Sans', ui-sans-serif, system-ui, sans-serif;
+  min-height: 100vh;
+}
+.neural-noir .nn-serif { font-family: 'Instrument Serif', ui-serif, Georgia, serif; letter-spacing: -0.01em; }
+.neural-noir .nn-mono  { font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', monospace; }
+.neural-noir .nn-eyebrow {
+  font-family: 'Work Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--nn-mist);
+}
+.neural-noir .nn-hair { border-color: rgba(232, 230, 223, 0.08); }
+.neural-noir .nn-card {
+  background: var(--nn-graphite);
+  border: 1px solid rgba(232, 230, 223, 0.06);
+  border-radius: 2px;
+}
+.neural-noir .nn-card-raised {
+  background: linear-gradient(180deg, var(--nn-slate) 0%, var(--nn-graphite) 100%);
+  border: 1px solid rgba(232, 230, 223, 0.08);
+  border-radius: 2px;
+  box-shadow: 0 1px 0 rgba(232, 230, 223, 0.04) inset, 0 20px 60px -30px rgba(0,0,0,0.8);
+}
+.neural-noir .nn-ember { color: var(--nn-ember); }
+.neural-noir .nn-ember-glow {
+  color: var(--nn-ember);
+  text-shadow: 0 0 20px rgba(232, 93, 58, 0.35);
+}
+.neural-noir .nn-grid-bg {
+  background-image:
+    linear-gradient(rgba(232,230,223,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232,230,223,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+.neural-noir .nn-dot-bg {
+  background-image: radial-gradient(rgba(232,230,223,0.08) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+/* twin-hemisphere pill */
+.neural-noir .nn-hemi {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid rgba(232, 230, 223, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.neural-noir .nn-hemi > span { padding: 6px 14px; font-weight: 500; }
+.neural-noir .nn-hemi > .l { background: rgba(107, 163, 200, 0.12); color: var(--nn-sensory); }
+.neural-noir .nn-hemi > .r { background: rgba(232, 93, 58, 0.14); color: var(--nn-ember); }
+
+.neural-noir .nn-btn {
+  font-family: 'Work Sans', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding: 10px 20px;
+  border-radius: 2px;
+  border: 1px solid var(--nn-ember);
+  background: transparent;
+  color: var(--nn-ember);
+  transition: all 180ms ease;
+  cursor: pointer;
+}
+.neural-noir .nn-btn:hover { background: var(--nn-ember); color: var(--nn-void); }
+.neural-noir .nn-btn-ghost {
+  border-color: rgba(232, 230, 223, 0.18);
+  color: var(--nn-bone);
+}
+.neural-noir .nn-btn-ghost:hover { border-color: var(--nn-bone); background: transparent; }
+
+.neural-noir .nn-tick {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: var(--nn-ember);
+  box-shadow: 0 0 12px rgba(232, 93, 58, 0.6);
+}
+
