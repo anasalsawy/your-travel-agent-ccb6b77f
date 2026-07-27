@@ -94,6 +94,8 @@ export default function Flights() {
   const [contactPhone, setContactPhone] = useState("");
   const [paxForms, setPaxForms] = useState<any[]>([]);
   const [bookingError, setBookingError] = useState<BookingUiError | null>(null);
+  const [paymentMode, setPaymentMode] = useState<"card" | "stripe">("card");
+  const [passengersReady, setPassengersReady] = useState(false);
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
