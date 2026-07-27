@@ -296,6 +296,35 @@ export default function AdminDualLobe() {
     }
   };
 
+  const runOneScaleTest = async (test: ScaleTest) => {
+    const settled = await Promise.allSettled(
+      contenders.map((c) => supabase.functions.invoke(c.fn, { body: { task: test.prompt, mode: "full", ...c.body } })),
+    );
+    const bucket: Record<string, Result> = {};
+    settled.forEach((s, i) => {
+      const c = contenders[i];
+      if (s.status === "fulfilled" && !s.value.error) bucket[c.key] = s.value.data;
+      else bucket[c.key] = { run_id: "error", stats: { elapsed_ms: 0, llm_calls: 0, tool_calls: 0, model_of_thought: (s as any)?.reason?.message || (s as any)?.value?.error?.message || "failed" } };
+    });
+    setScaling((prev) => ({ ...prev, [test.id]: bucket }));
+  };
+
+  const runScalingAll = async () => {
+    setScalingLoading("all");
+    setScaling({});
+    setScalingProgress({ done: 0, total: SCALE_TESTS.length });
+    try {
+      for (const t of SCALE_TESTS) {
+        setScalingLoading(t.id);
+        await runOneScaleTest(t);
+        setScalingProgress((p) => ({ ...p, done: p.done + 1 }));
+      }
+    } finally {
+      setScalingLoading(null);
+    }
+  };
+
+
 
   const scored = scoreContenders(contenders, results);
   const dualKeys = new Set(["dialogue", "motor", "alternating", "contralateral", "reflex", "asym_sh", "asym_mh", "bandwidth", "brain"]);
