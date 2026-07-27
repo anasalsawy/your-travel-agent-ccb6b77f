@@ -21,10 +21,14 @@ const ALLOWLIST_TABLES = new Set([
   "agent_room_messages", "agent_rooms", "notification_log", "documents",
 ]);
 
-const ALL_TOOLS = [
-  "db_read", "list_tables", "list_edge_functions", "http_get", "tool_registry",
-  "db_write", "http_post", "invoke_edge_function", "send_notification",
-];
+const SENSORY_TOOLS = ["db_read", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
+const MOTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_notification", "http_get"];
+const ALL_TOOLS = Array.from(new Set([...SENSORY_TOOLS, ...MOTOR_TOOLS]));
+function toolsFor(scope: string) {
+  if (scope === "sensory") return SENSORY_TOOLS;
+  if (scope === "motor") return MOTOR_TOOLS;
+  return ALL_TOOLS;
+}
 
 async function llm(system: string, messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
   const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
