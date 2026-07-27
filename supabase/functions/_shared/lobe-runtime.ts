@@ -31,12 +31,14 @@ export async function llm(
   model: string,
   opts?: { temperature?: number; max_tokens?: number },
 ): Promise<string> {
+  const supportsTemp = !/^openai\//i.test(model);
   const body: any = {
     model,
     messages: [{ role: "system", content: system }, ...messages],
     response_format: { type: "json_object" },
-    temperature: opts?.temperature ?? 0.4,
   };
+  if (supportsTemp) body.temperature = opts?.temperature ?? 0.4;
+
   if (opts?.max_tokens) body.max_tokens = opts.max_tokens;
   const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
