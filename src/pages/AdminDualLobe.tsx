@@ -4,13 +4,25 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Brain, Zap, PlayCircle, MessageCircle, Cpu, Bot, Trophy, Network } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Loader2, Brain, Zap, PlayCircle, MessageCircle, Cpu, Bot, Trophy, Network, Beaker } from "lucide-react";
 
 const EXAMPLES = [
   "Look up how many rows are in war_room_messages and send a summary notification.",
   "Fetch https://api.github.com/zen and store the quote in documents.",
   "Check what edge functions exist, then propose one to add next.",
 ];
+
+const COMPLEX_TASK = [
+  "COMPLEX BENCH TASK — multi-step research + write.",
+  "1) Read the 10 most recent rows from war_room_messages (ordered by created_at desc).",
+  "2) Read the 20 most recent rows from war_room_tasks.",
+  "3) Identify the single dominant topic across those messages.",
+  "4) Count how many open (status != 'done') tasks relate to that topic.",
+  "5) Insert exactly ONE row into war_room_messages with role='assistant' and content that STARTS with the literal token 'BENCH-SUMMARY:' followed by: the topic, the related-open-task count, and one proposed next action — all in a single line.",
+  "Signal done only AFTER the insert succeeds. Do not insert more than one row. Do not modify war_room_tasks.",
+].join("\n");
+
 
 type Stats = { elapsed_ms: number; turns?: number; cycles?: number; llm_calls: number; tool_calls: number; model_of_thought: string };
 type Turn = { speaker: string; say: string; tool?: any; tool_result?: any; done?: boolean };
