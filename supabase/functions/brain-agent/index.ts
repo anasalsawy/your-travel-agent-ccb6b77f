@@ -117,7 +117,7 @@ function hippoRecall(brain: Brain, k = 5): Episode[] {
 // ─────────────────────────────────────────────────────────────────
 type Candidate = { tool: string; args: any; why: string; expected: string; utility: number; risk: number; cost: number };
 
-async function pfc(brain: Brain, mode: string, model: string): Promise<{ candidates: Candidate[]; goal_progress: string; done: boolean; note: string }> {
+async function pfc(brain: Brain, mode: string, model: string, consult?: string): Promise<{ candidates: Candidate[]; goal_progress: string; done: boolean; note: string; request_consult: boolean }> {
   const memory = hippoRecall(brain, 5)
     .map((e) => "- [" + new Date(e.at).toISOString().slice(11, 19) + "] " + e.kind + ": " + e.summary)
     .join("\n") || "(none)";
@@ -146,6 +146,7 @@ Return ONE JSON object:
   "goal_progress": "one short sentence of where the task stands",
   "done": false,
   "note": "one-line rationale addressed to basal ganglia",
+  "request_consult": false,   // set true ONLY when you are stuck, facing an ambiguous route, a real blocker, or a high-risk decision that would benefit from a second lobe's opinion. Do NOT set true for routine progress.
   "candidates": [
     { "tool": "<toolname>", "args": {...}, "why": "why this helps", "expected": "what you predict will happen", "utility": 0..1, "risk": 0..1, "cost": 0..1 }
   ]
@@ -163,7 +164,8 @@ Recent episodic memory (hippocampus top-k):
 ${memory}
 
 Cerebellum feedback (recent prediction errors):
-${deltas}`;
+${deltas}
+${consult ? "\nCONSULT from motor-lobe (advisory, use if useful):\n" + consult : ""}`;
 
   const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -194,7 +196,42 @@ ${deltas}`;
     goal_progress: String(parsed.goal_progress || brain.goal_progress).slice(0, 200),
     done: !!parsed.done,
     note: String(parsed.note || "").slice(0, 200),
+    request_consult: !!parsed.request_consult,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// MOTOR-LOBE CONSULT — second LLM, only invoked when gated.
+// Gate opens on: PFC asks, ≥2 recent prediction errors, same tool failed twice,
+// or 2 cycles of unchanged goal_progress. Otherwise this stays silent.
+// Keep the prompt tiny — this is an advisory, not a re-plan.
+// ─────────────────────────────────────────────────────────────────
+async function motorConsult(brain: Brain, lastCandidates: Candidate[], model: string): Promise<string> {
+  const sys = `You are the MOTOR LOBE offering a brief second opinion to the PFC.
+The PFC is stuck or facing a hard choice. Reply in ONE or TWO short sentences:
+- Point out the concrete tool + args that would break the deadlock, OR
+- Name the assumption that seems wrong, OR
+- Say "no better option, proceed" if PFC's plan looks fine.
+No preamble, no JSON, plain text under 240 chars.`;
+  const cands = lastCandidates.map((c) => "- " + c.tool + " (u=" + c.utility + ", r=" + c.risk + "): " + c.why).join("\n") || "(none)";
+  const user = `GOAL: ${brain.task}
+Progress: ${brain.goal_progress}
+Recent prediction errors: ${brain.cerebellum_deltas.slice(-3).join(" | ") || "(none)"}
+PFC's current candidates:
+${cands}`;
+  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+      temperature: 0.4,
+      max_tokens: 120,
+    }),
+  });
+  if (!r.ok) return "(consult unavailable: " + r.status + ")";
+  const j = await r.json();
+  return String(j.choices?.[0]?.message?.content ?? "").trim().slice(0, 240);
 }
 function clamp01(x: any, d: number) { const n = Number(x); return isFinite(n) ? Math.max(0, Math.min(1, n)) : d; }
 
@@ -325,16 +362,21 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
   hippoStore(brain, { at: Date.now(), kind: "task_received", summary: task, salience: 1 });
   log("thalamus", { gated: seed });
 
-  let llmCalls = 0, toolCalls = 0, cycles = 0, reflexes = 0, done = false;
+  let llmCalls = 0, toolCalls = 0, cycles = 0, reflexes = 0, consults = 0, done = false;
+  let pendingConsult: string | undefined;         // advice from motor-lobe, delivered to NEXT pfc call
+  let prevProgress = "";                          // to detect stalls
+  let stallCount = 0;
+  const toolFailCount: Record<string, number> = {};
 
   while (cycles < maxCycles && !done) {
     cycles++;
-    log("tick", { cycle: cycles, workspace: brain.workspace.slice(0, 120) });
+    log("tick", { cycle: cycles, workspace: brain.workspace.slice(0, 120), consult_carried: !!pendingConsult });
 
-    // 1. PFC plans
-    const plan = await pfc(brain, mode, model);
+    // 1. PFC plans (with optional consult from previous cycle)
+    const plan = await pfc(brain, mode, model, pendingConsult);
     llmCalls++;
-    log("pfc", { goal_progress: plan.goal_progress, note: plan.note, candidates: plan.candidates.map((c) => ({ tool: c.tool, why: c.why, u: c.utility, r: c.risk })) });
+    pendingConsult = undefined;
+    log("pfc", { goal_progress: plan.goal_progress, note: plan.note, request_consult: plan.request_consult, candidates: plan.candidates.map((c) => ({ tool: c.tool, why: c.why, u: c.utility, r: c.risk })) });
     brain.goal_progress = plan.goal_progress;
     if (plan.done) { log("pfc", { verdict: "task_complete" }); done = true; break; }
     if (!plan.candidates.length) { log("pfc", { verdict: "no_candidates_stopping" }); break; }
@@ -356,6 +398,7 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
     const outcome = await motorCortex(action, mode);
     toolCalls++;
     log("motor_cortex", { tool: action.tool, ok: outcome.ok, ms: outcome.ms, error: outcome.error });
+    if (!outcome.ok) toolFailCount[action.tool] = (toolFailCount[action.tool] || 0) + 1;
 
     // 6. Perception: outcome → thalamus → amygdala → attention → hippocampus
     const raw = outcome.ok ? JSON.stringify(outcome.result).slice(0, 400) : ("ERROR: " + outcome.error);
@@ -380,6 +423,32 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
 
     // 8. Corpus callosum: compress the last event into the shared workspace bus
     brain.workspace = ("↳ " + action.tool + (outcome.ok ? " ok " : " ERR ") + (delta ? "· Δ" : "")).slice(0, 200);
+
+    // 9. Stall detector — is goal_progress unchanged?
+    if (brain.goal_progress === prevProgress) stallCount++; else stallCount = 0;
+    prevProgress = brain.goal_progress;
+
+    // 10. DIALOGUE GATE — only wake the motor-lobe when there's a real reason.
+    const recentErrCount = brain.cerebellum_deltas.length;
+    const sameToolTwice = toolFailCount[action.tool] >= 2;
+    const reasons: string[] = [];
+    if (plan.request_consult) reasons.push("pfc_requested");
+    if (recentErrCount >= 2)  reasons.push("prediction_errors:" + recentErrCount);
+    if (sameToolTwice)        reasons.push("tool_failed_twice:" + action.tool);
+    if (stallCount >= 2)      reasons.push("stalled:" + stallCount);
+
+    if (reasons.length > 0) {
+      log("dialogue_gate", { open: true, reasons });
+      const advice = await motorConsult(brain, plan.candidates, model);
+      llmCalls++; consults++;
+      log("motor_consult", { advice });
+      pendingConsult = advice;                     // handed to next pfc turn
+      // reset stall so we don't consult every cycle in a row
+      stallCount = 0;
+      brain.cerebellum_deltas = [];
+    } else {
+      log("dialogue_gate", { open: false });
+    }
   }
 
   // "Sleep" — consolidate: keep only top-salience episodes
@@ -388,7 +457,7 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
   log("sleep", { consolidated_count: consolidated.length });
 
   const elapsed = Date.now() - t0;
-  log("run_end", { elapsed_ms: elapsed, cycles, llm_calls: llmCalls, tool_calls: toolCalls, reflexes });
+  log("run_end", { elapsed_ms: elapsed, cycles, llm_calls: llmCalls, tool_calls: toolCalls, reflexes, consults });
 
   return {
     run_id: runId,
@@ -406,6 +475,7 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
       llm_calls: llmCalls,
       tool_calls: toolCalls,
       reflexes,
+      consults,
       model_of_thought: "brain:7-region",
     },
   };
