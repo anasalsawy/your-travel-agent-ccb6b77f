@@ -38,7 +38,15 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.duffel-book]
     verify_jwt = false
+  [functions.duffel-book-customer-card]
+    verify_jwt = false
+  [functions.duffel-3ds-session]
+    verify_jwt = false
+  [functions.duffel-client-key]
+    verify_jwt = false
   [functions.duffel-probe]
+    verify_jwt = false
+  [functions.dual-lobe-agent]
     verify_jwt = false
   [functions.claude-agent]
     verify_jwt = false
