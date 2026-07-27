@@ -8,9 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { DuffelPayments as DuffelPaymentsRaw } from "@duffel/components";
-
-const DuffelPayments = DuffelPaymentsRaw as unknown as React.ComponentType<any>;
+import { DuffelCardForm, useDuffelCardFormActions } from "@duffel/components";
 
 const SUPABASE_URL = "https://wpwdxtyufpewdyffxlgo.supabase.co";
 
