@@ -194,11 +194,24 @@ export default function AdminDualLobe() {
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
-              <pre className="text-[11px] whitespace-pre-wrap bg-background/60 border rounded p-2 max-h-48 overflow-auto">{COMPLEX_TASK}</pre>
-              <Button onClick={runComplex} disabled={complexLoading}>
-                {complexLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-                {complexLoading ? `Running complex suite on ${contenders.length}…` : `Run complex suite on all ${contenders.length}`}
-              </Button>
+              <pre className="text-[11px] whitespace-pre-wrap bg-background/60 border rounded p-2 max-h-48 overflow-auto">{obstacles ? `${OBSTACLES}\n\n${COMPLEX_TASK}` : COMPLEX_TASK}</pre>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={runComplex} disabled={complexLoading}>
+                  {complexLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                  {complexLoading ? `Running complex suite on ${contenders.length}…` : `Run complex suite on all ${contenders.length}`}
+                </Button>
+                <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={obstacles}
+                    onChange={(e) => setObstacles(e.target.checked)}
+                    className="h-4 w-4 accent-fuchsia-600"
+                  />
+                  <span className="font-medium">Obstacles &amp; blockers</span>
+                  <span className="text-muted-foreground">— decoy tables, forbidden writes, length cap, dup-read penalty, deadline</span>
+                </label>
+              </div>
+
             </CardContent>
           </Card>
 
