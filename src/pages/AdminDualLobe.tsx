@@ -69,6 +69,8 @@ export default function AdminDualLobe() {
   const [iso, setIso] = useState<Record<string, Result>>({});
   const [complex, setComplex] = useState<Record<string, Result>>({});
   const [complexLoading, setComplexLoading] = useState(false);
+  const [obstacles, setObstacles] = useState(false);
+
 
 
   const contenders: Contender[] = [
