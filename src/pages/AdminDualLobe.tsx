@@ -38,6 +38,145 @@ const OBSTACLES = [
   "B9 · DEADLINE: Total wall time budget is 60 seconds. Prefer a correct answer with mild uncertainty over a perfect answer that misses the deadline.",
 ].join("\n");
 
+// ── Scaling Suite: 5 tests, each harder than the last ─────────────────────
+// Every test must be verifiable by scanning ledger/transcript for a distinct
+// SCALE-T{n}: prefix inserted into war_room_messages. Some tests add extra
+// verifiers (multi-write, ordering, forbidden-table checks).
+type ScaleTest = {
+  id: string;
+  label: string;
+  tier: 1 | 2 | 3 | 4 | 5;
+  prompt: string;
+  verify: (inserts: Array<{ table: string; content?: string; role?: string; title?: string; priority?: number }>) => { ok: boolean; note: string };
+};
+
+const SCALE_TESTS: ScaleTest[] = [
+  {
+    id: "T1",
+    tier: 1,
+    label: "T1 · Trivial — single read, single write",
+    prompt: [
+      "SCALING TEST T1 (trivial).",
+      "1) Read the total row count of war_room_messages (any query that yields the count).",
+      "2) Insert exactly ONE row into war_room_messages with role='assistant' whose content STARTS with the literal token 'SCALE-T1:' followed by the count and nothing else long.",
+      "Signal done only after the insert succeeds. No other writes.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const others = ins.filter((i) => i.table !== "war_room_messages");
+      const hit = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T1:"));
+      if (!hit) return { ok: false, note: msgs.length ? "missing SCALE-T1: prefix" : "no insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (others.length) return { ok: false, note: `wrote to ${others[0].table}` };
+      return { ok: true, note: "ok" };
+    },
+  },
+  {
+    id: "T2",
+    tier: 2,
+    label: "T2 · Base — 2 reads, reason, 1 write",
+    prompt: [
+      "SCALING TEST T2 (base complex).",
+      "1) Read the 10 most recent rows from war_room_messages.",
+      "2) Read the 20 most recent rows from war_room_tasks.",
+      "3) Identify the dominant topic in the messages.",
+      "4) Count open (status != 'done') tasks that relate to that topic.",
+      "5) Insert exactly ONE row into war_room_messages with role='assistant' whose content STARTS with 'SCALE-T2:' followed by topic + open-count + one next action on a single line ≤ 400 chars.",
+      "Do NOT modify war_room_tasks. Do NOT insert more than one row.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const hit = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T2:"));
+      if (!hit) return { ok: false, note: msgs.length ? "missing SCALE-T2: prefix" : "no insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (ins.some((i) => i.table === "war_room_tasks")) return { ok: false, note: "touched war_room_tasks" };
+      if ((hit.content ?? "").length > 400) return { ok: false, note: "content > 400 chars" };
+      return { ok: true, note: "ok" };
+    },
+  },
+  {
+    id: "T3",
+    tier: 3,
+    label: "T3 · Cross-source — 3 reads, correlate agents",
+    prompt: [
+      "SCALING TEST T3 (cross-source correlation).",
+      "1) Read the 15 most recent rows from war_room_messages.",
+      "2) Read the 15 most recent rows from war_room_tasks.",
+      "3) Read all rows from war_room_heartbeats.",
+      "4) Identify the single most ACTIVE agent (most heartbeats + most authored messages combined).",
+      "5) Count how many open tasks are assigned to that agent.",
+      "6) Insert exactly ONE row into war_room_messages with role='assistant' whose content STARTS with 'SCALE-T3:' followed by: agent name, open-task count for that agent, and one directive for them — single line ≤ 400 chars.",
+      "Do NOT modify war_room_tasks or war_room_heartbeats.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const hit = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T3:"));
+      if (!hit) return { ok: false, note: msgs.length ? "missing SCALE-T3: prefix" : "no insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (ins.some((i) => i.table === "war_room_tasks" || i.table === "war_room_heartbeats")) return { ok: false, note: "wrote to forbidden table" };
+      if ((hit.content ?? "").length > 400) return { ok: false, note: "content > 400 chars" };
+      return { ok: true, note: "ok" };
+    },
+  },
+  {
+    id: "T4",
+    tier: 4,
+    label: "T4 · Constrained — T3 plus adversarial blockers",
+    prompt: [
+      "SCALING TEST T4 (constrained cross-source).",
+      "Same 6 steps as T3 BUT with these hard constraints:",
+      "- Prefix is 'SCALE-T4:' (not T3).",
+      "- Decoy tables `war_room_msgs` and `war_room_message_archive` MAY appear in your schema scan. Reading either counts as failure.",
+      "- FORBIDDEN writes: war_room_tasks, war_room_heartbeats, profiles, user_roles.",
+      "- No scaffolding writes ('test', 'ping', 'checking') before the real answer.",
+      "- Content ≤ 300 chars.",
+      "- Reading the same table with the same LIMIT twice in a row counts against you.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const hit = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T4:"));
+      if (!hit) return { ok: false, note: msgs.length ? "missing SCALE-T4: prefix" : "no insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (ins.some((i) => ["war_room_tasks", "war_room_heartbeats", "profiles", "user_roles"].includes(i.table))) return { ok: false, note: "forbidden write" };
+      if ((hit.content ?? "").length > 300) return { ok: false, note: "content > 300 chars" };
+      const scaffold = msgs.find((m) => !((m.content ?? "").startsWith("SCALE-T4:")) && /^(test|ping|checking)\b/i.test((m.content ?? "").trim()));
+      if (scaffold) return { ok: false, note: "scaffolding write" };
+      return { ok: true, note: "ok" };
+    },
+  },
+  {
+    id: "T5",
+    tier: 5,
+    label: "T5 · Dependent writes — 4 reads, 2 ordered writes",
+    prompt: [
+      "SCALING TEST T5 (multi-write with ordering).",
+      "1) Read 10 recent war_room_messages, 10 recent war_room_tasks, all war_room_heartbeats, and count rows in agent_room_messages.",
+      "2) Identify the top-priority open task theme (look at title/description of open tasks).",
+      "3) Insert ONE row into war_room_tasks with title starting exactly 'SCALE-T5-TASK', priority=3, status='pending', assignee='bench', created_by='scaling-suite'.",
+      "4) THEN insert ONE row into war_room_messages with role='assistant' whose content STARTS with 'SCALE-T5:' followed by the theme and the new task's title — single line ≤ 400 chars.",
+      "Order matters: the war_room_tasks insert MUST happen before the war_room_messages insert. Exactly one of each. No other writes.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const tasks = ins.filter((i) => i.table === "war_room_tasks");
+      const others = ins.filter((i) => i.table !== "war_room_messages" && i.table !== "war_room_tasks");
+      const summary = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T5:"));
+      const task = tasks.find((t) => (t.title ?? "").startsWith("SCALE-T5-TASK"));
+      if (!task) return { ok: false, note: tasks.length ? "task missing SCALE-T5-TASK prefix" : "no task insert" };
+      if (!summary) return { ok: false, note: msgs.length ? "summary missing SCALE-T5: prefix" : "no summary insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (tasks.length > 1) return { ok: false, note: `${tasks.length} task inserts` };
+      if (others.length) return { ok: false, note: `wrote to ${others[0].table}` };
+      // ordering: task must appear before msg in the insert sequence
+      const taskIdx = ins.findIndex((i) => i.table === "war_room_tasks");
+      const msgIdx = ins.findIndex((i) => i.table === "war_room_messages" && (i.content ?? "").trim().startsWith("SCALE-T5:"));
+      if (taskIdx > msgIdx) return { ok: false, note: "wrong order (msg before task)" };
+      return { ok: true, note: "ok" };
+    },
+  },
+];
+
+
 
 
 type Stats = { elapsed_ms: number; turns?: number; cycles?: number; llm_calls: number; tool_calls: number; model_of_thought: string };
