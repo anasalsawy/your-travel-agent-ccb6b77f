@@ -146,6 +146,7 @@ Return ONE JSON object:
   "goal_progress": "one short sentence of where the task stands",
   "done": false,
   "note": "one-line rationale addressed to basal ganglia",
+  "request_consult": false,   // set true ONLY when you are stuck, facing an ambiguous route, a real blocker, or a high-risk decision that would benefit from a second lobe's opinion. Do NOT set true for routine progress.
   "candidates": [
     { "tool": "<toolname>", "args": {...}, "why": "why this helps", "expected": "what you predict will happen", "utility": 0..1, "risk": 0..1, "cost": 0..1 }
   ]
