@@ -155,6 +155,104 @@ export default function AdminDualLobe() {
         </p>
       </div>
 
+      <Tabs defaultValue="standard" className="w-full">
+        <TabsList>
+          <TabsTrigger value="standard"><PlayCircle className="w-3 h-3 mr-1" /> Standard bench</TabsTrigger>
+          <TabsTrigger value="complex"><Beaker className="w-3 h-3 mr-1" /> Complex Suite</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="complex" className="space-y-4 mt-4">
+          <Card className="border-fuchsia-500/30 bg-fuchsia-500/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Beaker className="w-4 h-4 text-fuchsia-600" />
+                Complex Suite — multi-step research + write
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Fixed task. Requires 2 reads → reason → 1 constrained write. Runs in <b>full</b> mode across all {contenders.length} architectures.
+                Composite score = 50·correctness + 25·speed + 25·llm-efficiency. Correctness requires a single insert into <code>war_room_messages</code> whose content starts with <code>BENCH-SUMMARY:</code>.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <pre className="text-[11px] whitespace-pre-wrap bg-background/60 border rounded p-2 max-h-48 overflow-auto">{COMPLEX_TASK}</pre>
+              <Button onClick={runComplex} disabled={complexLoading}>
+                {complexLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                {complexLoading ? `Running complex suite on ${contenders.length}…` : `Run complex suite on all ${contenders.length}`}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {complexScored.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Trophy className="w-4 h-4" /> Composite scoreboard
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-muted-foreground text-left">
+                      <tr>
+                        <th className="py-1 pr-2">#</th>
+                        <th className="py-1 pr-2">Architecture</th>
+                        <th className="py-1 pr-2">Composite</th>
+                        <th className="py-1 pr-2">Correct</th>
+                        <th className="py-1 pr-2">Speed</th>
+                        <th className="py-1 pr-2">Efficiency</th>
+                        <th className="py-1 pr-2">ms</th>
+                        <th className="py-1 pr-2">LLM</th>
+                        <th className="py-1 pr-2">Writes</th>
+                        <th className="py-1 pr-2">Errors</th>
+                        <th className="py-1 pr-2">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {complexScored.sort((a, b) => b.composite - a.composite).map((s, i) => (
+                        <tr key={s.key} className={i === 0 ? "font-semibold" : ""}>
+                          <td className="py-1 pr-2">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</td>
+                          <td className="py-1 pr-2">{s.label}</td>
+                          <td className="py-1 pr-2">{s.composite.toFixed(1)}</td>
+                          <td className="py-1 pr-2">{s.correct ? "✓" : "—"}</td>
+                          <td className="py-1 pr-2">{s.speedScore.toFixed(0)}</td>
+                          <td className="py-1 pr-2">{s.effScore.toFixed(0)}</td>
+                          <td className="py-1 pr-2">{s.ms}</td>
+                          <td className="py-1 pr-2">{s.llm}</td>
+                          <td className="py-1 pr-2">{s.writes}</td>
+                          <td className="py-1 pr-2">{s.errors}</td>
+                          <td className="py-1 pr-2 text-muted-foreground">{s.note}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  composite = 50·correct + 25·(1 − ms/maxMs) + 25·(1 − llm/maxLlm). Correct requires exactly 1 insert into war_room_messages with content starting <code>BENCH-SUMMARY:</code> and 0 writes to war_room_tasks.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {contenders.map((c) => (
+              <div key={c.key} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <c.icon className={`w-4 h-4 text-${c.color}-600`} />
+                  <h2 className="text-sm font-semibold">{c.label}</h2>
+                  {complex[c.key]?.stats && <StatsRow stats={complex[c.key]!.stats} />}
+                </div>
+                {!complex[c.key] && !complexLoading && <EmptyHint text="Waiting…" />}
+                {complexLoading && !complex[c.key] && <EmptyHint text="Running…" />}
+                {complex[c.key]?.transcript?.map((t, i) => <Bubble key={i} t={t} color={c.color} />)}
+                {!complex[c.key]?.transcript && complex[c.key]?.ledger?.map((e: any) => <LedgerRow key={e.seq} e={e} />)}
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="standard" className="space-y-6 mt-4">
+
+
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Task</CardTitle></CardHeader>
         <CardContent className="space-y-3">
