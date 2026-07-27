@@ -38,6 +38,145 @@ const OBSTACLES = [
   "B9 · DEADLINE: Total wall time budget is 60 seconds. Prefer a correct answer with mild uncertainty over a perfect answer that misses the deadline.",
 ].join("\n");
 
+// ── Scaling Suite: 5 tests, each harder than the last ─────────────────────
+// Every test must be verifiable by scanning ledger/transcript for a distinct
+// SCALE-T{n}: prefix inserted into war_room_messages. Some tests add extra
+// verifiers (multi-write, ordering, forbidden-table checks).
+type ScaleTest = {
+  id: string;
+  label: string;
+  tier: 1 | 2 | 3 | 4 | 5;
+  prompt: string;
+  verify: (inserts: Array<{ table: string; content?: string; role?: string; title?: string; priority?: number }>) => { ok: boolean; note: string };
+};
+
+const SCALE_TESTS: ScaleTest[] = [
+  {
+    id: "T1",
+    tier: 1,
+    label: "T1 · Trivial — single read, single write",
+    prompt: [
+      "SCALING TEST T1 (trivial).",
+      "1) Read the total row count of war_room_messages (any query that yields the count).",
+      "2) Insert exactly ONE row into war_room_messages with role='assistant' whose content STARTS with the literal token 'SCALE-T1:' followed by the count and nothing else long.",
+      "Signal done only after the insert succeeds. No other writes.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const others = ins.filter((i) => i.table !== "war_room_messages");
+      const hit = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T1:"));
+      if (!hit) return { ok: false, note: msgs.length ? "missing SCALE-T1: prefix" : "no insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (others.length) return { ok: false, note: `wrote to ${others[0].table}` };
+      return { ok: true, note: "ok" };
+    },
+  },
+  {
+    id: "T2",
+    tier: 2,
+    label: "T2 · Base — 2 reads, reason, 1 write",
+    prompt: [
+      "SCALING TEST T2 (base complex).",
+      "1) Read the 10 most recent rows from war_room_messages.",
+      "2) Read the 20 most recent rows from war_room_tasks.",
+      "3) Identify the dominant topic in the messages.",
+      "4) Count open (status != 'done') tasks that relate to that topic.",
+      "5) Insert exactly ONE row into war_room_messages with role='assistant' whose content STARTS with 'SCALE-T2:' followed by topic + open-count + one next action on a single line ≤ 400 chars.",
+      "Do NOT modify war_room_tasks. Do NOT insert more than one row.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const hit = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T2:"));
+      if (!hit) return { ok: false, note: msgs.length ? "missing SCALE-T2: prefix" : "no insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (ins.some((i) => i.table === "war_room_tasks")) return { ok: false, note: "touched war_room_tasks" };
+      if ((hit.content ?? "").length > 400) return { ok: false, note: "content > 400 chars" };
+      return { ok: true, note: "ok" };
+    },
+  },
+  {
+    id: "T3",
+    tier: 3,
+    label: "T3 · Cross-source — 3 reads, correlate agents",
+    prompt: [
+      "SCALING TEST T3 (cross-source correlation).",
+      "1) Read the 15 most recent rows from war_room_messages.",
+      "2) Read the 15 most recent rows from war_room_tasks.",
+      "3) Read all rows from war_room_heartbeats.",
+      "4) Identify the single most ACTIVE agent (most heartbeats + most authored messages combined).",
+      "5) Count how many open tasks are assigned to that agent.",
+      "6) Insert exactly ONE row into war_room_messages with role='assistant' whose content STARTS with 'SCALE-T3:' followed by: agent name, open-task count for that agent, and one directive for them — single line ≤ 400 chars.",
+      "Do NOT modify war_room_tasks or war_room_heartbeats.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const hit = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T3:"));
+      if (!hit) return { ok: false, note: msgs.length ? "missing SCALE-T3: prefix" : "no insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (ins.some((i) => i.table === "war_room_tasks" || i.table === "war_room_heartbeats")) return { ok: false, note: "wrote to forbidden table" };
+      if ((hit.content ?? "").length > 400) return { ok: false, note: "content > 400 chars" };
+      return { ok: true, note: "ok" };
+    },
+  },
+  {
+    id: "T4",
+    tier: 4,
+    label: "T4 · Constrained — T3 plus adversarial blockers",
+    prompt: [
+      "SCALING TEST T4 (constrained cross-source).",
+      "Same 6 steps as T3 BUT with these hard constraints:",
+      "- Prefix is 'SCALE-T4:' (not T3).",
+      "- Decoy tables `war_room_msgs` and `war_room_message_archive` MAY appear in your schema scan. Reading either counts as failure.",
+      "- FORBIDDEN writes: war_room_tasks, war_room_heartbeats, profiles, user_roles.",
+      "- No scaffolding writes ('test', 'ping', 'checking') before the real answer.",
+      "- Content ≤ 300 chars.",
+      "- Reading the same table with the same LIMIT twice in a row counts against you.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const hit = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T4:"));
+      if (!hit) return { ok: false, note: msgs.length ? "missing SCALE-T4: prefix" : "no insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (ins.some((i) => ["war_room_tasks", "war_room_heartbeats", "profiles", "user_roles"].includes(i.table))) return { ok: false, note: "forbidden write" };
+      if ((hit.content ?? "").length > 300) return { ok: false, note: "content > 300 chars" };
+      const scaffold = msgs.find((m) => !((m.content ?? "").startsWith("SCALE-T4:")) && /^(test|ping|checking)\b/i.test((m.content ?? "").trim()));
+      if (scaffold) return { ok: false, note: "scaffolding write" };
+      return { ok: true, note: "ok" };
+    },
+  },
+  {
+    id: "T5",
+    tier: 5,
+    label: "T5 · Dependent writes — 4 reads, 2 ordered writes",
+    prompt: [
+      "SCALING TEST T5 (multi-write with ordering).",
+      "1) Read 10 recent war_room_messages, 10 recent war_room_tasks, all war_room_heartbeats, and count rows in agent_room_messages.",
+      "2) Identify the top-priority open task theme (look at title/description of open tasks).",
+      "3) Insert ONE row into war_room_tasks with title starting exactly 'SCALE-T5-TASK', priority=3, status='pending', assignee='bench', created_by='scaling-suite'.",
+      "4) THEN insert ONE row into war_room_messages with role='assistant' whose content STARTS with 'SCALE-T5:' followed by the theme and the new task's title — single line ≤ 400 chars.",
+      "Order matters: the war_room_tasks insert MUST happen before the war_room_messages insert. Exactly one of each. No other writes.",
+    ].join("\n"),
+    verify: (ins) => {
+      const msgs = ins.filter((i) => i.table === "war_room_messages");
+      const tasks = ins.filter((i) => i.table === "war_room_tasks");
+      const others = ins.filter((i) => i.table !== "war_room_messages" && i.table !== "war_room_tasks");
+      const summary = msgs.find((m) => (m.content ?? "").trim().startsWith("SCALE-T5:"));
+      const task = tasks.find((t) => (t.title ?? "").startsWith("SCALE-T5-TASK"));
+      if (!task) return { ok: false, note: tasks.length ? "task missing SCALE-T5-TASK prefix" : "no task insert" };
+      if (!summary) return { ok: false, note: msgs.length ? "summary missing SCALE-T5: prefix" : "no summary insert" };
+      if (msgs.length > 1) return { ok: false, note: `${msgs.length} msg inserts` };
+      if (tasks.length > 1) return { ok: false, note: `${tasks.length} task inserts` };
+      if (others.length) return { ok: false, note: `wrote to ${others[0].table}` };
+      // ordering: task must appear before msg in the insert sequence
+      const taskIdx = ins.findIndex((i) => i.table === "war_room_tasks");
+      const msgIdx = ins.findIndex((i) => i.table === "war_room_messages" && (i.content ?? "").trim().startsWith("SCALE-T5:"));
+      if (taskIdx > msgIdx) return { ok: false, note: "wrong order (msg before task)" };
+      return { ok: true, note: "ok" };
+    },
+  },
+];
+
+
 
 
 type Stats = { elapsed_ms: number; turns?: number; cycles?: number; llm_calls: number; tool_calls: number; model_of_thought: string };
@@ -70,6 +209,10 @@ export default function AdminDualLobe() {
   const [complex, setComplex] = useState<Record<string, Result>>({});
   const [complexLoading, setComplexLoading] = useState(false);
   const [obstacles, setObstacles] = useState(false);
+  const [scaling, setScaling] = useState<Record<string, Record<string, Result>>>({}); // testId -> archKey -> Result
+  const [scalingLoading, setScalingLoading] = useState<string | null>(null); // testId currently running, or "all"
+  const [scalingProgress, setScalingProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+
 
 
 
@@ -153,6 +296,35 @@ export default function AdminDualLobe() {
     }
   };
 
+  const runOneScaleTest = async (test: ScaleTest) => {
+    const settled = await Promise.allSettled(
+      contenders.map((c) => supabase.functions.invoke(c.fn, { body: { task: test.prompt, mode: "full", ...c.body } })),
+    );
+    const bucket: Record<string, Result> = {};
+    settled.forEach((s, i) => {
+      const c = contenders[i];
+      if (s.status === "fulfilled" && !s.value.error) bucket[c.key] = s.value.data;
+      else bucket[c.key] = { run_id: "error", stats: { elapsed_ms: 0, llm_calls: 0, tool_calls: 0, model_of_thought: (s as any)?.reason?.message || (s as any)?.value?.error?.message || "failed" } };
+    });
+    setScaling((prev) => ({ ...prev, [test.id]: bucket }));
+  };
+
+  const runScalingAll = async () => {
+    setScalingLoading("all");
+    setScaling({});
+    setScalingProgress({ done: 0, total: SCALE_TESTS.length });
+    try {
+      for (const t of SCALE_TESTS) {
+        setScalingLoading(t.id);
+        await runOneScaleTest(t);
+        setScalingProgress((p) => ({ ...p, done: p.done + 1 }));
+      }
+    } finally {
+      setScalingLoading(null);
+    }
+  };
+
+
 
   const scored = scoreContenders(contenders, results);
   const dualKeys = new Set(["dialogue", "motor", "alternating", "contralateral", "reflex", "asym_sh", "asym_mh", "bandwidth", "brain"]);
@@ -179,7 +351,144 @@ export default function AdminDualLobe() {
         <TabsList>
           <TabsTrigger value="standard"><PlayCircle className="w-3 h-3 mr-1" /> Standard bench</TabsTrigger>
           <TabsTrigger value="complex"><Beaker className="w-3 h-3 mr-1" /> Complex Suite</TabsTrigger>
+          <TabsTrigger value="scaling"><Network className="w-3 h-3 mr-1" /> Scaling (5 tests)</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="scaling" className="space-y-4 mt-4">
+          <Card className="border-cyan-500/30 bg-cyan-500/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Network className="w-4 h-4 text-cyan-600" />
+                Scaling Suite — 5 tests, escalating complexity
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Runs every architecture against 5 tests in ascending difficulty (T1 trivial → T5 dependent multi-write).
+                Each test is scored 0-100 (50 correctness + 25 speed + 25 llm-efficiency − 4·errors).
+                Final leaderboard sums per-test composite scores (max 500).
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2">
+                {SCALE_TESTS.map((t) => (
+                  <div key={t.id} className="text-[11px] flex items-start gap-2 border rounded p-2 bg-background/60">
+                    <Badge variant="outline" className="mt-0.5">T{t.tier}</Badge>
+                    <div className="flex-1">
+                      <div className="font-medium">{t.label}</div>
+                      <div className="text-muted-foreground line-clamp-2">{t.prompt.split("\n")[1] ?? ""}</div>
+                    </div>
+                    {scalingLoading === t.id && <Loader2 className="w-3 h-3 animate-spin text-cyan-600" />}
+                    {scaling[t.id] && <Badge variant="outline" className="text-emerald-600 border-emerald-500/50">done</Badge>}
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={runScalingAll} disabled={scalingLoading !== null}>
+                  {scalingLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                  {scalingLoading
+                    ? `Running ${scalingProgress.done}/${scalingProgress.total}…`
+                    : `Run all 5 tests × ${contenders.length} architectures`}
+                </Button>
+                <span className="text-[11px] text-muted-foreground">
+                  {contenders.length * SCALE_TESTS.length} total runs, sequenced test-by-test to avoid overload.
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {Object.keys(scaling).length > 0 && (() => {
+            const perTest = SCALE_TESTS.map((t) => ({ test: t, scored: scaling[t.id] ? scoreScalingTest(t, contenders, scaling[t.id]) : [] }));
+            const totals = new Map<string, { label: string; total: number; correctCount: number; ms: number; llm: number }>();
+            for (const c of contenders) totals.set(c.key, { label: c.label, total: 0, correctCount: 0, ms: 0, llm: 0 });
+            perTest.forEach(({ scored }) => scored.forEach((s) => {
+              const agg = totals.get(s.key)!;
+              agg.total += s.composite;
+              agg.correctCount += s.correct ? 1 : 0;
+              agg.ms += s.ms;
+              agg.llm += s.llm;
+            }));
+            const leaderboard = [...totals.entries()].map(([key, v]) => ({ key, ...v })).sort((a, b) => b.total - a.total);
+            const maxTotal = 100 * SCALE_TESTS.length;
+
+            return (
+              <>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Trophy className="w-4 h-4" /> Final leaderboard (sum over completed tests)</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="text-muted-foreground text-left">
+                          <tr>
+                            <th className="py-1 pr-2">#</th>
+                            <th className="py-1 pr-2">Architecture</th>
+                            <th className="py-1 pr-2">Total / {maxTotal}</th>
+                            <th className="py-1 pr-2">Passed</th>
+                            <th className="py-1 pr-2">Σ ms</th>
+                            <th className="py-1 pr-2">Σ LLM</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {leaderboard.map((r, i) => (
+                            <tr key={r.key} className={i === 0 ? "font-semibold" : ""}>
+                              <td className="py-1 pr-2">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</td>
+                              <td className="py-1 pr-2">{r.label}</td>
+                              <td className="py-1 pr-2">{r.total.toFixed(1)}</td>
+                              <td className="py-1 pr-2">{r.correctCount}/{SCALE_TESTS.length}</td>
+                              <td className="py-1 pr-2">{r.ms}</td>
+                              <td className="py-1 pr-2">{r.llm}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {perTest.filter((p) => p.scored.length > 0).map(({ test, scored }) => (
+                  <Card key={test.id}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Badge variant="outline">T{test.tier}</Badge> {test.label}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="text-muted-foreground text-left">
+                            <tr>
+                              <th className="py-1 pr-2">#</th>
+                              <th className="py-1 pr-2">Architecture</th>
+                              <th className="py-1 pr-2">Composite</th>
+                              <th className="py-1 pr-2">Correct</th>
+                              <th className="py-1 pr-2">ms</th>
+                              <th className="py-1 pr-2">LLM</th>
+                              <th className="py-1 pr-2">Errors</th>
+                              <th className="py-1 pr-2">Note</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...scored].sort((a, b) => b.composite - a.composite).map((s, i) => (
+                              <tr key={s.key} className={i === 0 ? "font-semibold" : ""}>
+                                <td className="py-1 pr-2">{i === 0 ? "🥇" : i + 1}</td>
+                                <td className="py-1 pr-2">{s.label}</td>
+                                <td className="py-1 pr-2">{s.composite.toFixed(1)}</td>
+                                <td className="py-1 pr-2">{s.correct ? "✓" : "—"}</td>
+                                <td className="py-1 pr-2">{s.ms}</td>
+                                <td className="py-1 pr-2">{s.llm}</td>
+                                <td className="py-1 pr-2">{s.errors}</td>
+                                <td className="py-1 pr-2 text-muted-foreground">{s.note}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </>
+            );
+          })()}
+        </TabsContent>
+
 
         <TabsContent value="complex" className="space-y-4 mt-4">
           <Card className="border-fuchsia-500/30 bg-fuchsia-500/5">
@@ -589,6 +898,69 @@ function scoreComplex(contenders: Contender[], results: Record<string, Result>, 
     return { ...r, speedScore, effScore, composite: correctScore + speedScore + effScore - errorPenalty };
   });
 }
+
+// Extract inserts in strict ledger-then-transcript order, preserving titles/priority.
+function extractOrderedInserts(r: Result): Array<{ table: string; content?: string; role?: string; title?: string; priority?: number }> {
+  if (!r) return [];
+  const out: Array<{ table: string; content?: string; role?: string; title?: string; priority?: number }> = [];
+  for (const e of r.ledger ?? []) {
+    if (e.kind !== "tool_executed") continue;
+    const args = e.args ?? e.input ?? {};
+    const table = args.table ?? args.tableName;
+    const name = (e.tool ?? e.name ?? "").toString();
+    if (!table && !/insert|write/i.test(name)) continue;
+    const row = args.row ?? {};
+    if (table === "war_room_messages" || /insert.*messages/i.test(name)) {
+      out.push({ table: "war_room_messages", content: args.content ?? row.content, role: args.role ?? row.role });
+    } else if (table === "war_room_tasks") {
+      out.push({ table: "war_room_tasks", title: args.title ?? row.title, priority: args.priority ?? row.priority });
+    } else if (table) {
+      out.push({ table });
+    }
+  }
+  for (const t of r.transcript ?? []) {
+    const tool = (t as any).tool;
+    if (!tool) continue;
+    const args = tool.args ?? {};
+    const table = args.table;
+    if (!table) continue;
+    if (table === "war_room_messages") out.push({ table, content: args.content, role: args.role });
+    else if (table === "war_room_tasks") out.push({ table, title: args.title, priority: args.priority });
+    else out.push({ table });
+  }
+  return out;
+}
+
+function scoreScalingTest(
+  test: ScaleTest,
+  contenders: Contender[],
+  results: Record<string, Result>,
+) {
+  const rows = contenders.filter((c) => results[c.key]).map((c) => {
+    const r = results[c.key]!;
+    const ledger = r.ledger ?? [];
+    const toolCalls = ledger.filter((e: any) => e.kind === "tool_executed");
+    const errors = toolCalls.filter((e: any) => e.ok === false).length
+                 + ledger.filter((e: any) => e.kind === "tool_rejected").length;
+    const inserts = extractOrderedInserts(r);
+    const v = test.verify(inserts);
+    const done = ledger.some((e: any) => e.kind === "task_complete") || (r.transcript ?? []).some((t: any) => t.done);
+    const correct = v.ok && done;
+    const note = !done ? "not done" : v.note;
+    return { key: c.key, label: c.label, correct, ms: r.stats.elapsed_ms, llm: r.stats.llm_calls, errors, note };
+  });
+  const maxMs = Math.max(1, ...rows.map((r) => r.ms));
+  const maxLlm = Math.max(1, ...rows.map((r) => r.llm));
+  return rows.map((r) => {
+    const speedScore = 25 * (1 - r.ms / maxMs);
+    const effScore = 25 * (1 - r.llm / maxLlm);
+    const correctScore = r.correct ? 50 : 0;
+    const errorPenalty = 4 * r.errors;
+    return { ...r, speedScore, effScore, composite: correctScore + speedScore + effScore - errorPenalty };
+  });
+}
+
+
 
 
 function StatsRow({ stats }: { stats: Stats }) {
