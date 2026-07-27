@@ -619,13 +619,66 @@ export default function Flights() {
                   <Input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+1..." />
                 </div>
               </Card>
+
+              <Card className="p-4 space-y-3">
+                <div className="font-semibold">Payment</div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={paymentMode === "card" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPaymentMode("card")}
+                  >
+                    Pay by card (instant)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={paymentMode === "stripe" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPaymentMode("stripe")}
+                  >
+                    Stripe checkout
+                  </Button>
+                </div>
+
+                {paymentMode === "card" && !passengersReady && (
+                  <Button
+                    type="button"
+                    variant="hero"
+                    className="w-full"
+                    onClick={() => { if (validatePassengers()) setPassengersReady(true); }}
+                  >
+                    Enter card details →
+                  </Button>
+                )}
+
+                {paymentMode === "card" && passengersReady && bookingOffer && (
+                  <CustomerCardCheckout
+                    offerId={bookingOffer.id}
+                    amount={parseFloat((bookingOffer as any).total_amount)}
+                    currency={bookingOffer.total_currency}
+                    passengers={paxForms}
+                    contactEmail={contactEmail}
+                    contactPhone={contactPhone}
+                    mode="test"
+                    onSuccess={(r) => {
+                      setBookingOffer(null);
+                      toast({ title: "Booked!", description: `Ref: ${r.booking_reference || r.order_id}` });
+                      window.location.href = `/dashboard?duffel_success=true&booking=${r.booking_id}`;
+                    }}
+                    onFallbackToStripe={() => setPaymentMode("stripe")}
+                  />
+                )}
+              </Card>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setBookingOffer(null)}>Cancel</Button>
-            <Button variant="hero" onClick={handleBook} disabled={bookingLoading}>
-              {bookingLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : "Continue to Payment"}
-            </Button>
+            {paymentMode === "stripe" && (
+              <Button variant="hero" onClick={handleBook} disabled={bookingLoading}>
+                {bookingLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : "Continue to Stripe"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
