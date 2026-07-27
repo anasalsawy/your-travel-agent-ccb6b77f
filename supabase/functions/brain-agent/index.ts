@@ -164,7 +164,8 @@ Recent episodic memory (hippocampus top-k):
 ${memory}
 
 Cerebellum feedback (recent prediction errors):
-${deltas}`;
+${deltas}
+${consult ? "\nCONSULT from motor-lobe (advisory, use if useful):\n" + consult : ""}`;
 
   const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
