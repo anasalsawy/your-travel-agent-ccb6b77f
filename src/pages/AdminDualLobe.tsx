@@ -209,6 +209,10 @@ export default function AdminDualLobe() {
   const [complex, setComplex] = useState<Record<string, Result>>({});
   const [complexLoading, setComplexLoading] = useState(false);
   const [obstacles, setObstacles] = useState(false);
+  const [scaling, setScaling] = useState<Record<string, Record<string, Result>>>({}); // testId -> archKey -> Result
+  const [scalingLoading, setScalingLoading] = useState<string | null>(null); // testId currently running, or "all"
+  const [scalingProgress, setScalingProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+
 
 
 
