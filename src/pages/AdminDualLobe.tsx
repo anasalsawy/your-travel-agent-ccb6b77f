@@ -51,6 +51,9 @@ export default function AdminDualLobe() {
   const [isoModel, setIsoModel] = useState(MODELS[0].id);
   const [results, setResults] = useState<Record<string, Result>>({});
   const [iso, setIso] = useState<Record<string, Result>>({});
+  const [complex, setComplex] = useState<Record<string, Result>>({});
+  const [complexLoading, setComplexLoading] = useState(false);
+
 
   const contenders: Contender[] = [
     { key: "brain",         label: "Brain · 7-region",         fn: "brain-agent",         body: { max_cycles: 8 }, color: "purple",  icon: Network,       blurb: "Thalamus→amygdala→hippocampus→PFC→basal-ganglia→motor→cerebellum." },
