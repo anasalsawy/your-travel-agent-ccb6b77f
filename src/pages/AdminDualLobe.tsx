@@ -26,17 +26,31 @@ type Contender = {
   blurb: string;
 };
 
+const MODELS = [
+  { id: "google/gemini-2.5-flash", label: "gemini-2.5-flash" },
+  { id: "google/gemini-2.5-flash-lite", label: "gemini-2.5-flash-lite" },
+];
+
 export default function AdminDualLobe() {
   const [task, setTask] = useState(EXAMPLES[0]);
   const [mode, setMode] = useState<"safe" | "full">("safe");
   const [loading, setLoading] = useState(false);
+  const [isoLoading, setIsoLoading] = useState(false);
+  const [isoModel, setIsoModel] = useState(MODELS[0].id);
   const [results, setResults] = useState<Record<string, Result>>({});
+  const [iso, setIso] = useState<Record<string, Result>>({});
 
   const contenders: Contender[] = [
     { key: "dialogue", label: "Dual · Dialogue",   fn: "dual-lobe-dialogue", body: { max_turns: 10 },  color: "blue",   icon: MessageCircle, blurb: "Two LLMs talking, sensory ↔ motor." },
     { key: "motor",    label: "Dual · Motor-cortex", fn: "dual-lobe-agent",   body: { max_cycles: 6 }, color: "orange", icon: Cpu,           blurb: "Strategist LLM + reflex dispatcher." },
     { key: "single_flash", label: "Single · gemini-2.5-flash",      fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash" },      color: "slate", icon: Bot, blurb: "Baseline: one strong LLM, all tools." },
     { key: "single_lite",  label: "Single · gemini-2.5-flash-lite", fn: "single-lobe-agent", body: { max_turns: 12, model: "google/gemini-2.5-flash-lite" }, color: "zinc",  icon: Bot, blurb: "Baseline: one fast LLM, all tools." },
+  ];
+
+  const isoContenders = (m: string): Contender[] => [
+    { key: "iso_sensory",  label: "Isolated · SENSORY only", fn: "single-lobe-agent",  body: { max_turns: 10, model: m, scope: "sensory" }, color: "blue",    icon: Brain, blurb: "One LLM, read-only tools. No hands." },
+    { key: "iso_motor",    label: "Isolated · MOTOR only",   fn: "single-lobe-agent",  body: { max_turns: 10, model: m, scope: "motor" },   color: "orange",  icon: Zap,   blurb: "One LLM, mutating tools. No eyes." },
+    { key: "iso_combined", label: "Combined · SENSORY + MOTOR (same model)", fn: "dual-lobe-dialogue", body: { max_turns: 10, model: m }, color: "emerald", icon: MessageCircle, blurb: "Both lobes reunited, dialogue mode." },
   ];
 
   const runAll = async () => {
@@ -57,6 +71,27 @@ export default function AdminDualLobe() {
       setLoading(false);
     }
   };
+
+  const runIsolation = async () => {
+    setIsoLoading(true);
+    setIso({});
+    const list = isoContenders(isoModel);
+    try {
+      const settled = await Promise.allSettled(
+        list.map((c) => supabase.functions.invoke(c.fn, { body: { task, mode, ...c.body } })),
+      );
+      const next: Record<string, Result> = {};
+      settled.forEach((s, i) => {
+        const c = list[i];
+        if (s.status === "fulfilled" && !s.value.error) next[c.key] = s.value.data;
+        else next[c.key] = { run_id: "error", stats: { elapsed_ms: 0, llm_calls: 0, tool_calls: 0, model_of_thought: (s as any)?.reason?.message || (s as any)?.value?.error?.message || "failed" } };
+      });
+      setIso(next);
+    } finally {
+      setIsoLoading(false);
+    }
+  };
+
 
   const scored = scoreContenders(contenders, results);
   const dualBest = scored.filter((s) => s.key === "dialogue" || s.key === "motor").sort((a, b) => b.score - a.score)[0];
@@ -162,6 +197,84 @@ export default function AdminDualLobe() {
           </div>
         ))}
       </div>
+
+      {/* ── Lobe Isolation Lab ─────────────────────────────────── */}
+      <Card className="border-purple-500/30 bg-purple-500/5">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Brain className="w-4 h-4 text-purple-600" />
+            Lobe Isolation Lab
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Pick a model. Run each lobe alone (sensory-only, motor-only), then run them combined. The combined run should score higher than either isolated lobe — that's the proof that pairing them adds value.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2 items-center text-xs">
+            <span className="text-muted-foreground">Model:</span>
+            {MODELS.map((m) => (
+              <Button key={m.id} size="sm" variant={isoModel === m.id ? "default" : "outline"} onClick={() => setIsoModel(m.id)}>{m.label}</Button>
+            ))}
+            <Button size="sm" onClick={runIsolation} disabled={isoLoading || !task.trim()} className="ml-2">
+              {isoLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <PlayCircle className="w-3 h-3 mr-1" />}
+              {isoLoading ? "Isolating…" : "Isolate + combine + compare"}
+            </Button>
+          </div>
+
+          {Object.keys(iso).length > 0 && (() => {
+            const list = isoContenders(isoModel);
+            const scored = scoreContenders(list, iso).sort((a, b) => b.score - a.score);
+            const combined = scored.find((s) => s.key === "iso_combined");
+            const bestIso = scored.filter((s) => s.key !== "iso_combined").sort((a, b) => b.score - a.score)[0];
+            const combinedWins = combined && bestIso ? combined.score > bestIso.score : null;
+            return (
+              <div className={`rounded border p-2 ${combinedWins === true ? "border-emerald-500/50 bg-emerald-500/5" : combinedWins === false ? "border-red-500/50 bg-red-500/5" : ""}`}>
+                <div className="flex items-center gap-2 text-xs font-semibold mb-2">
+                  <Trophy className="w-4 h-4" /> Isolation results
+                  {combinedWins === true && <Badge className="bg-emerald-600">Combined &gt; isolated ✓</Badge>}
+                  {combinedWins === false && <Badge variant="destructive">Isolated beat combined ✗</Badge>}
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="text-muted-foreground text-left">
+                    <tr><th>#</th><th>Config</th><th>Score</th><th>Done</th><th>Steps</th><th>Tools OK</th><th>Errors</th><th>ms</th></tr>
+                  </thead>
+                  <tbody>
+                    {scored.map((s, i) => (
+                      <tr key={s.key} className={i === 0 ? "font-semibold" : ""}>
+                        <td>{i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}</td>
+                        <td>{s.label}</td>
+                        <td>{s.score.toFixed(1)}</td>
+                        <td>{s.completed ? "✓" : "—"}</td>
+                        <td>{s.steps}</td>
+                        <td>{s.toolsOk}/{s.tools}</td>
+                        <td>{s.errors}</td>
+                        <td>{s.ms}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
+          <div className="grid md:grid-cols-3 gap-3">
+            {isoContenders(isoModel).map((c) => (
+              <div key={c.key} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <c.icon className={`w-4 h-4 text-${c.color}-600`} />
+                  <h3 className="text-xs font-semibold">{c.label}</h3>
+                </div>
+                <p className="text-[11px] text-muted-foreground">{c.blurb}</p>
+                {iso[c.key]?.stats && <StatsRow stats={iso[c.key]!.stats} />}
+                {!iso[c.key] && !isoLoading && <EmptyHint text="Waiting…" />}
+                {isoLoading && !iso[c.key] && <EmptyHint text="Running…" />}
+                {iso[c.key]?.transcript?.map((t, i) => <Bubble key={i} t={t} color={c.color} />)}
+                {!iso[c.key]?.transcript && iso[c.key]?.ledger?.map((e: any) => <LedgerRow key={e.seq} e={e} />)}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
