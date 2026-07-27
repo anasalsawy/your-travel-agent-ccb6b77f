@@ -318,9 +318,26 @@ export default function Flights() {
     setBookingOffer(offer);
     setContactEmail("");
     setContactPhone("");
+    setPaymentMode("card");
+    setPassengersReady(false);
     setPaxForms(Array.from({ length: offer.passenger_count }, () => ({
       title: "mr", gender: "m", given_name: "", family_name: "", born_on: "",
     })));
+  };
+
+  const validatePassengers = (): boolean => {
+    if (!bookingOffer) return false;
+    for (const p of paxForms) {
+      if (!p.given_name || !p.family_name || !p.born_on) {
+        toast({ title: "Missing info", description: "Fill all passenger fields.", variant: "destructive" });
+        return false;
+      }
+    }
+    if (!contactEmail) {
+      toast({ title: "Email required", variant: "destructive" });
+      return false;
+    }
+    return true;
   };
 
   const handleBook = async () => {
