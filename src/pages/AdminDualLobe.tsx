@@ -115,11 +115,33 @@ export default function AdminDualLobe() {
   };
 
 
+  const runComplex = async () => {
+    setComplexLoading(true);
+    setComplex({});
+    try {
+      const settled = await Promise.allSettled(
+        contenders.map((c) => supabase.functions.invoke(c.fn, { body: { task: COMPLEX_TASK, mode: "full", ...c.body } })),
+      );
+      const next: Record<string, Result> = {};
+      settled.forEach((s, i) => {
+        const c = contenders[i];
+        if (s.status === "fulfilled" && !s.value.error) next[c.key] = s.value.data;
+        else next[c.key] = { run_id: "error", stats: { elapsed_ms: 0, llm_calls: 0, tool_calls: 0, model_of_thought: (s as any)?.reason?.message || (s as any)?.value?.error?.message || "failed" } };
+      });
+      setComplex(next);
+    } finally {
+      setComplexLoading(false);
+    }
+  };
+
   const scored = scoreContenders(contenders, results);
   const dualKeys = new Set(["dialogue", "motor", "alternating", "contralateral", "reflex", "asym_sh", "asym_mh", "bandwidth", "brain"]);
   const dualBest = scored.filter((s) => dualKeys.has(s.key)).sort((a, b) => b.score - a.score)[0];
   const singleBest = scored.filter((s) => s.key.startsWith("single")).sort((a, b) => b.score - a.score)[0];
   const dualWins = dualBest && singleBest ? dualBest.score > singleBest.score : null;
+
+  const complexScored = scoreComplex(contenders, complex);
+
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
