@@ -455,11 +455,29 @@ export default function Flights() {
                 onChange={(e) => setReturnDate(e.target.value)} className="bg-white text-slate-900" />
             </div>
             <div className="md:col-span-1">
-              <Label>Travelers</Label>
+              <Label>Adults</Label>
               <Select value={adults} onValueChange={setAdults}>
                 <SelectTrigger className="bg-white text-slate-900"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-white text-slate-900">
-                  {[1, 2, 3, 4, 5, 6].map(n => <SelectItem key={n} value={String(n)}>{n} adult{n > 1 ? "s" : ""}</SelectItem>)}
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => <SelectItem key={n} value={String(n)}>{n} adult{n > 1 ? "s" : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-1">
+              <Label>Children <span className="text-xs text-slate-500">(2–11)</span></Label>
+              <Select value={children} onValueChange={setChildren}>
+                <SelectTrigger className="bg-white text-slate-900"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white text-slate-900">
+                  {[0, 1, 2, 3, 4, 5, 6].map(n => <SelectItem key={n} value={String(n)}>{n} child{n === 1 ? "" : "ren"}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-1">
+              <Label>Infants <span className="text-xs text-slate-500">(under 2)</span></Label>
+              <Select value={infants} onValueChange={setInfants}>
+                <SelectTrigger className="bg-white text-slate-900"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white text-slate-900">
+                  {[0, 1, 2, 3, 4].map(n => <SelectItem key={n} value={String(n)}>{n} infant{n === 1 ? "" : "s"}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
