@@ -367,7 +367,7 @@ const Index = () => {
                 <Link to="/car-rental">Cars</Link>
               </Button>
               <Button variant="ghost" size="sm" className="h-10 px-3 text-slate-200 hover:bg-slate-800 hover:text-white" asChild>
-                <Link to="/request-ticket">Custom Quote</Link>
+                <Link to="/request-ticket">Name Your Price</Link>
               </Button>
               {isStaffOrAdmin && (
                 <Button variant="ghost" size="sm" className="h-10 px-3 text-slate-200 hover:bg-slate-800 hover:text-white" asChild>

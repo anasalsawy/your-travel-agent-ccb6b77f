@@ -32,7 +32,7 @@ export default function Promo() {
             </Link>
             <div className="flex items-center gap-3">
               <Button variant="outline" size="sm" asChild>
-                <Link to="/request-ticket">Request a Quote</Link>
+                <Link to="/request-ticket">Name Your Price</Link>
               </Button>
             </div>
           </div>
