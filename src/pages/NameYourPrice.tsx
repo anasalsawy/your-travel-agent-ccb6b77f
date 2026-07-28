@@ -69,6 +69,8 @@ export default function NameYourPricePage() {
           return_date: returnDate ? format(returnDate, "yyyy-MM-dd") : null,
           trip_type: tripType,
           passengers,
+          children_count: childrenCount,
+          infants_count: infantsCount,
           cabin_class: cabinClass,
           bid_amount: bidAmount,
           wait_window_hours: waitHours,
