@@ -83,7 +83,15 @@ export default function Flights() {
   const [departureDate, setDepartureDate] = useState("");
   const [returnDate, setReturnDate] = useState("");
   const [adults, setAdults] = useState("1");
+  const [children, setChildren] = useState("0");
+  const [infants, setInfants] = useState("0");
   const [cabin, setCabin] = useState("economy");
+
+  const buildPassengers = (a: number, c: number, i: number) => [
+    ...Array.from({ length: a }, () => ({ type: "adult" as const })),
+    ...Array.from({ length: c }, () => ({ type: "child" as const, age: 8 })),
+    ...Array.from({ length: i }, () => ({ type: "infant_without_seat" as const, age: 1 })),
+  ];
   const [loading, setLoading] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [searched, setSearched] = useState(false);
@@ -227,7 +235,7 @@ export default function Flights() {
           destination: destination.trim().toUpperCase(),
           departure_date: departureDate,
           return_date: returnDate || undefined,
-          adults: parseInt(adults),
+          passengers: buildPassengers(parseInt(adults), parseInt(children), parseInt(infants)),
           cabin_class: cabin,
         },
       });
@@ -256,6 +264,8 @@ export default function Flights() {
     const qpDeparture = searchParams.get("departure_date") ?? "";
     const qpReturn = searchParams.get("return_date") ?? "";
     const qpAdults = searchParams.get("adults") ?? "1";
+    const qpChildren = searchParams.get("children") ?? "0";
+    const qpInfants = searchParams.get("infants") ?? "0";
     const qpCabin = searchParams.get("cabin_class") ?? "economy";
     const qpSelectedOffer = searchParams.get("selected_offer") ?? "";
 
@@ -266,7 +276,14 @@ export default function Flights() {
     setDepartureDate(qpDeparture);
     setReturnDate(qpReturn);
     const parsedAdults = Number.parseInt(qpAdults, 10);
-    setAdults(String(Number.isFinite(parsedAdults) && parsedAdults > 0 ? parsedAdults : 1));
+    const parsedChildren = Number.parseInt(qpChildren, 10);
+    const parsedInfants = Number.parseInt(qpInfants, 10);
+    const a = Number.isFinite(parsedAdults) && parsedAdults > 0 ? parsedAdults : 1;
+    const c = Number.isFinite(parsedChildren) && parsedChildren >= 0 ? parsedChildren : 0;
+    const i = Number.isFinite(parsedInfants) && parsedInfants >= 0 ? parsedInfants : 0;
+    setAdults(String(a));
+    setChildren(String(c));
+    setInfants(String(i));
     setCabin(qpCabin);
 
     void (async () => {
@@ -280,7 +297,7 @@ export default function Flights() {
             destination: qpDestination.trim().toUpperCase(),
             departure_date: qpDeparture,
             return_date: qpReturn || undefined,
-            adults: parseInt(qpAdults),
+            passengers: buildPassengers(a, c, i),
             cabin_class: qpCabin,
           },
         });
@@ -438,11 +455,29 @@ export default function Flights() {
                 onChange={(e) => setReturnDate(e.target.value)} className="bg-white text-slate-900" />
             </div>
             <div className="md:col-span-1">
-              <Label>Travelers</Label>
+              <Label>Adults</Label>
               <Select value={adults} onValueChange={setAdults}>
                 <SelectTrigger className="bg-white text-slate-900"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-white text-slate-900">
-                  {[1, 2, 3, 4, 5, 6].map(n => <SelectItem key={n} value={String(n)}>{n} adult{n > 1 ? "s" : ""}</SelectItem>)}
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => <SelectItem key={n} value={String(n)}>{n} adult{n > 1 ? "s" : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-1">
+              <Label>Children <span className="text-xs text-slate-500">(2–11)</span></Label>
+              <Select value={children} onValueChange={setChildren}>
+                <SelectTrigger className="bg-white text-slate-900"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white text-slate-900">
+                  {[0, 1, 2, 3, 4, 5, 6].map(n => <SelectItem key={n} value={String(n)}>{n} child{n === 1 ? "" : "ren"}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-1">
+              <Label>Infants <span className="text-xs text-slate-500">(under 2)</span></Label>
+              <Select value={infants} onValueChange={setInfants}>
+                <SelectTrigger className="bg-white text-slate-900"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white text-slate-900">
+                  {[0, 1, 2, 3, 4].map(n => <SelectItem key={n} value={String(n)}>{n} infant{n === 1 ? "" : "s"}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

@@ -27,6 +27,8 @@ export default function NameYourPricePage() {
   const [returnDate, setReturnDate] = useState<Date>();
   const [tripType, setTripType] = useState("round-trip");
   const [passengers, setPassengers] = useState("1");
+  const [childrenCount, setChildrenCount] = useState("0");
+  const [infantsCount, setInfantsCount] = useState("0");
   const [cabinClass, setCabinClass] = useState("economy");
   const [bidAmount, setBidAmount] = useState("");
   const [waitHours, setWaitHours] = useState("24");
@@ -67,6 +69,8 @@ export default function NameYourPricePage() {
           return_date: returnDate ? format(returnDate, "yyyy-MM-dd") : null,
           trip_type: tripType,
           passengers,
+          children_count: childrenCount,
+          infants_count: infantsCount,
           cabin_class: cabinClass,
           bid_amount: bidAmount,
           wait_window_hours: waitHours,
@@ -158,12 +162,26 @@ export default function NameYourPricePage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
-              <Label>Passengers</Label>
+              <Label>Adults</Label>
               <Select value={passengers} onValueChange={setPassengers}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{[1,2,3,4,5,6,7,8,9].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+                <SelectContent>{[1,2,3,4,5,6,7,8,9].map(n => <SelectItem key={n} value={String(n)}>{n} adult{n>1?"s":""}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Children <span className="text-xs text-muted-foreground">(2–11)</span></Label>
+              <Select value={childrenCount} onValueChange={setChildrenCount}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{[0,1,2,3,4,5,6].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Infants <span className="text-xs text-muted-foreground">(under 2)</span></Label>
+              <Select value={infantsCount} onValueChange={setInfantsCount}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{[0,1,2,3,4].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>

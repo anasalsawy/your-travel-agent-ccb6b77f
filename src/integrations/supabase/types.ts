@@ -1481,6 +1481,7 @@ export type Database = {
           bid_amount: number
           booking_reference: string | null
           cabin_class: string
+          children_count: number
           contact_email: string
           contact_phone: string | null
           created_at: string
@@ -1493,6 +1494,7 @@ export type Database = {
           flex_dates_days: number
           flex_stops: boolean
           id: string
+          infants_count: number
           last_hunt_at: string | null
           matched_at: string | null
           matched_offer_amount: number | null
@@ -1515,6 +1517,7 @@ export type Database = {
           bid_amount: number
           booking_reference?: string | null
           cabin_class?: string
+          children_count?: number
           contact_email: string
           contact_phone?: string | null
           created_at?: string
@@ -1527,6 +1530,7 @@ export type Database = {
           flex_dates_days?: number
           flex_stops?: boolean
           id?: string
+          infants_count?: number
           last_hunt_at?: string | null
           matched_at?: string | null
           matched_offer_amount?: number | null
@@ -1549,6 +1553,7 @@ export type Database = {
           bid_amount?: number
           booking_reference?: string | null
           cabin_class?: string
+          children_count?: number
           contact_email?: string
           contact_phone?: string | null
           created_at?: string
@@ -1561,6 +1566,7 @@ export type Database = {
           flex_dates_days?: number
           flex_stops?: boolean
           id?: string
+          infants_count?: number
           last_hunt_at?: string | null
           matched_at?: string | null
           matched_offer_amount?: number | null

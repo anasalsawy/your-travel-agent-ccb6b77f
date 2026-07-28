@@ -29,7 +29,11 @@ async function huntOne(bid: any, supabase: any, token: string) {
       departure_date: bid.return_date,
     });
   }
-  const passengers = Array.from({ length: bid.passengers }, () => ({ type: "adult" }));
+  const passengers = [
+    ...Array.from({ length: bid.passengers || 1 }, () => ({ type: "adult" })),
+    ...Array.from({ length: bid.children_count || 0 }, () => ({ type: "child", age: 8 })),
+    ...Array.from({ length: bid.infants_count || 0 }, () => ({ type: "infant_without_seat", age: 1 })),
+  ];
 
   const orRes = await fetch("https://api.duffel.com/air/offer_requests?return_offers=true", {
     method: "POST",
