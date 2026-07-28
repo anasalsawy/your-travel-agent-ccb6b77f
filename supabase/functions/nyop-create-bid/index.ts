@@ -56,6 +56,8 @@ serve(async (req) => {
       return_date: body.return_date || null,
       trip_type: body.trip_type || (body.return_date ? "round-trip" : "one-way"),
       passengers: parseInt(body.passengers || "1"),
+      children_count: parseInt(body.children_count || "0"),
+      infants_count: parseInt(body.infants_count || "0"),
       cabin_class: body.cabin_class || "economy",
       bid_amount: parseFloat(body.bid_amount),
       currency: body.currency || "USD",
