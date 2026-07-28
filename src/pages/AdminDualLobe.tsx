@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader2, Brain, Zap, PlayCircle, MessageCircle, Cpu, Bot, Trophy, Network, Beaker } from "lucide-react";
+import DualLobeArena from "@/components/admin/DualLobeArena";
 
 const EXAMPLES = [
   "Look up how many rows are in war_room_messages and send a summary notification.",
@@ -352,7 +353,10 @@ export default function AdminDualLobe() {
           <TabsTrigger value="standard"><PlayCircle className="w-3 h-3 mr-1" /> Standard bench</TabsTrigger>
           <TabsTrigger value="complex"><Beaker className="w-3 h-3 mr-1" /> Complex Suite</TabsTrigger>
           <TabsTrigger value="scaling"><Network className="w-3 h-3 mr-1" /> Scaling (5 tests)</TabsTrigger>
+          <TabsTrigger value="arena"><Trophy className="w-3 h-3 mr-1" /> 3-Way Arena</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="arena"><DualLobeArena /></TabsContent>
 
         <TabsContent value="scaling" className="space-y-4 mt-4">
           <Card className="border-cyan-500/30 bg-cyan-500/5">
