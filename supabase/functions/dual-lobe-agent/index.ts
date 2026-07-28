@@ -281,7 +281,7 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
       planPromise = planNext({
         task, cycle, workspace_summary: workspace,
         instruction: "Previous plan was empty. Emit a concrete batch or done=true.",
-      }, mode, models.strategist);
+      }, mode, models.strategist, addonPrompt);
       llmCalls++;
       continue;
     }
@@ -297,7 +297,7 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
       inflight_batch: motorBatch,
       inflight_sense: senseBatch,
       instruction: "The motor cortex is executing the previous batch right now. Produce the NEXT batch to run immediately after, or done=true. Do not idle.",
-    }, mode, models.strategist);
+    }, mode, models.strategist, addonPrompt);
     llmCalls++;
 
     // ── DISPATCH ALL TOOLS IN PARALLEL (sense + motor, no gate) ──
