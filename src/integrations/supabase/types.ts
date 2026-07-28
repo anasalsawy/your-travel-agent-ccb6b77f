@@ -838,6 +838,102 @@ export type Database = {
         }
         Relationships: []
       }
+      env_briefs: {
+        Row: {
+          agent_id: string
+          brief: Json
+          environment_hash: string
+          generated_at: string
+          id: string
+        }
+        Insert: {
+          agent_id: string
+          brief: Json
+          environment_hash: string
+          generated_at?: string
+          id?: string
+        }
+        Update: {
+          agent_id?: string
+          brief?: Json
+          environment_hash?: string
+          generated_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      episodic_memories: {
+        Row: {
+          agent_id: string
+          content: string
+          created_at: string
+          hit_count: number
+          id: string
+          last_used_at: string | null
+          retired_at: string | null
+          score: number
+          tags: string[]
+        }
+        Insert: {
+          agent_id: string
+          content: string
+          created_at?: string
+          hit_count?: number
+          id?: string
+          last_used_at?: string | null
+          retired_at?: string | null
+          score?: number
+          tags?: string[]
+        }
+        Update: {
+          agent_id?: string
+          content?: string
+          created_at?: string
+          hit_count?: number
+          id?: string
+          last_used_at?: string | null
+          retired_at?: string | null
+          score?: number
+          tags?: string[]
+        }
+        Relationships: []
+      }
+      fixed_memories: {
+        Row: {
+          agent_id: string
+          created_at: string
+          hit_count: number
+          id: string
+          key: string
+          last_used_at: string | null
+          pinned: boolean
+          source: string | null
+          value: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          hit_count?: number
+          id?: string
+          key: string
+          last_used_at?: string | null
+          pinned?: boolean
+          source?: string | null
+          value: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          hit_count?: number
+          id?: string
+          key?: string
+          last_used_at?: string | null
+          pinned?: boolean
+          source?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
       foundry_connection_backups: {
         Row: {
           agent_name: string | null
@@ -1033,6 +1129,51 @@ export type Database = {
           purchase_price?: number | null
           status?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      lobe_benchmark_runs: {
+        Row: {
+          addons: string[]
+          arm: string
+          composite_score: number | null
+          correct: boolean | null
+          created_at: string
+          duration_ms: number | null
+          id: string
+          llm_calls: number | null
+          note: string | null
+          task_id: string
+          tool_calls: number | null
+          transcript: Json | null
+        }
+        Insert: {
+          addons?: string[]
+          arm: string
+          composite_score?: number | null
+          correct?: boolean | null
+          created_at?: string
+          duration_ms?: number | null
+          id?: string
+          llm_calls?: number | null
+          note?: string | null
+          task_id: string
+          tool_calls?: number | null
+          transcript?: Json | null
+        }
+        Update: {
+          addons?: string[]
+          arm?: string
+          composite_score?: number | null
+          correct?: boolean | null
+          created_at?: string
+          duration_ms?: number | null
+          id?: string
+          llm_calls?: number | null
+          note?: string | null
+          task_id?: string
+          tool_calls?: number | null
+          transcript?: Json | null
         }
         Relationships: []
       }
@@ -1705,6 +1846,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      persistent_sessions: {
+        Row: {
+          agent_id: string
+          id: string
+          last_run_id: string | null
+          rolling_summary: string
+          thread_key: string
+          turn_count: number
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          id?: string
+          last_run_id?: string | null
+          rolling_summary?: string
+          thread_key: string
+          turn_count?: number
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          id?: string
+          last_run_id?: string | null
+          rolling_summary?: string
+          thread_key?: string
+          turn_count?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       points_accounts: {
         Row: {
