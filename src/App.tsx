@@ -16,7 +16,8 @@ import Terms from "./pages/Terms";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import RefundPolicy from "./pages/RefundPolicy";
-import RequestTicket from "./pages/RequestTicket";
+import NameYourPrice from "./pages/NameYourPrice";
+import NyopWaitingRoom from "./pages/NyopWaitingRoom";
 import CarRental from "./pages/CarRental";
 import Flights from "./pages/Flights";
 import MyFlights from "./pages/MyFlights";
@@ -82,7 +83,9 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/faq" element={<FAQ />} />
-            <Route path="/request-ticket" element={<RequestTicket />} />
+            <Route path="/request-ticket" element={<NameYourPrice />} />
+            <Route path="/name-your-price" element={<NameYourPrice />} />
+            <Route path="/nyop/:bidId" element={<NyopWaitingRoom />} />
             <Route path="/flights" element={<Flights />} />
             <Route path="/my-flights" element={<MyFlights />} />
             <Route path="/car-rental" element={<CarRental />} />
