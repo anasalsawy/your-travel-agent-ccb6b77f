@@ -114,6 +114,7 @@ export default function DualLobeArena() {
     setResults({});
     const arms: ArmKey[] = ["single", "dual", "dual_plus"];
     setProgress({ done: 0, total: T.length * arms.length });
+    const persistRows: any[] = [];
     try {
       for (const test of T) {
         const settled = await Promise.all(arms.map(a => runArm(a, test)));
@@ -121,15 +122,10 @@ export default function DualLobeArena() {
         arms.forEach((a, i) => { bucket[a] = settled[i]; });
         setResults(prev => ({ ...prev, [test.id]: bucket }));
         setProgress(p => ({ ...p, done: p.done + arms.length }));
-      }
-
-      // Persist
-      const rows: any[] = [];
-      for (const test of T) {
-        for (const arm of arms) {
-          const r = results[test.id]?.[arm] ?? null;
-          if (!r) continue;
-          rows.push({
+        arms.forEach((arm, i) => {
+          const r = settled[i];
+          if (!r) return;
+          persistRows.push({
             task_id: test.id,
             arm,
             addons: arm === "dual_plus" ? Object.entries(addons).filter(([, v]) => v).map(([k]) => k) : [],
@@ -139,9 +135,9 @@ export default function DualLobeArena() {
             tool_calls: r.toolCalls,
             note: r.note,
           });
-        }
+        });
       }
-      if (rows.length) await supabase.from("lobe_benchmark_runs" as any).insert(rows);
+      if (persistRows.length) await supabase.from("lobe_benchmark_runs" as any).insert(persistRows);
     } finally {
       setRunning(false);
     }
