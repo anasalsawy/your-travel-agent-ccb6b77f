@@ -1,69 +1,72 @@
 ## Goal
-Roll the uploaded 6,096-line Autonomous SWE Agent prompt onto every Foundry agent, then layer per-agent role/tools/teammates on top. Add a shared `vapi_call` toolset that any agent can use, with an inline live-transcript + steer panel that pops in whenever a call is active.
 
-## Deliverables
+Extend the Dual-Lobe runtime with four stackable add-on layers, then run a head-to-head benchmark:
 
-### 1. Shared prompt + role composer
-- `supabase/functions/_shared/agent-core-prompt.ts` — the full 6,096-line prompt as a `const CORE_PROMPT` string.
-- `supabase/functions/_shared/agent-roster.ts` — per-agent metadata: `role`, `responsibilities[]`, `teammates[]` (who they may delegate to), `tools[]` (Foundry tool descriptors), `handoff_targets[]`.
-- Composer `buildInstructions(agentName)` returns `CORE_PROMPT + "\n\n────── AGENT IDENTITY ──────\n" + role block`.
+- **A** — Single LLM (baseline, no lobes)
+- **B** — Dual-Lobe base (no add-ons)
+- **C** — Dual-Lobe + selected add-ons
 
-### 2. PATCH all 8 agents on Azure Foundry
-Via existing `azure-agents-v1` edge function (`action: "update"`):
+## Add-on modules (all optional, toggleable)
 
-| Agent | Role | Delegates to | Adds tools |
-|---|---|---|---|
-| `Public Concierge` (assistant) | Front desk on web/WhatsApp | Booking Delegate | vapi_call, find_customer_booking, search_flights, get_quote |
-| `YTA-ASSISTANT` (Booking Delegate) | Autonomous booker | — | full travel suite + vapi_call, lookup_reservation, browser |
-| `BUILDEROFAGENTS` | Master builder / planner | builder-helper-1/2/3 | MCP, code_interpreter, browser, azure-rest, vapi_call |
-| `builder-helper-1/2/3` | Parallel executors | — | code_interpreter, browser, MCP, vapi_call |
-| `shopper-lead` | Autonomous shopper planner | shopper-helper-1/2/3 | browser_automation_preview, web_search, code_interpreter, MCP, vapi_call |
-| `shopper-helper-1/2/3` | Parallel checkout executors | — | same set |
+1. **Persistent Session** — every run resumes prior `foundry_runs` state for the same `(agent, thread)`; Strategist receives last N step summaries so plans continue mid-flight instead of restarting.
+2. **Persistent Fixed Memory** — long-term facts pinned by the agent (`agent_id`, `key`, `value`, `pinned=true`). Never auto-decays. Injected verbatim into Strategist prompt.
+3. **Memory Finetune & Retire** — background pass that:
+   - promotes frequently-hit episodic memories into fixed memory (finetune),
+   - demotes/archives stale or contradicted ones (retire),
+   - runs on `pg_cron` every hour.
+4. **Active Sensory Exploration** — before the first Strategist turn on an unfamiliar task, Executor runs a bounded "look around" loop: lists tables it can read, lists edge functions it can call, reads README-like rows/docs, and returns an *environment brief* the Strategist consumes. Cached per `(agent, environment_hash)`.
 
-Hierarchy is enforced in the prompt addendum ("You may only delegate to: X, Y, Z"). No peer mesh.
+Cerebellum (skills store) from the previous turn stays as its own add-on — orthogonal to these four.
 
-### 3. Shared Vapi tool
+## Data model
 
-New edge functions:
-- `vapi-call-start` — POST `{ number, goal, assistantId?, agent }` → creates outbound Vapi call, inserts row in `vapi_calls`, returns `call_id`.
-- `vapi-call-inject` — POST `{ call_id, message }` → sends `add-message` control to Vapi mid-call.
-- `vapi-call-hangup` — POST `{ call_id }` → ends call.
-- `vapi-webhook` — receives Vapi server messages (transcript deltas, tool-calls, end-of-call). Writes to `vapi_call_events` (Realtime-enabled).
+```sql
+persistent_sessions(agent_id, thread_key, last_run_id, rolling_summary, updated_at)
+fixed_memories(id, agent_id, key, value, pinned bool, hit_count int, created_at, last_used_at)
+episodic_memories(id, agent_id, content, embedding, hit_count, score, created_at, last_used_at, retired_at)
+env_briefs(agent_id, environment_hash, brief jsonb, generated_at)
+lobe_benchmark_runs(id, task_id, arm text CHECK (arm IN ('single','dual','dual_plus')),
+                    addons text[], score jsonb, transcript jsonb, duration_ms, created_at)
+```
 
-Registered as function tools in every agent's tool list so any agent can dial, inject, or hang up.
+All tables: GRANTs + RLS (admin read; service_role all).
 
-### 4. Database
-Migration:
-- `vapi_calls` — id, agent_name, room_id?, phone_number, goal, status, vapi_call_id, started_at, ended_at, summary.
-- `vapi_call_events` — id, call_id, role (assistant|user|system|tool), content, at.
-- Realtime + admin-only RLS. GRANTs for authenticated + service_role.
+## Runtime changes (`supabase/functions/_shared/lobe-runtime.ts`)
 
-### 5. Inline live-transcript + steer panel
-Extend `src/pages/AdminAgentRooms.tsx`:
-- Subscribes to `vapi_calls` for rows where `status='active'`.
-- When active call detected → expand an inline `VapiLivePanel` above the composer showing:
-  - Header: agent name, callee number, elapsed timer, hangup button.
-  - Live transcript stream (Realtime on `vapi_call_events`).
-  - Steer input: text box → `vapi-call-inject`.
-- Panel auto-collapses when call ends; final summary written to room as a system message.
+- New `LobeConfig` fields: `persistentSession`, `fixedMemory`, `memoryLifecycle`, `activeSensory`, `cerebellum` (all bool).
+- New pipeline hooks:
+  - `beforeStrategize` → load session summary + fixed memories + env brief.
+  - `afterExecute` → write episodic memory + update session summary + record skill candidate.
+- Single-LLM arm: bypass both lobes, one call with the raw task.
 
-Also add a `<VapiLivePanel />` mount inside `src/pages/mobile-admin/MobileHome.tsx` so mobile PWA gets the same cockpit when a call runs.
+## Benchmark surface (`/admin/dual-lobe` new tab **"3-Way Arena"**)
 
-### 6. Config
-- `supabase/config.toml`: register `vapi-call-start`, `vapi-call-inject`, `vapi-call-hangup`, `vapi-webhook` (webhook = `verify_jwt=false`, others require auth).
-- Vapi phone number ID + webhook URL: user needs to point Vapi server URL to `.../functions/v1/vapi-webhook` (I'll surface the exact URL after deploy).
+For each of the existing 5 Scaling Suite tests, run all three arms in parallel and render:
 
-### 7. Validation
-- `azure-agents-v1 action:"summary"` — confirm all 8 agents show new tool counts.
-- `curl vapi-call-start` with a test number → verify row created + webhook fires transcript rows.
-- Load `/admin/agent-rooms` → open Builders room → dispatch a task that includes "call +1XXX and confirm X"; verify inline panel appears with live transcript and inject works.
+- correctness, steps used, wall-clock, token cost
+- diff view of Strategist plans A vs B vs C
+- add-on toggle matrix so we can isolate which layer helped
 
-## Technical notes
-- The 6k-line prompt (~200KB) is within Azure Foundry's per-agent instruction cap. If any specific agent rejects the size, I'll fall back to a slim "See core-prompt document" reference and attach the full text as an agent-side file — I'll flag it if it happens.
-- `vapi_call` on customer-facing Concierge is gated behind an approval step in the prompt (Concierge asks the user before dialing).
-- Transcript inserts are batched (250ms debounce) to avoid Realtime spam on long calls.
-- Hangup + inject both use Vapi's `/call/:id/control` endpoint with the private API key.
+Leaderboard aggregates across the suite; export CSV for the war-room.
 
-## Secrets needed
-- `VAPI_API_KEY` (private) — already present.
-- `VAPI_PHONE_NUMBER_ID` — need this from you (Vapi dashboard → Phone Numbers). Without it outbound calls won't dispatch; inject/hangup/webhook still work for calls initiated elsewhere.
+## Edge functions
+
+- `dual-lobe-agent` — accept `arm` + `addons[]`.
+- `memory-lifecycle-tick` — hourly cron: finetune/retire pass.
+- `sensory-scan` — internal helper the Executor calls when Active Sensory is on.
+
+## Out of scope (this pass)
+
+- Cross-agent memory sharing (per-agent only for now).
+- Cerebellum skill compilation (already scaffolded; keep as separate toggle, no changes here).
+- Rewriting Builder or v60 architecture — untouched per standing rule.
+
+## Deliverable order
+
+1. Migrations (5 tables + GRANTs/RLS + cron).
+2. Runtime hooks + `arm` routing.
+3. Sensory-scan + memory-lifecycle edge functions.
+4. "3-Way Arena" tab with matrix toggles and leaderboard.
+5. Seed the 5 Scaling tests into `lobe_benchmark_runs` and run once end-to-end to validate.
+
+Approve and I'll build in that order.
