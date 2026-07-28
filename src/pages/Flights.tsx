@@ -235,7 +235,7 @@ export default function Flights() {
           destination: destination.trim().toUpperCase(),
           departure_date: departureDate,
           return_date: returnDate || undefined,
-          adults: parseInt(adults),
+          passengers: buildPassengers(parseInt(adults), parseInt(children), parseInt(infants)),
           cabin_class: cabin,
         },
       });
