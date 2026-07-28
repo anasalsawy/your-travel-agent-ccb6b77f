@@ -17,3 +17,6 @@ type: feature
 - Every architecture in the lab must START from the dual-lobe base.
 - Cerebellum and brain-point modules appear as **toggleable add-ons**, not alternative topologies.
 - Removing an add-on must leave a working dual-lobe agent.
+
+## Brain-inspired add-on catalog
+Full 10-mechanism catalog and priority build order: `mem://architecture/brain-inspired-addons` (spec: `docs/brain-inspired-patterns.md`).
