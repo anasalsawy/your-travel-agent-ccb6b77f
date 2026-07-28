@@ -264,6 +264,8 @@ export default function Flights() {
     const qpDeparture = searchParams.get("departure_date") ?? "";
     const qpReturn = searchParams.get("return_date") ?? "";
     const qpAdults = searchParams.get("adults") ?? "1";
+    const qpChildren = searchParams.get("children") ?? "0";
+    const qpInfants = searchParams.get("infants") ?? "0";
     const qpCabin = searchParams.get("cabin_class") ?? "economy";
     const qpSelectedOffer = searchParams.get("selected_offer") ?? "";
 
@@ -274,7 +276,14 @@ export default function Flights() {
     setDepartureDate(qpDeparture);
     setReturnDate(qpReturn);
     const parsedAdults = Number.parseInt(qpAdults, 10);
-    setAdults(String(Number.isFinite(parsedAdults) && parsedAdults > 0 ? parsedAdults : 1));
+    const parsedChildren = Number.parseInt(qpChildren, 10);
+    const parsedInfants = Number.parseInt(qpInfants, 10);
+    const a = Number.isFinite(parsedAdults) && parsedAdults > 0 ? parsedAdults : 1;
+    const c = Number.isFinite(parsedChildren) && parsedChildren >= 0 ? parsedChildren : 0;
+    const i = Number.isFinite(parsedInfants) && parsedInfants >= 0 ? parsedInfants : 0;
+    setAdults(String(a));
+    setChildren(String(c));
+    setInfants(String(i));
     setCabin(qpCabin);
 
     void (async () => {
@@ -288,7 +297,7 @@ export default function Flights() {
             destination: qpDestination.trim().toUpperCase(),
             departure_date: qpDeparture,
             return_date: qpReturn || undefined,
-            adults: parseInt(qpAdults),
+            passengers: buildPassengers(a, c, i),
             cabin_class: qpCabin,
           },
         });
