@@ -1473,6 +1473,111 @@ export type Database = {
         }
         Relationships: []
       }
+      nyop_bids: {
+        Row: {
+          attempts_count: number
+          best_offer_seen_amount: number | null
+          best_offer_seen_id: string | null
+          bid_amount: number
+          booking_reference: string | null
+          cabin_class: string
+          contact_email: string
+          contact_phone: string | null
+          created_at: string
+          currency: string
+          departure_date: string
+          destination: string
+          duffel_booking_id: string | null
+          expires_at: string
+          flex_airline: boolean
+          flex_dates_days: number
+          flex_stops: boolean
+          id: string
+          last_hunt_at: string | null
+          matched_at: string | null
+          matched_offer_amount: number | null
+          matched_offer_id: string | null
+          origin: string
+          passengers: number
+          resolved_at: string | null
+          return_date: string | null
+          special_notes: string | null
+          status: string
+          trip_type: string
+          updated_at: string
+          user_id: string | null
+          wait_window_hours: number
+        }
+        Insert: {
+          attempts_count?: number
+          best_offer_seen_amount?: number | null
+          best_offer_seen_id?: string | null
+          bid_amount: number
+          booking_reference?: string | null
+          cabin_class?: string
+          contact_email: string
+          contact_phone?: string | null
+          created_at?: string
+          currency?: string
+          departure_date: string
+          destination: string
+          duffel_booking_id?: string | null
+          expires_at: string
+          flex_airline?: boolean
+          flex_dates_days?: number
+          flex_stops?: boolean
+          id?: string
+          last_hunt_at?: string | null
+          matched_at?: string | null
+          matched_offer_amount?: number | null
+          matched_offer_id?: string | null
+          origin: string
+          passengers?: number
+          resolved_at?: string | null
+          return_date?: string | null
+          special_notes?: string | null
+          status?: string
+          trip_type?: string
+          updated_at?: string
+          user_id?: string | null
+          wait_window_hours?: number
+        }
+        Update: {
+          attempts_count?: number
+          best_offer_seen_amount?: number | null
+          best_offer_seen_id?: string | null
+          bid_amount?: number
+          booking_reference?: string | null
+          cabin_class?: string
+          contact_email?: string
+          contact_phone?: string | null
+          created_at?: string
+          currency?: string
+          departure_date?: string
+          destination?: string
+          duffel_booking_id?: string | null
+          expires_at?: string
+          flex_airline?: boolean
+          flex_dates_days?: number
+          flex_stops?: boolean
+          id?: string
+          last_hunt_at?: string | null
+          matched_at?: string | null
+          matched_offer_amount?: number | null
+          matched_offer_id?: string | null
+          origin?: string
+          passengers?: number
+          resolved_at?: string | null
+          return_date?: string | null
+          special_notes?: string | null
+          status?: string
+          trip_type?: string
+          updated_at?: string
+          user_id?: string | null
+          wait_window_hours?: number
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           admin_notes: string | null

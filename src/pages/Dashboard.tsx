@@ -233,8 +233,8 @@ export default function DashboardPage() {
           <div className="grid sm:grid-cols-3 gap-4 mb-10">
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/request-ticket")}>
               <Plane className="w-8 h-8 text-accent mb-3" />
-              <h3 className="font-semibold mb-1">Request Ticket</h3>
-              <p className="text-sm text-muted-foreground">Get a personalized flight quote</p>
+              <h3 className="font-semibold mb-1">Name Your Price</h3>
+              <p className="text-sm text-muted-foreground">Set a target fare — we hunt and book it</p>
             </div>
             <div className="glass-card p-6 hover-lift cursor-pointer" onClick={() => navigate("/car-rental")}>
               <Car className="w-8 h-8 text-primary mb-3" />
