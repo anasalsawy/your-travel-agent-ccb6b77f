@@ -83,7 +83,15 @@ export default function Flights() {
   const [departureDate, setDepartureDate] = useState("");
   const [returnDate, setReturnDate] = useState("");
   const [adults, setAdults] = useState("1");
+  const [children, setChildren] = useState("0");
+  const [infants, setInfants] = useState("0");
   const [cabin, setCabin] = useState("economy");
+
+  const buildPassengers = (a: number, c: number, i: number) => [
+    ...Array.from({ length: a }, () => ({ type: "adult" as const })),
+    ...Array.from({ length: c }, () => ({ type: "child" as const, age: 8 })),
+    ...Array.from({ length: i }, () => ({ type: "infant_without_seat" as const, age: 1 })),
+  ];
   const [loading, setLoading] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [searched, setSearched] = useState(false);
