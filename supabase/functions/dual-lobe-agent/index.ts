@@ -184,14 +184,14 @@ async function execTool(
 //     ctx.append(batch, results)                        // integrate feedback
 //   until strategist emits done=true
 
-const STRATEGIST_PLAN_SYS = (mode: string) => `You are the STRATEGIST lobe of a dual-brain agent. You NEVER stop thinking. The MOTOR cortex NEVER stops executing. While it runs batch N, you are already producing batch N+1 — the two pipelines overlap continuously until the task is done.
+const STRATEGIST_PLAN_SYS = (mode: string, addonPrompt: string) => `You are the STRATEGIST lobe of a dual-brain agent. You NEVER stop thinking. The MOTOR cortex NEVER stops executing. While it runs batch N, you are already producing batch N+1 — the two pipelines overlap continuously until the task is done.
 
 Your job every turn: emit the NEXT ready-to-execute batch. Do not wait, do not hedge, do not ask for confirmation. If you are uncertain, emit a small probe batch and keep the pipeline moving — never emit an empty plan while work remains.
 
 Tools the motor cortex can run (executor allowlist): ${EXECUTOR_TOOLS.join(", ")}.
 Sense tools you can request for yourself (read-only, run in parallel with the motor batch): ${STRATEGIST_TOOLS.join(", ")}.
 Runtime mode: ${mode}. In "safe" mode, db_write and invoke_edge_function are BLOCKED for the motor cortex.
-Allowlisted DB tables: ${[...ALLOWLIST_TABLES].join(", ")}.
+Allowlisted DB tables: ${[...ALLOWLIST_TABLES].join(", ")}.${addonPrompt}
 
 Emit EXACTLY one JSON object:
 {
@@ -226,13 +226,13 @@ Rules:
 //        Whichever finishes later gates the cycle. If motor is
 //        faster than strategist we log motor_idle_ms; if strategist
 //        is faster we log plan_idle_ms. In steady state both ≈ 0.
-async function planNext(ctx: any, mode: string, model: string): Promise<any> {
-  const raw = await llm(STRATEGIST_PLAN_SYS(mode), JSON.stringify(ctx), model);
+async function planNext(ctx: any, mode: string, model: string, addonPrompt: string): Promise<any> {
+  const raw = await llm(STRATEGIST_PLAN_SYS(mode, addonPrompt), JSON.stringify(ctx), model);
   const msg = safeParse(raw);
   return msg?.payload ?? { reasoning: "invalid", verify_previous: { outcome: "retry" }, sense_batch: [], motor_batch: [], done: false, _raw: msg };
 }
 
-async function run(task: string, maxCycles: number, mode: "safe" | "full", models: { strategist: string; executor: string }) {
+async function run(task: string, maxCycles: number, mode: "safe" | "full", models: { strategist: string; executor: string }, addonPrompt: string = "") {
   const runId = crypto.randomUUID();
   const t0 = Date.now();
   const ledger: any[] = [];
@@ -257,7 +257,7 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
     task, cycle: 0, workspace_summary: workspace,
     last_batch: null, last_results: null, last_sense: null,
     instruction: "Emit the FIRST plan batch. Keep it small and concrete — the pipeline starts from here.",
-  }, mode, models.strategist);
+  }, mode, models.strategist, addonPrompt);
   llmCalls++;
 
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
@@ -385,15 +385,36 @@ async function run(task: string, maxCycles: number, mode: "safe" | "full", model
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const { task, max_cycles, mode, strategist_model, executor_model } = await req.json();
+    const body = await req.json();
+    const { task, max_cycles, mode, strategist_model, executor_model, addons, thread_key, agent_id } = body;
     if (!task) throw new Error("task is required");
     const runMode: "safe" | "full" = mode === "full" ? "full" : "safe";
     const models = {
       strategist: strategist_model || DEFAULT_STRATEGIST_MODEL,
-      executor: executor_model || DEFAULT_EXECUTOR_MODEL, // reserved; motor cortex uses no LLM
+      executor: executor_model || DEFAULT_EXECUTOR_MODEL,
     };
-    const result = await run(task, Math.min(max_cycles ?? 6, 12), runMode, models);
-    return new Response(JSON.stringify(result, null, 2), {
+    const addonFlags: AddonFlags = addons || {};
+    const hasAddons = addonFlags.persistentSession || addonFlags.fixedMemory || addonFlags.activeSensory || addonFlags.cerebellum;
+
+    let bundle: PreflightBundle | null = null;
+    let addonPrompt = "";
+    if (hasAddons) {
+      bundle = await preflight(agent_id || "dual-lobe-default", thread_key || "default", task, addonFlags);
+      addonPrompt = buildAddonPrompt(bundle);
+    }
+
+    const result = await run(task, Math.min(max_cycles ?? 6, 12), runMode, models, addonPrompt);
+
+    if (bundle) {
+      const ok = (result.ledger ?? []).some((e: any) => e.kind === "task_complete");
+      await postflight(bundle, {
+        runId: result.run_id, ok,
+        summary: task.slice(0, 200),
+        task, ledger: result.ledger ?? [],
+      });
+    }
+
+    return new Response(JSON.stringify({ ...result, addons: addonFlags, addon_bundle: bundle ? { fixedFacts: bundle.fixedFacts.length, sessionSummary: !!bundle.sessionSummary, envBrief: !!bundle.envBrief, skillHints: bundle.skillHints.length } : null }, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
