@@ -27,6 +27,8 @@ export default function NameYourPricePage() {
   const [returnDate, setReturnDate] = useState<Date>();
   const [tripType, setTripType] = useState("round-trip");
   const [passengers, setPassengers] = useState("1");
+  const [childrenCount, setChildrenCount] = useState("0");
+  const [infantsCount, setInfantsCount] = useState("0");
   const [cabinClass, setCabinClass] = useState("economy");
   const [bidAmount, setBidAmount] = useState("");
   const [waitHours, setWaitHours] = useState("24");
