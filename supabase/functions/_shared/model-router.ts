@@ -185,6 +185,35 @@ async function recordHealth(provider: string, model: string, ok: boolean, latenc
   } catch { /* health tracking must never break a call */ }
 }
 
+// ── Stickiness ─────────────────────────────────────────────────────────────
+// Featherless plans cap how often you may SWITCH models (e.g. 4/min). A router
+// that hops models per call therefore self-DDoSes, and parallel mission lanes
+// amplify it. So: pick one good model and STAY on it. Switch only when that
+// model actually fails, never for variety.
+let sticky: { model: string; at: number } | null = null;
+let switchLockUntil = 0; // set when the provider says we switched too often
+const STICKY_TTL_MS = 15 * 60 * 1000;
+
+function isSwitchLimit(text: string): boolean {
+  return /model_switching_limit|switch models|too many model/i.test(text ?? "");
+}
+
+/** Last model that actually worked, recovered across isolates from health data. */
+async function stickyModel(): Promise<string | null> {
+  if (sticky && Date.now() - sticky.at < STICKY_TTL_MS) return sticky.model;
+  try {
+    const { data } = await sb().from("ai_model_health")
+      .select("model_id,consecutive_errors,cooldown_until,ok_count")
+      .eq("provider", "featherless").gt("ok_count", 0).eq("consecutive_errors", 0)
+      .order("last_used_at", { ascending: false }).limit(1).maybeSingle();
+    if (data?.model_id && (!data.cooldown_until || new Date(data.cooldown_until).getTime() < Date.now())) {
+      sticky = { model: data.model_id, at: Date.now() };
+      return data.model_id;
+    }
+  } catch { /* fall through to ranking */ }
+  return null;
+}
+
 function providerOf(model: string): Provider {
   // Lovable gateway ids are vendor-prefixed (openai/…, google/…).
   return /^(openai|google|anthropic)\//i.test(model) ? "lovable" : "featherless";
@@ -222,15 +251,21 @@ export async function buildChain(requested?: string): Promise<string[]> {
 
   const explicit = requested && requested !== "auto" ? requested : null;
   if (explicit) push(explicit);
-  if (hasFeatherless()) {
-    if (!explicit) push(settings.default_model);
-    if (settings.auto_select || !explicit) {
-      const ranked = await rankModels(6);
+
+  const switchLocked = Date.now() < switchLockUntil;
+  if (hasFeatherless() && !switchLocked) {
+    if (!explicit) {
+      push(settings.default_model);          // operator pin wins
+      push(await stickyModel());             // then: whatever is already working
+    }
+    if (settings.auto_select) {
+      // Only TWO exploratory candidates — switching is a rationed resource.
+      const ranked = await rankModels(2);
       for (const r of ranked) push(r.model_id);
     }
     for (const f of settings.fallback_models ?? []) push(f);
   }
-  push(settings.emergency_model);
+  push(settings.emergency_model);            // different provider: no switch cost
   push("google/gemini-2.5-flash");
   return chain.slice(0, Math.max(2, settings.max_attempts + 1));
 }
@@ -254,8 +289,18 @@ export async function routeChat(
     try {
       const res = await callOnce(model, body);
       const latency = Date.now() - t0;
+      if (!res.ok && isSwitchLimit(res.text)) {
+        // Account-level throttle, NOT a bad model. Do not blame the model, do
+        // not keep hopping: lock switching for a minute and take the fallback
+        // provider, which costs no switch quota.
+        switchLockUntil = Date.now() + 60_000;
+        attempts.push({ model, ok: false, status: res.status, error: "switch_limit" });
+        lastErr = model + " → switch limit";
+        continue;
+      }
       await recordHealth(provider, model, res.ok, latency, res.status, res.ok ? undefined : res.text);
       if (res.ok) {
+        if (provider === "featherless") sticky = { model, at: Date.now() };
         attempts.push({ model, ok: true, status: res.status });
         return { content: res.content ?? "", model, provider, attempts };
       }
