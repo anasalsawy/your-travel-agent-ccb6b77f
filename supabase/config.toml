@@ -152,3 +152,5 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.vapi-call-hangup]
     verify_jwt = false
+  [functions.marketing-os]
+    verify_jwt = false
