@@ -202,7 +202,7 @@ export async function runDualLobeTurn(
   const stratRaw = await llm(stratSys, [{ role: "user", content: `MISSION:\n${missionCard}\n\nRECENT BUS:\n${history || "(empty)"}` }], agent.model, { max_tokens: 700 });
   const strat = safeParse(stratRaw);
   const plan: string = strat.plan ?? strat.say ?? "(no plan)";
-  await log(mission.id, agent.agent_key, plan, { lobe: "strategist", kind: "plan" });
+  log(mission.id, agent.agent_key, plan, { lobe: "strategist", kind: "plan" });
 
   if (strat.escalate?.reason) {
     return { agent: agent.agent_key, plan, report: "Escalated by strategist.", advanceStage: false, escalate: { reason: String(strat.escalate.reason) } };
@@ -214,7 +214,7 @@ export async function runDualLobeTurn(
   if (action) {
     toolResult = (await runBizTool(action.name, action.args ?? {}, mode))
       ?? (await execTool(action.name, action.args ?? {}, agent.tools, mode));
-    await log(mission.id, agent.agent_key, `${action.name}(${JSON.stringify(action.args ?? {}).slice(0, 300)})`, {
+    log(mission.id, agent.agent_key, `${action.name}(${JSON.stringify(action.args ?? {}).slice(0, 300)})`, {
       lobe: "executor", kind: "tool", meta: { result: JSON.stringify(toolResult).slice(0, 1500) },
     });
   }
@@ -236,7 +236,7 @@ export async function runDualLobeTurn(
   }], agent.model, { max_tokens: 700 });
   const exec = safeParse(execRaw);
   const report: string = exec.report ?? exec.say ?? "(no report)";
-  await log(mission.id, agent.agent_key, report, { lobe: "executor", kind: "report" });
+  log(mission.id, agent.agent_key, report, { lobe: "executor", kind: "report" });
 
   // Apply the mission patch under service role.
   const patch = exec.mission_patch ?? {};
@@ -328,17 +328,29 @@ export async function runBrain7Turn(
   policies: Record<string, any>,
   mode: Mode,
 ): Promise<LobeTurn> {
+  const t0 = Date.now();
+  const timings: Record<string, number> = {};
+  const mark = (k: string, from: number) => { timings[k] = Date.now() - from; };
+
   const signals = thalamus(mission, goal);
   const attention = amygdala(signals, mission);
 
-  const { data: recent } = await sb().from("ao_dialogue")
-    .select("from_agent,lobe,content,kind").eq("mission_id", mission.id)
-    .order("created_at", { ascending: false }).limit(8);
-  const episodic = (recent ?? []).reverse().map((r) => `- ${r.from_agent}/${r.lobe ?? r.kind}: ${r.content}`).join("\n").slice(0, 2000);
-  const { data: errs } = await sb().from("ao_dialogue")
-    .select("content").eq("mission_id", mission.id).eq("kind", "prediction_error")
-    .order("created_at", { ascending: false }).limit(3);
-  const deltas = (errs ?? []).map((e) => e.content).join(" | ") || "(no prediction errors yet)";
+  // Context reads fan out in parallel — three round-trips become one.
+  const db = sb();
+  const [recentR, errsR, adviceR] = await Promise.all([
+    db.from("ao_dialogue").select("from_agent,lobe,content,kind").eq("mission_id", mission.id)
+      .order("created_at", { ascending: false }).limit(8),
+    db.from("ao_dialogue").select("content").eq("mission_id", mission.id).eq("kind", "prediction_error")
+      .order("created_at", { ascending: false }).limit(3),
+    // Peer critique produced by the PREVIOUS cycle's dialogue lane. It arrives
+    // as feedback, never as a blocker — exactly like cortical back-projection.
+    db.from("ao_dialogue").select("content").eq("mission_id", mission.id).eq("kind", "advice")
+      .order("created_at", { ascending: false }).limit(2),
+  ]);
+  const episodic = (recentR.data ?? []).reverse().map((r) => `- ${r.from_agent}/${r.lobe ?? r.kind}: ${r.content}`).join("\n").slice(0, 2000);
+  const deltas = (errsR.data ?? []).map((e) => e.content).join(" | ") || "(no prediction errors yet)";
+  const advice = (adviceR.data ?? []).map((a) => "- " + a.content).join("\n") || "(no peer advice pending)";
+  mark("context_ms", t0);
 
   // ---- 3. PREFRONTAL CORTEX: hold the goal, emit candidates with predictions
   const pfcSys = [
@@ -363,11 +375,13 @@ export async function runBrain7Turn(
       `ATTENTION WINDOW (thalamus → amygdala, salience-ranked):\n${attention.map((a) => `- (${a.salience.toFixed(2)}) ${a.text}`).join("\n")}`,
       `EPISODIC MEMORY (hippocampus):\n${episodic || "(empty)"}`,
       `CEREBELLUM FEEDBACK:\n${deltas}`,
+      `PEER ADVICE (parallel dialogue lane, previous cycle — weigh it, do not obey it):\n${advice}`,
     ].join("\n\n"),
   }], agent.model, { max_tokens: 800 });
+  mark("prefrontal_ms", t0 + (timings.context_ms ?? 0));
   const pfc = safeParse(pfcRaw);
   const plan: string = pfc.goal_progress ?? pfc.note ?? pfc.say ?? "(no plan)";
-  await log(mission.id, agent.agent_key, plan, { lobe: "prefrontal", kind: "plan", meta: { note: pfc.note ?? null } });
+  log(mission.id, agent.agent_key, plan, { lobe: "prefrontal", kind: "plan", meta: { note: pfc.note ?? null } });
 
   if (pfc.escalate?.reason) {
     return { agent: agent.agent_key, plan, report: "Escalated by prefrontal cortex.", advanceStage: false, escalate: { reason: String(pfc.escalate.reason) } };
@@ -383,23 +397,31 @@ export async function runBrain7Turn(
   // ---- 4. BASAL GANGLIA: deterministic gate
   const { winner, scores } = basalGanglia(candidates, mode);
   if (candidates.length) {
-    await log(mission.id, agent.agent_key, `gate → ${winner?.tool ?? "none"} ${JSON.stringify(scores)}`, { lobe: "basal_ganglia", kind: "select" });
+    log(mission.id, agent.agent_key, `gate → ${winner?.tool ?? "none"} ${JSON.stringify(scores)}`, { lobe: "basal_ganglia", kind: "select" });
   }
 
   // ---- 5. MOTOR: execute exactly one action
+  //
+  // The dialogue lane is launched HERE, deliberately un-awaited: peer critique
+  // runs on the same wall-clock as the tool call, so inter-agent talk costs the
+  // mission zero latency. Its verdict lands on the bus for the next cycle.
+  const dialogueLane = spawn(peerCritique(agent, mission, goal, plan, winner, candidates, mode));
+
+  const tMotor = Date.now();
   let toolResult: unknown = null;
   const action = winner ? { name: winner.tool, args: winner.args } : null;
   if (action) {
     toolResult = (await runBizTool(action.name, action.args ?? {}, mode))
       ?? (await execTool(action.name, action.args ?? {}, agent.tools, mode));
-    await log(mission.id, agent.agent_key, `${action.name}(${JSON.stringify(action.args ?? {}).slice(0, 300)})`, {
+    log(mission.id, agent.agent_key, `${action.name}(${JSON.stringify(action.args ?? {}).slice(0, 300)})`, {
       lobe: "motor", kind: "tool", meta: { result: JSON.stringify(toolResult).slice(0, 1500) },
     });
   }
+  mark("motor_ms", tMotor);
 
   // ---- 6. CEREBELLUM: prediction error
   const delta = winner ? cerebellum(winner.expected, toolResult) : "";
-  if (delta) await log(mission.id, agent.agent_key, delta, { lobe: "cerebellum", kind: "prediction_error" });
+  if (delta) log(mission.id, agent.agent_key, delta, { lobe: "cerebellum", kind: "prediction_error" });
 
   // ---- 7. HIPPOCAMPUS: consolidate into a report + mission patch
   const hippoSys = [
@@ -412,13 +434,20 @@ export async function runBrain7Turn(
     "mission_patch may set: payload (merged object), expected_value, realized_value, customer_name, customer_email, outcome.",
     "Facts only. If the prediction error says the route is blocked, say so and propose the handoff instead of retrying.",
   ].join("\n");
+  const tHippo = Date.now();
   const hippoRaw = await llm(hippoSys, [{
     role: "user",
     content: `PLAN: ${plan}\nACTION: ${action ? action.name : "(none)"}\nRESULT: ${JSON.stringify(toolResult ?? null).slice(0, 2000)}\nPREDICTION ERROR: ${delta || "(none)"}`,
   }], agent.model, { max_tokens: 700 });
   const hippo = safeParse(hippoRaw);
   const report: string = hippo.report ?? hippo.say ?? "(no report)";
-  await log(mission.id, agent.agent_key, report, { lobe: "hippocampus", kind: "report" });
+  log(mission.id, agent.agent_key, report, { lobe: "hippocampus", kind: "report" });
+  mark("hippocampus_ms", tHippo);
+  // Only now do we glance at the parallel lane — it has been running the whole
+  // time. If it is still busy the bus will pick it up; we never block on it.
+  const critique = await Promise.race([dialogueLane, Promise.resolve<string | null>(null)]);
+  timings.dialogue_overlapped = critique ? 1 : 0;
+  timings.turn_ms = Date.now() - t0;
 
   const patch = hippo.mission_patch ?? {};
   const update: Record<string, unknown> = {};
@@ -436,7 +465,51 @@ export async function runBrain7Turn(
     report,
     handoff: hippo.handoff ?? null,
     advanceStage: Boolean(hippo.stage_complete ?? pfc.stage_complete),
+    timings,
   };
+}
+
+// ---------------------------------------------------------------------------
+// PARALLEL DIALOGUE LANE
+// A second agent-voice that reviews the chosen action while it is already
+// executing. It can never stop the action (that would make talk blocking); it
+// can only leave advice the next cycle reads, and raise a flag on the bus.
+// ---------------------------------------------------------------------------
+async function peerCritique(
+  agent: AoAgent,
+  mission: Mission,
+  goal: string,
+  plan: string,
+  winner: Candidate | null,
+  candidates: Candidate[],
+  mode: Mode,
+): Promise<string | null> {
+  if (!winner && candidates.length === 0) return null;
+  try {
+    const sys = [
+      `You are the CHIEF OF STAFF reviewing "${agent.display_name}" mid-action, on a parallel channel.`,
+      "You cannot stop the action; it is already running. Write advice the agent reads on its NEXT cycle.",
+      `STAGE GOAL: ${goal}`,
+      "Reply with ONE line under 200 characters: the single highest-value correction, or 'ON TRACK' if none.",
+      "No preamble, no praise, no restating the plan.",
+    ].join("\n");
+    const out = await llm(sys, [{
+      role: "user",
+      content: [
+        `MISSION: ${mission.title}`,
+        `PLAN: ${plan}`,
+        `CHOSEN: ${winner ? winner.tool + " — " + winner.why : "(no action)"}`,
+        `REJECTED: ${candidates.filter((c) => c !== winner).map((c) => c.tool).join(", ") || "(none)"}`,
+        `MODE: ${mode}`,
+      ].join("\n"),
+    }], agent.model, { max_tokens: 120 });
+    const line = String(out ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
+    if (!line || /^on track/i.test(line)) return null;
+    log(mission.id, "chief", line, { to: agent.agent_key, lobe: "corpus_callosum", kind: "advice" });
+    return line;
+  } catch {
+    return null; // The dialogue lane failing must never fail the mission.
+  }
 }
 
 /** Base = dual-lobe. Brain-7 is an additive layer selected per agent. */
