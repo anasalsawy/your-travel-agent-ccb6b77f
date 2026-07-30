@@ -217,7 +217,8 @@ export async function runDualLobeTurn(
   let toolResult: unknown = null;
   const action = strat.action && strat.action.name ? strat.action : null;
   if (action) {
-    toolResult = await execTool(action.name, action.args ?? {}, agent.tools, mode);
+    toolResult = (await runBizTool(action.name, action.args ?? {}, mode))
+      ?? (await execTool(action.name, action.args ?? {}, agent.tools, mode));
     await log(mission.id, agent.agent_key, `${action.name}(${JSON.stringify(action.args ?? {}).slice(0, 300)})`, {
       lobe: "executor", kind: "tool", meta: { result: JSON.stringify(toolResult).slice(0, 1500) },
     });
