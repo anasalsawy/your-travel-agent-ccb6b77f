@@ -4,6 +4,7 @@
 // travel specifically — the domain lives in the seeded agent charters.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { llm, safeParse, execTool, type Mode } from "./lobe-runtime.ts";
+import { bus, spawn } from "./bus.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,33 +64,25 @@ export function stageSpec(stage: string) {
   return PIPELINE.find((p) => p.stage === stage) ?? PIPELINE[0];
 }
 
-export async function log(
+// log()/event() are DIALOGUE-LANE writes: they enqueue on the bus and return
+// immediately. The execution lane never waits on narration.
+export function log(
   missionId: string | null,
   from: string,
   content: string,
   opts: { to?: string; lobe?: string; kind?: string; meta?: Record<string, unknown> } = {},
 ) {
-  await sb().from("ao_dialogue").insert({
-    mission_id: missionId,
-    from_agent: from,
-    to_agent: opts.to ?? null,
-    lobe: opts.lobe ?? null,
-    kind: opts.kind ?? "say",
-    content: content.slice(0, 4000),
-    meta: opts.meta ?? {},
-  });
+  bus.say(missionId, from, content, opts);
 }
 
-export async function event(
+export function event(
   missionId: string | null,
   agentKey: string | null,
   type: string,
   summary: string,
   detail: Record<string, unknown> = {},
 ) {
-  await sb().from("ao_events").insert({
-    mission_id: missionId, agent_key: agentKey, event_type: type, summary: summary.slice(0, 500), detail,
-  });
+  bus.emit(missionId, agentKey, type, summary, detail);
 }
 
 export async function loadPolicies(): Promise<Record<string, any>> {
@@ -124,6 +117,8 @@ export type LobeTurn = {
   handoff?: string | null;
   advanceStage: boolean;
   escalate?: { reason: string } | null;
+  /** Per-region wall-clock, so the orchestrator can prove where time went. */
+  timings?: Record<string, number>;
 };
 
 // Business capabilities are capability-shaped, never vendor-shaped: agents ask
