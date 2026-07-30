@@ -126,6 +126,49 @@ export type LobeTurn = {
   escalate?: { reason: string } | null;
 };
 
+// Business capabilities are capability-shaped, never vendor-shaped: agents ask
+// for "search_flights", not for a specific supplier. Swapping the supplier is a
+// change here and nowhere else.
+const BIZ_TOOLS: Record<string, { fn: string; readOnly: boolean; doc: string }> = {
+  search_flights: { fn: "duffel-search", readOnly: true, doc: 'search_flights {origin,destination,departure_date,return_date?,adults,children?,infants?,cabin_class?}' },
+  search_stays: { fn: "duffel-stays-search", readOnly: true, doc: 'search_stays {location,check_in,check_out,guests}' },
+  search_cars: { fn: "duffel-cars-search", readOnly: true, doc: 'search_cars {pickup_location,pickup_date,dropoff_date}' },
+  price_quote: { fn: "claude-quote", readOnly: true, doc: 'price_quote {route,dates,passengers} — margin-aware quoting engine' },
+  create_payment_link: { fn: "duffel-create-checkout", readOnly: false, doc: 'create_payment_link {offer_id,amount,currency,email}' },
+  book_ticket: { fn: "duffel-book", readOnly: false, doc: 'book_ticket {offer_id,passengers,contact_email}' },
+  notify_customer: { fn: "send-notification", readOnly: false, doc: 'notify_customer {to,subject,message}' },
+};
+
+export function toolCatalog(tools: string[]): string {
+  const biz = Object.entries(BIZ_TOOLS).filter(([k]) => tools.includes(k) || true)
+    .map(([, v]) => "  - " + v.doc).join("\n");
+  return [
+    "CAPABILITY CATALOG (call these by name — never invent URLs, never guess an external API):",
+    biz,
+    "  - db_read {table,select?,eq?,limit?} / db_write {table,op,values,eq?} on allowlisted tables",
+    "Use http_get ONLY for a URL that already appears in the mission payload.",
+  ].join("\n");
+}
+
+async function runBizTool(name: string, args: Record<string, unknown>, mode: Mode) {
+  const spec = BIZ_TOOLS[name];
+  if (!spec) return null;
+  if (!spec.readOnly && mode !== "full") {
+    return { tool: name, ok: false, error: `${name} blocked in safe mode (would mutate or spend)` };
+  }
+  try {
+    const r = await fetch(SUPABASE_URL + "/functions/v1/" + spec.fn, {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer " + SERVICE_ROLE },
+      body: JSON.stringify(args ?? {}),
+    });
+    const text = (await r.text()).slice(0, 3000);
+    return { tool: name, ok: r.ok, result: { status: r.status, body: text } };
+  } catch (e) {
+    return { tool: name, ok: false, error: (e as Error).message };
+  }
+}
+
 export async function runDualLobeTurn(
   agent: AoAgent,
   mission: Mission,
