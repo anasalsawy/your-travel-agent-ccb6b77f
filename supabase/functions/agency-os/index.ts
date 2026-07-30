@@ -2,7 +2,7 @@
 // POST { action: "tick" | "run_mission" | "create_mission" | "manifest" | "seed_demo" }
 import {
   corsHeaders, sb, log, event, loadPolicies, stageSpec, PIPELINE,
-  runDualLobeTurn, type AoAgent, type Mission,
+  runAgentTurn, type AoAgent, type Mission,
 } from "../_shared/dialogue-os.ts";
 import type { Mode } from "../_shared/lobe-runtime.ts";
 
@@ -82,7 +82,7 @@ async function runMission(missionId: string, mode: Mode, cycles: number) {
     const agent = agents[mission.owner_agent ?? spec.owner] ?? agents[spec.owner];
     if (!agent) throw new Error("no_agent_for_stage:" + mission.stage);
 
-    const turn = await runDualLobeTurn(agent, mission, spec.goal, policies, mode);
+    const turn = await runAgentTurn(agent, mission, spec.goal, policies, mode);
     trace.push({ cycle: c, stage: mission.stage, agent: agent.agent_key, plan: turn.plan, report: turn.report, tool: turn.action?.name ?? null });
 
     if (turn.escalate) {
@@ -140,10 +140,12 @@ async function buildManifest() {
     kind: "AutonomousAgency",
     generated_at: new Date().toISOString(),
     runtime: {
-      agent_model: "dual-lobe",
+      agent_model: "dual-lobe + brain-7",
       lobes: ["strategist", "executor"],
+      brain7_regions: ["thalamus", "amygdala", "prefrontal", "basal_ganglia", "motor", "cerebellum", "hippocampus"],
+      model_routing: "featherless-auto (health-ranked, auto-failover)",
       governance: "dialogue-os",
-      addon_layers: ["persistentSession", "fixedMemory", "sensory", "cerebellum"],
+      addon_layers: ["brain7", "persistentSession", "fixedMemory", "sensory", "cerebellum"],
       transport: "http/json",
       required_capabilities: ["llm.chat.json", "kv_or_sql.store", "scheduler.cron", "notify.email_or_sms"],
       vendor_neutral: true,
