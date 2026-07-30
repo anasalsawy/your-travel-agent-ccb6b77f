@@ -54,7 +54,26 @@ export async function getSettings(): Promise<RouterSettings> {
 }
 
 // ── Catalog ────────────────────────────────────────────────────────────────
-export async function refreshCatalog(): Promise<{ ok: boolean; count: number; error?: string }> {
+// Featherless exposes >20k HuggingFace repos. Most are 0.5B toys, swarm forks
+// or base (non-instruct) checkpoints that cannot hold an agent loop. We cache
+// only serviceable agent models so selection stays fast and safe.
+const SIZE_OK = /(7b|8b|9b|12b|13b|14b|20b|22b|24b|27b|30b|32b|34b|65b|70b|72b|8x7b|8x22b|123b|235b|405b|480b)/i;
+const FAMILY_OK = /(qwen|llama|mistral|mixtral|deepseek|gemma|phi|command|hermes|yi-|glm|kimi|minimax|nemotron|granite|olmo)/i;
+const REJECT = /(gensyn|swarm|tiny|storygeneration|-0b5|0\.5b|1\.5b|-1b|-3b|-2b|draft|gguf|awq-|test|debug)/i;
+const INSTRUCT = /(instruct|chat|-it\b|it$|thinking|reason|hermes|dolphin|openchat|nemo)/i;
+
+function serviceable(m: { model_id: string; model_class: string | null; context_length: number | null }): boolean {
+  const id = m.model_id;
+  const cls = m.model_class ?? "";
+  if (REJECT.test(id)) return false;
+  if ((m.context_length ?? 0) < 8192) return false;
+  if (!FAMILY_OK.test(id) && !FAMILY_OK.test(cls)) return false;
+  if (!SIZE_OK.test(id) && !SIZE_OK.test(cls)) return false;
+  if (!INSTRUCT.test(id)) return false;
+  return true;
+}
+
+export async function refreshCatalog(): Promise<{ ok: boolean; count: number; scanned?: number; error?: string }> {
   if (!hasFeatherless()) return { ok: false, count: 0, error: "FEATHERLESS_API_KEY not configured" };
   try {
     const r = await fetch(FEATHERLESS_BASE + "/models", {
@@ -73,26 +92,31 @@ export async function refreshCatalog(): Promise<{ ok: boolean; count: number; er
       is_gated: Boolean(m.is_gated ?? false),
       available: m.available_on_current_plan !== false && m.status !== "unavailable",
       capabilities: { json: true },
-      raw: m,
+      raw: {},
       refreshed_at: new Date().toISOString(),
-    })).filter((r) => r.model_id);
+    })).filter((row) => row.model_id && serviceable(row)).slice(0, 1200);
 
     const s = sb();
+    // Rebuild the cache so retired models disappear instead of lingering.
+    await s.from("ai_model_registry").delete().eq("provider", "featherless");
     for (let i = 0; i < rows.length; i += 200) {
       await s.from("ai_model_registry").upsert(rows.slice(i, i + 200), { onConflict: "provider,model_id" });
     }
-    return { ok: true, count: rows.length };
+    return { ok: true, count: rows.length, scanned: list.length };
   } catch (e) {
     return { ok: false, count: 0, error: (e as Error).message };
   }
 }
 
-export async function listCatalog(limit = 2000) {
-  const { data } = await sb().from("ai_model_registry")
+export async function listCatalog(limit = 1200, search?: string) {
+  let q = sb().from("ai_model_registry")
     .select("provider,model_id,display_name,model_class,context_length,is_gated,available")
-    .eq("available", true).order("model_id").limit(limit);
+    .eq("available", true);
+  if (search) q = q.ilike("model_id", "%" + search + "%");
+  const { data } = await q.order("model_id").limit(limit);
   return data ?? [];
 }
+
 
 async function healthMap(): Promise<Record<string, any>> {
   const { data } = await sb().from("ai_model_health").select("*");
