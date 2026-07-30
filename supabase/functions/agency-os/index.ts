@@ -5,6 +5,7 @@ import {
   runAgentTurn, type AoAgent, type Mission,
 } from "../_shared/dialogue-os.ts";
 import type { Mode } from "../_shared/lobe-runtime.ts";
+import { bus, pool } from "../_shared/bus.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "content-type": "application/json" } });
@@ -19,8 +20,14 @@ Deno.serve(async (req) => {
     if (action === "manifest") return json({ ok: true, manifest: await buildManifest() });
     if (action === "create_mission") return json(await createMission(body));
     if (action === "seed_demo") return json(await seedDemo());
-    if (action === "run_mission") return json(await runMission(body.mission_id, mode, body.cycles ?? 3));
-    return json(await tick(mode, body.limit ?? 3, body.cycles ?? 2));
+    if (action === "run_mission") {
+      const r = await runMission(body.mission_id, mode, body.cycles ?? 3);
+      await bus.drain();
+      return json({ ...r, lane_stats: bus.stats });
+    }
+    const r = await tick(mode, body.limit ?? 3, body.cycles ?? 2, body.concurrency ?? 3);
+    await bus.drain();
+    return json({ ...r, lane_stats: bus.stats });
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500);
   }
@@ -40,8 +47,8 @@ async function createMission(body: any) {
     owner_agent: "scout",
   }).select().single();
   if (error) throw error;
-  await event(data.id, "chief", "mission_created", `Mission opened: ${data.title}`);
-  await log(data.id, "chief", `Mission opened at stage "${data.stage}". Routing to ${stageSpec(data.stage).owner}.`, { kind: "route" });
+  event(data.id, "chief", "mission_created", `Mission opened: ${data.title}`);
+  log(data.id, "chief", `Mission opened at stage "${data.stage}". Routing to ${stageSpec(data.stage).owner}.`, { kind: "route" });
   return { ok: true, mission: data };
 }
 
@@ -83,12 +90,16 @@ async function runMission(missionId: string, mode: Mode, cycles: number) {
     if (!agent) throw new Error("no_agent_for_stage:" + mission.stage);
 
     const turn = await runAgentTurn(agent, mission, spec.goal, policies, mode);
-    trace.push({ cycle: c, stage: mission.stage, agent: agent.agent_key, plan: turn.plan, report: turn.report, tool: turn.action?.name ?? null });
+    trace.push({
+      cycle: c, stage: mission.stage, agent: agent.agent_key,
+      plan: turn.plan, report: turn.report, tool: turn.action?.name ?? null,
+      timings: turn.timings ?? null,
+    });
 
     if (turn.escalate) {
       await sb().from("ao_missions").update({ needs_human: true, escalation_reason: turn.escalate.reason, status: "escalated" }).eq("id", mission.id);
-      await log(mission.id, "chief", `ESCALATED — ${turn.escalate.reason}`, { kind: "escalation" });
-      await event(mission.id, agent.agent_key, "escalated", turn.escalate.reason);
+      log(mission.id, "chief", `ESCALATED — ${turn.escalate.reason}`, { kind: "escalation" });
+      event(mission.id, agent.agent_key, "escalated", turn.escalate.reason);
       break;
     }
 
@@ -100,16 +111,19 @@ async function runMission(missionId: string, mode: Mode, cycles: number) {
         stage: next, owner_agent: nextOwner,
         status: done ? "completed" : "open",
       }).eq("id", mission.id);
-      await log(mission.id, "chief", `${spec.stage} complete → handing to ${nextOwner} for "${next}".`, { to: nextOwner, kind: "route" });
-      await event(mission.id, "chief", "stage_advanced", `${spec.stage} → ${next}`);
+      log(mission.id, "chief", `${spec.stage} complete → handing to ${nextOwner} for "${next}".`, { to: nextOwner, kind: "route" });
+      event(mission.id, "chief", "stage_advanced", `${spec.stage} → ${next}`);
       if (done) break;
     }
   }
   return { ok: true, mission_id: missionId, trace };
 }
 
-// One autonomous heartbeat: pick the most valuable open missions and push each forward.
-async function tick(mode: Mode, limit: number, cycles: number) {
+// One autonomous heartbeat. Missions are independent units of work, so they are
+// advanced CONCURRENTLY under a bounded pool; the dialogue bus batches all of
+// their narration off-thread. Wall-clock ≈ slowest mission, not their sum.
+async function tick(mode: Mode, limit: number, cycles: number, concurrency: number) {
+  const startedAt = Date.now();
   const policies = await loadPolicies();
   const cap = Math.min(limit, policies.tick_budget?.missions_per_tick ?? 5);
   const { data: missions } = await sb().from("ao_missions")
@@ -118,16 +132,18 @@ async function tick(mode: Mode, limit: number, cycles: number) {
     .order("priority", { ascending: true }).order("updated_at", { ascending: true })
     .limit(cap);
 
-  const results: unknown[] = [];
-  for (const m of missions ?? []) {
+  const list = missions ?? [];
+  const lanes = Math.max(1, Math.min(concurrency, policies.tick_budget?.max_concurrency ?? 4));
+  const results = await pool(list, lanes, async (m) => {
     try {
-      results.push(await runMission(m.id, mode, cycles));
+      return await runMission(m.id, mode, cycles);
     } catch (e) {
-      results.push({ ok: false, mission_id: m.id, error: (e as Error).message });
+      return { ok: false, mission_id: m.id, error: (e as Error).message };
     }
-  }
-  await event(null, "chief", "tick", `Heartbeat processed ${results.length} mission(s).`, { mode });
-  return { ok: true, processed: results.length, results };
+  });
+  const elapsed_ms = Date.now() - startedAt;
+  event(null, "chief", "tick", `Heartbeat advanced ${results.length} mission(s) across ${lanes} lane(s) in ${elapsed_ms}ms.`, { mode, lanes, elapsed_ms });
+  return { ok: true, processed: results.length, lanes, elapsed_ms, results };
 }
 
 // Portable deployment manifest — everything a different business needs to
@@ -147,6 +163,8 @@ async function buildManifest() {
       governance: "dialogue-os",
       addon_layers: ["brain7", "persistentSession", "fixedMemory", "sensory", "cerebellum"],
       transport: "http/json",
+      concurrency_model: "missions advanced in a bounded parallel pool; dialogue/telemetry on a separate non-blocking bus lane",
+      lanes: { execution: "sense→gate→act→patch (critical path)", dialogue: "narration, peer critique, telemetry (never awaited)" },
       required_capabilities: ["llm.chat.json", "kv_or_sql.store", "scheduler.cron", "notify.email_or_sms"],
       vendor_neutral: true,
     },
