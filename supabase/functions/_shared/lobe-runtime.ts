@@ -15,6 +15,9 @@ export const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 export const ALLOWLIST_TABLES = new Set([
   "war_room_messages", "war_room_tasks", "war_room_heartbeats",
   "agent_room_messages", "agent_rooms", "notification_log", "documents",
+  // Agency OS domain surface
+  "ao_agents", "ao_missions", "ao_tasks", "ao_dialogue", "ao_policies", "ao_events",
+  "ticket_requests", "duffel_bookings", "orders", "nyop_bids", "quote_logs", "call_logs", "profiles",
 ]);
 
 export const SENSORY_TOOLS = ["db_read", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
