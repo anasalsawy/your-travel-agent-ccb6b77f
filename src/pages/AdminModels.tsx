@@ -43,10 +43,10 @@ export default function AdminModels() {
   const [prompt, setPrompt] = useState("Say hello and name yourself.");
   const [testResult, setTestResult] = useState<any>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (search?: string) => {
     try {
       const [list, rank, h, s] = await Promise.all([
-        call("list"), call("rank", { limit: 15 }), call("health"), call("settings"),
+        call("list", { search: search || undefined, limit: 400 }), call("rank", { limit: 15 }), call("health"), call("settings"),
       ]);
       setModels(list?.models ?? []);
       setConfigured(Boolean(list?.configured));
@@ -60,11 +60,15 @@ export default function AdminModels() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const t = setTimeout(() => { void load(query.trim() || undefined); }, 350);
+    return () => clearTimeout(t);
+  }, [query, load]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const base = q ? models.filter((m) => m.model_id.toLowerCase().includes(q)) : models;
-    return base.slice(0, 200);
+    return base.slice(0, 150);
   }, [models, query]);
 
   const healthOf = (id: string) => health.find((h) => h.model_id === id);
@@ -159,7 +163,7 @@ export default function AdminModels() {
           <TabsContent value="models" className="space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Search Featherless models…" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <Input className="pl-9" placeholder="Search all active Featherless models…" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
             <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
               {filtered.map((m) => {
