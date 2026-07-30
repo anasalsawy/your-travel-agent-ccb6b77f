@@ -511,7 +511,7 @@ serve(async (req) => {
     const { task, max_cycles, mode, model } = await req.json();
     if (!task) throw new Error("task is required");
     const runMode: "safe" | "full" = mode === "full" ? "full" : "safe";
-    const result = await run(task, Math.min(max_cycles ?? 8, 15), runMode, model || "google/gemini-2.5-flash");
+    const result = await run(task, Math.min(max_cycles ?? 8, 15), runMode, model || "auto");
     const transcript = traceToTranscript(result.trace);
     return new Response(JSON.stringify({ ...result, transcript }, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
