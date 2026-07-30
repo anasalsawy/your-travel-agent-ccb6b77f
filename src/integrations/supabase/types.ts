@@ -328,6 +328,280 @@ export type Database = {
           },
         ]
       }
+      ao_agents: {
+        Row: {
+          addons: Json
+          agent_key: string
+          autonomy_level: number
+          charter: string
+          created_at: string
+          department: string
+          display_name: string
+          executor_prompt: string
+          id: string
+          model: string
+          sort_order: number
+          status: string
+          strategist_prompt: string
+          tools: string[]
+          updated_at: string
+        }
+        Insert: {
+          addons?: Json
+          agent_key: string
+          autonomy_level?: number
+          charter: string
+          created_at?: string
+          department: string
+          display_name: string
+          executor_prompt?: string
+          id?: string
+          model?: string
+          sort_order?: number
+          status?: string
+          strategist_prompt?: string
+          tools?: string[]
+          updated_at?: string
+        }
+        Update: {
+          addons?: Json
+          agent_key?: string
+          autonomy_level?: number
+          charter?: string
+          created_at?: string
+          department?: string
+          display_name?: string
+          executor_prompt?: string
+          id?: string
+          model?: string
+          sort_order?: number
+          status?: string
+          strategist_prompt?: string
+          tools?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ao_dialogue: {
+        Row: {
+          content: string
+          created_at: string
+          from_agent: string
+          id: string
+          kind: string
+          lobe: string | null
+          meta: Json
+          mission_id: string | null
+          task_id: string | null
+          to_agent: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          from_agent: string
+          id?: string
+          kind?: string
+          lobe?: string | null
+          meta?: Json
+          mission_id?: string | null
+          task_id?: string | null
+          to_agent?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          from_agent?: string
+          id?: string
+          kind?: string
+          lobe?: string | null
+          meta?: Json
+          mission_id?: string | null
+          task_id?: string | null
+          to_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ao_dialogue_mission_id_fkey"
+            columns: ["mission_id"]
+            isOneToOne: false
+            referencedRelation: "ao_missions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ao_events: {
+        Row: {
+          agent_key: string | null
+          created_at: string
+          detail: Json
+          event_type: string
+          id: string
+          mission_id: string | null
+          summary: string
+        }
+        Insert: {
+          agent_key?: string | null
+          created_at?: string
+          detail?: Json
+          event_type: string
+          id?: string
+          mission_id?: string | null
+          summary: string
+        }
+        Update: {
+          agent_key?: string | null
+          created_at?: string
+          detail?: Json
+          event_type?: string
+          id?: string
+          mission_id?: string | null
+          summary?: string
+        }
+        Relationships: []
+      }
+      ao_missions: {
+        Row: {
+          created_at: string
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          escalation_reason: string | null
+          expected_value: number | null
+          id: string
+          needs_human: boolean
+          outcome: string | null
+          owner_agent: string | null
+          payload: Json
+          priority: number
+          realized_value: number | null
+          source: string | null
+          stage: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          escalation_reason?: string | null
+          expected_value?: number | null
+          id?: string
+          needs_human?: boolean
+          outcome?: string | null
+          owner_agent?: string | null
+          payload?: Json
+          priority?: number
+          realized_value?: number | null
+          source?: string | null
+          stage?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          escalation_reason?: string | null
+          expected_value?: number | null
+          id?: string
+          needs_human?: boolean
+          outcome?: string | null
+          owner_agent?: string | null
+          payload?: Json
+          priority?: number
+          realized_value?: number | null
+          source?: string | null
+          stage?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ao_policies: {
+        Row: {
+          description: string | null
+          id: string
+          is_active: boolean
+          label: string
+          policy_key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          label: string
+          policy_key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          policy_key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      ao_tasks: {
+        Row: {
+          agent_key: string
+          attempt: number
+          created_at: string
+          id: string
+          instruction: string
+          last_error: string | null
+          mission_id: string
+          result: Json | null
+          state: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          agent_key: string
+          attempt?: number
+          created_at?: string
+          id?: string
+          instruction: string
+          last_error?: string | null
+          mission_id: string
+          result?: Json | null
+          state?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          agent_key?: string
+          attempt?: number
+          created_at?: string
+          id?: string
+          instruction?: string
+          last_error?: string | null
+          mission_id?: string
+          result?: Json | null
+          state?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ao_tasks_mission_id_fkey"
+            columns: ["mission_id"]
+            isOneToOne: false
+            referencedRelation: "ao_missions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       azure_agent_threads: {
         Row: {
           assistant_id: string

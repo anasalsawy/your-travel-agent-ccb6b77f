@@ -27,6 +27,7 @@ import VoiceProxy from "./pages/VoiceProxy";
 import AdminDuffelCard from "./pages/AdminDuffelCard";
 import AdminAzure from "./pages/AdminAzure";
 import AdminDualLobe from "./pages/AdminDualLobe";
+import AdminAgencyOS from "./pages/AdminAgencyOS";
 import AdminAgentRooms from "./pages/AdminAgentRooms";
 import AdminShopperProfile from "./pages/AdminShopperProfile";
 import AdminWarRoom from "./pages/AdminWarRoom";
@@ -94,6 +95,8 @@ const App = () => (
             <Route path="/admin/duffel-card" element={<AdminDuffelCard />} />
             <Route path="/admin/azure" element={<AdminAzure />} />
             <Route path="/admin/dual-lobe" element={<AdminDualLobe />} />
+            <Route path="/admin/agency-os" element={<AdminAgencyOS />} />
+
             <Route path="/admin/agent-rooms" element={<AdminAgentRooms />} />
             <Route path="/admin/shopper-profile" element={<AdminShopperProfile />} />
             <Route path="/admin/war-room" element={<AdminWarRoom />} />
