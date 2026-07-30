@@ -328,6 +328,138 @@ export type Database = {
           },
         ]
       }
+      ai_model_health: {
+        Row: {
+          avg_latency_ms: number
+          consecutive_errors: number
+          cooldown_until: string | null
+          created_at: string
+          err_count: number
+          id: string
+          last_error: string | null
+          last_status: number | null
+          last_used_at: string | null
+          model_id: string
+          ok_count: number
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          avg_latency_ms?: number
+          consecutive_errors?: number
+          cooldown_until?: string | null
+          created_at?: string
+          err_count?: number
+          id?: string
+          last_error?: string | null
+          last_status?: number | null
+          last_used_at?: string | null
+          model_id: string
+          ok_count?: number
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          avg_latency_ms?: number
+          consecutive_errors?: number
+          cooldown_until?: string | null
+          created_at?: string
+          err_count?: number
+          id?: string
+          last_error?: string | null
+          last_status?: number | null
+          last_used_at?: string | null
+          model_id?: string
+          ok_count?: number
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_model_registry: {
+        Row: {
+          available: boolean
+          capabilities: Json
+          context_length: number | null
+          created_at: string
+          display_name: string | null
+          id: string
+          is_gated: boolean
+          max_completion_tokens: number | null
+          model_class: string | null
+          model_id: string
+          provider: string
+          raw: Json
+          refreshed_at: string
+        }
+        Insert: {
+          available?: boolean
+          capabilities?: Json
+          context_length?: number | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          is_gated?: boolean
+          max_completion_tokens?: number | null
+          model_class?: string | null
+          model_id: string
+          provider?: string
+          raw?: Json
+          refreshed_at?: string
+        }
+        Update: {
+          available?: boolean
+          capabilities?: Json
+          context_length?: number | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          is_gated?: boolean
+          max_completion_tokens?: number | null
+          model_class?: string | null
+          model_id?: string
+          provider?: string
+          raw?: Json
+          refreshed_at?: string
+        }
+        Relationships: []
+      }
+      ai_router_settings: {
+        Row: {
+          auto_select: boolean
+          cooldown_seconds: number
+          default_model: string | null
+          emergency_model: string
+          fallback_models: string[]
+          id: string
+          max_attempts: number
+          primary_provider: string
+          updated_at: string
+        }
+        Insert: {
+          auto_select?: boolean
+          cooldown_seconds?: number
+          default_model?: string | null
+          emergency_model?: string
+          fallback_models?: string[]
+          id?: string
+          max_attempts?: number
+          primary_provider?: string
+          updated_at?: string
+        }
+        Update: {
+          auto_select?: boolean
+          cooldown_seconds?: number
+          default_model?: string | null
+          emergency_model?: string
+          fallback_models?: string[]
+          id?: string
+          max_attempts?: number
+          primary_provider?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ao_agents: {
         Row: {
           addons: Json
