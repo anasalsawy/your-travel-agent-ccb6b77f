@@ -28,6 +28,7 @@ import AdminDuffelCard from "./pages/AdminDuffelCard";
 import AdminAzure from "./pages/AdminAzure";
 import AdminDualLobe from "./pages/AdminDualLobe";
 import AdminAgencyOS from "./pages/AdminAgencyOS";
+import AdminLeadEngine from "./pages/AdminLeadEngine";
 import AdminAgentRooms from "./pages/AdminAgentRooms";
 import AdminShopperProfile from "./pages/AdminShopperProfile";
 import AdminWarRoom from "./pages/AdminWarRoom";
