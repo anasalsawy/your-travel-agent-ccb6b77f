@@ -132,6 +132,12 @@ const BIZ_TOOLS: Record<string, { fn: string; readOnly: boolean; doc: string }> 
   create_payment_link: { fn: "duffel-create-checkout", readOnly: false, doc: 'create_payment_link {offer_id,amount,currency,email}' },
   book_ticket: { fn: "duffel-book", readOnly: false, doc: 'book_ticket {offer_id,passengers,contact_email}' },
   notify_customer: { fn: "send-notification", readOnly: false, doc: 'notify_customer {to,subject,message}' },
+  // Growth & website operations — the council also runs the shopfront.
+  plan_campaign: { fn: "marketing-os", readOnly: false, doc: 'plan_campaign {action:"plan",brief,landing_path?,daily_budget_usd?,lifetime_cap_usd?} — write a Facebook campaign + 3 ad angles' },
+  launch_campaign: { fn: "marketing-os", readOnly: false, doc: 'launch_campaign {action:"launch",campaign_id} — push the campaign live on Meta (respects the lifetime spend cap)' },
+  social_post: { fn: "marketing-os", readOnly: false, doc: 'social_post {action:"page_post",campaign_id?,message?} — free organic Facebook Page post' },
+  ad_performance: { fn: "marketing-os", readOnly: true, doc: 'ad_performance {action:"status"} — campaigns, creatives, spend, and website task queue' },
+  site_audit: { fn: "marketing-os", readOnly: false, doc: 'site_audit {action:"site_audit"} — propose concrete website changes into the work queue' },
 };
 
 export function toolCatalog(tools: string[]): string {

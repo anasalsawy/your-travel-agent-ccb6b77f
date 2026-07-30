@@ -30,6 +30,7 @@ import AdminDualLobe from "./pages/AdminDualLobe";
 import AdminAgencyOS from "./pages/AdminAgencyOS";
 import AdminModels from "./pages/AdminModels";
 import AdminLeadEngine from "./pages/AdminLeadEngine";
+import AdminMarketing from "./pages/AdminMarketing";
 import AdminAgentRooms from "./pages/AdminAgentRooms";
 import AdminShopperProfile from "./pages/AdminShopperProfile";
 import AdminWarRoom from "./pages/AdminWarRoom";
@@ -100,6 +101,7 @@ const App = () => (
             <Route path="/admin/agency-os" element={<AdminAgencyOS />} />
             <Route path="/admin/models" element={<AdminModels />} />
             <Route path="/admin/leads" element={<AdminLeadEngine />} />
+            <Route path="/admin/marketing" element={<AdminMarketing />} />
 
             <Route path="/admin/agent-rooms" element={<AdminAgentRooms />} />
             <Route path="/admin/shopper-profile" element={<AdminShopperProfile />} />

@@ -18,6 +18,7 @@ export const ALLOWLIST_TABLES = new Set([
   "agent_room_messages", "agent_rooms", "notification_log", "documents",
   // Agency OS domain surface
   "ao_agents", "ao_missions", "ao_tasks", "ao_dialogue", "ao_policies", "ao_events",
+  "ao_campaigns", "ao_creatives", "ao_ad_metrics", "ao_site_tasks",
   "ticket_requests", "duffel_bookings", "orders", "nyop_bids", "quote_logs", "call_logs", "profiles",
 ]);
 

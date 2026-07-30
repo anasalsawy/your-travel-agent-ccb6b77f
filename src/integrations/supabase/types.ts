@@ -460,6 +460,66 @@ export type Database = {
         }
         Relationships: []
       }
+      ao_ad_metrics: {
+        Row: {
+          bookings: number
+          campaign_id: string
+          clicks: number
+          created_at: string
+          creative_id: string | null
+          day: string
+          id: string
+          impressions: number
+          leads: number
+          revenue_usd: number
+          spend_usd: number
+          updated_at: string
+        }
+        Insert: {
+          bookings?: number
+          campaign_id: string
+          clicks?: number
+          created_at?: string
+          creative_id?: string | null
+          day?: string
+          id?: string
+          impressions?: number
+          leads?: number
+          revenue_usd?: number
+          spend_usd?: number
+          updated_at?: string
+        }
+        Update: {
+          bookings?: number
+          campaign_id?: string
+          clicks?: number
+          created_at?: string
+          creative_id?: string | null
+          day?: string
+          id?: string
+          impressions?: number
+          leads?: number
+          revenue_usd?: number
+          spend_usd?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ao_ad_metrics_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ao_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ao_ad_metrics_creative_id_fkey"
+            columns: ["creative_id"]
+            isOneToOne: false
+            referencedRelation: "ao_creatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ao_agents: {
         Row: {
           addons: Json
@@ -514,6 +574,63 @@ export type Database = {
         }
         Relationships: []
       }
+      ao_campaigns: {
+        Row: {
+          audience: Json
+          autonomy: string
+          channel: string
+          created_at: string
+          daily_budget_usd: number
+          external_ids: Json
+          id: string
+          kpi: Json
+          landing_path: string
+          lifetime_cap_usd: number
+          name: string
+          notes: string | null
+          objective: string
+          spend_usd: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: Json
+          autonomy?: string
+          channel?: string
+          created_at?: string
+          daily_budget_usd?: number
+          external_ids?: Json
+          id?: string
+          kpi?: Json
+          landing_path?: string
+          lifetime_cap_usd?: number
+          name: string
+          notes?: string | null
+          objective?: string
+          spend_usd?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: Json
+          autonomy?: string
+          channel?: string
+          created_at?: string
+          daily_budget_usd?: number
+          external_ids?: Json
+          id?: string
+          kpi?: Json
+          landing_path?: string
+          lifetime_cap_usd?: number
+          name?: string
+          notes?: string | null
+          objective?: string
+          spend_usd?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ao_channel_sessions: {
         Row: {
           channel: string
@@ -561,6 +678,62 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      ao_creatives: {
+        Row: {
+          angle: string
+          campaign_id: string
+          created_at: string
+          cta: string
+          description: string | null
+          external_id: string | null
+          headline: string
+          id: string
+          image_prompt: string | null
+          image_url: string | null
+          primary_text: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          angle?: string
+          campaign_id: string
+          created_at?: string
+          cta?: string
+          description?: string | null
+          external_id?: string | null
+          headline: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          primary_text: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          angle?: string
+          campaign_id?: string
+          created_at?: string
+          cta?: string
+          description?: string | null
+          external_id?: string | null
+          headline?: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          primary_text?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ao_creatives_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ao_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ao_dialogue: {
         Row: {
@@ -911,6 +1084,45 @@ export type Database = {
           missions_touched?: number
           notes?: string | null
           ok?: boolean
+        }
+        Relationships: []
+      }
+      ao_site_tasks: {
+        Row: {
+          created_at: string
+          detail: string | null
+          id: string
+          kind: string
+          priority: number
+          proposal: Json
+          status: string
+          target_path: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          detail?: string | null
+          id?: string
+          kind?: string
+          priority?: number
+          proposal?: Json
+          status?: string
+          target_path?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          detail?: string | null
+          id?: string
+          kind?: string
+          priority?: number
+          proposal?: Json
+          status?: string
+          target_path?: string | null
+          title?: string
+          updated_at?: string
         }
         Relationships: []
       }
