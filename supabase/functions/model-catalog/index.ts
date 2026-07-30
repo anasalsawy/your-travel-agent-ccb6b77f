@@ -21,10 +21,10 @@ Deno.serve(async (req) => {
       return json({ ...r, models: await listCatalog() });
     }
     if (action === "list") {
-      let models = await listCatalog();
+      let models = await listCatalog(body.limit ?? 400, body.search);
       if (!models.length && hasFeatherless()) {
         await refreshCatalog();
-        models = await listCatalog();
+        models = await listCatalog(body.limit ?? 400, body.search);
       }
       return json({ ok: true, configured: hasFeatherless(), models, settings: await getSettings() });
     }
