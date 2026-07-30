@@ -382,6 +382,54 @@ export type Database = {
         }
         Relationships: []
       }
+      ao_channel_sessions: {
+        Row: {
+          channel: string
+          context_id: string | null
+          created_at: string
+          id: string
+          label: string
+          last_error: string | null
+          last_verified_at: string | null
+          live_view_url: string | null
+          meta: Json
+          provider: string
+          session_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          context_id?: string | null
+          created_at?: string
+          id?: string
+          label?: string
+          last_error?: string | null
+          last_verified_at?: string | null
+          live_view_url?: string | null
+          meta?: Json
+          provider?: string
+          session_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          context_id?: string | null
+          created_at?: string
+          id?: string
+          label?: string
+          last_error?: string | null
+          last_verified_at?: string | null
+          live_view_url?: string | null
+          meta?: Json
+          provider?: string
+          session_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ao_dialogue: {
         Row: {
           content: string
@@ -459,6 +507,89 @@ export type Database = {
         }
         Relationships: []
       }
+      ao_leads: {
+        Row: {
+          attempts: number
+          cadence_step: number
+          channel: string
+          contact: Json
+          created_at: string
+          estimated_value: number | null
+          external_thread_id: string | null
+          headline: string
+          id: string
+          itinerary: Json
+          last_contact_at: string | null
+          last_reply_at: string | null
+          mission_id: string | null
+          next_action_at: string
+          notes: string | null
+          priority: number
+          raw_text: string
+          source: string
+          stage: string
+          status: string
+          summary: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          cadence_step?: number
+          channel?: string
+          contact?: Json
+          created_at?: string
+          estimated_value?: number | null
+          external_thread_id?: string | null
+          headline: string
+          id?: string
+          itinerary?: Json
+          last_contact_at?: string | null
+          last_reply_at?: string | null
+          mission_id?: string | null
+          next_action_at?: string
+          notes?: string | null
+          priority?: number
+          raw_text: string
+          source?: string
+          stage?: string
+          status?: string
+          summary?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          cadence_step?: number
+          channel?: string
+          contact?: Json
+          created_at?: string
+          estimated_value?: number | null
+          external_thread_id?: string | null
+          headline?: string
+          id?: string
+          itinerary?: Json
+          last_contact_at?: string | null
+          last_reply_at?: string | null
+          mission_id?: string | null
+          next_action_at?: string
+          notes?: string | null
+          priority?: number
+          raw_text?: string
+          source?: string
+          stage?: string
+          status?: string
+          summary?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ao_leads_mission_id_fkey"
+            columns: ["mission_id"]
+            isOneToOne: false
+            referencedRelation: "ao_missions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ao_missions: {
         Row: {
           created_at: string
@@ -522,6 +653,69 @@ export type Database = {
         }
         Relationships: []
       }
+      ao_outreach: {
+        Row: {
+          agent_key: string | null
+          body: string
+          channel: string
+          created_at: string
+          direction: string
+          error: string | null
+          evidence: Json
+          id: string
+          intent: string | null
+          lead_id: string
+          mission_id: string | null
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          agent_key?: string | null
+          body: string
+          channel?: string
+          created_at?: string
+          direction?: string
+          error?: string | null
+          evidence?: Json
+          id?: string
+          intent?: string | null
+          lead_id: string
+          mission_id?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          agent_key?: string | null
+          body?: string
+          channel?: string
+          created_at?: string
+          direction?: string
+          error?: string | null
+          evidence?: Json
+          id?: string
+          intent?: string | null
+          lead_id?: string
+          mission_id?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ao_outreach_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "ao_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ao_outreach_mission_id_fkey"
+            columns: ["mission_id"]
+            isOneToOne: false
+            referencedRelation: "ao_missions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ao_policies: {
         Row: {
           description: string | null
@@ -549,6 +743,42 @@ export type Database = {
           policy_key?: string
           updated_at?: string
           value?: Json
+        }
+        Relationships: []
+      }
+      ao_runner_beats: {
+        Row: {
+          beat_at: string
+          duration_ms: number | null
+          id: string
+          jobs: Json
+          leads_touched: number
+          memory_ops: number
+          missions_touched: number
+          notes: string | null
+          ok: boolean
+        }
+        Insert: {
+          beat_at?: string
+          duration_ms?: number | null
+          id?: string
+          jobs?: Json
+          leads_touched?: number
+          memory_ops?: number
+          missions_touched?: number
+          notes?: string | null
+          ok?: boolean
+        }
+        Update: {
+          beat_at?: string
+          duration_ms?: number | null
+          id?: string
+          jobs?: Json
+          leads_touched?: number
+          memory_ops?: number
+          missions_touched?: number
+          notes?: string | null
+          ok?: boolean
         }
         Relationships: []
       }
