@@ -25,6 +25,7 @@
 // Key design principle: no single region sees everything. Each has a narrow
 // input, does one job, hands off a small message. That's how a brain scales.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { routeChat } from "../_shared/model-router.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
@@ -167,20 +168,13 @@ Cerebellum feedback (recent prediction errors):
 ${deltas}
 ${consult ? "\nCONSULT from motor-lobe (advisory, use if useful):\n" + consult : ""}`;
 
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: sys }, { role: "user", content: user }],
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-    }),
-  });
-  if (!r.ok) throw new Error("PFC " + r.status + ": " + (await r.text()).slice(0, 200));
-  const j = await r.json();
+  const routed = await routeChat({
+    messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+    response_format: { type: "json_object" },
+    temperature: 0.3,
+  }, model);
   let parsed: any = {};
-  try { parsed = JSON.parse(j.choices?.[0]?.message?.content ?? "{}"); } catch { parsed = {}; }
+  try { parsed = JSON.parse(routed.content ?? "{}"); } catch { parsed = {}; }
   const raw = Array.isArray(parsed.candidates) ? parsed.candidates : [];
   const candidates: Candidate[] = raw.slice(0, 3).map((c: any) => ({
     tool: String(c.tool || ""),
@@ -219,19 +213,16 @@ Progress: ${brain.goal_progress}
 Recent prediction errors: ${brain.cerebellum_deltas.slice(-3).join(" | ") || "(none)"}
 PFC's current candidates:
 ${cands}`;
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
-    body: JSON.stringify({
-      model,
+  try {
+    const routed = await routeChat({
       messages: [{ role: "system", content: sys }, { role: "user", content: user }],
       temperature: 0.4,
       max_tokens: 120,
-    }),
-  });
-  if (!r.ok) return "(consult unavailable: " + r.status + ")";
-  const j = await r.json();
-  return String(j.choices?.[0]?.message?.content ?? "").trim().slice(0, 240);
+    }, model);
+    return String(routed.content ?? "").trim().slice(0, 240);
+  } catch (e) {
+    return "(consult unavailable: " + (e as Error).message.slice(0, 80) + ")";
+  }
 }
 function clamp01(x: any, d: number) { const n = Number(x); return isFinite(n) ? Math.max(0, Math.min(1, n)) : d; }
 
