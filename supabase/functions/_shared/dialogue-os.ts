@@ -264,3 +264,197 @@ export async function runDualLobeTurn(
     advanceStage: Boolean(exec.stage_complete ?? strat.stage_complete),
   };
 }
+
+// ---------------------------------------------------------------------------
+// BRAIN-7 TURN — the 7-region runtime stacked on the dual-lobe base.
+//
+//   1 thalamus       relay + gating of mission signals into the attention window
+//   2 amygdala       salience tagging (value at risk, anger, deadline)
+//   3 prefrontal     goal-holding, emits up to 3 candidate actions with predictions
+//   4 basal ganglia  deterministic action selection (utility − risk − cost)
+//   5 motor          executes exactly one selected capability
+//   6 cerebellum     prediction-error signal, corrects the next cycle
+//   7 hippocampus    episodic write-back onto the dialogue bus
+//
+// Removing this layer leaves the plain dual-lobe turn intact.
+// ---------------------------------------------------------------------------
+type Candidate = { tool: string; args: Record<string, unknown>; why: string; expected: string; utility: number; risk: number; cost: number };
+
+const clamp01 = (x: unknown, d: number) => {
+  const n = Number(x);
+  return isFinite(n) ? Math.max(0, Math.min(1, n)) : d;
+};
+
+function thalamus(mission: Mission, goal: string): string[] {
+  const p = mission.payload ?? {};
+  const signals = [
+    `stage=${mission.stage} priority=${mission.priority}`,
+    `goal=${goal}`,
+    mission.customer_name ? `customer=${mission.customer_name}` : "",
+    mission.expected_value ? `value_at_risk=$${mission.expected_value}` : "",
+    ...Object.entries(p).slice(0, 8).map(([k, v]) => `${k}=${String(v).slice(0, 60)}`),
+  ].filter(Boolean);
+  return signals;
+}
+
+function amygdala(signals: string[], mission: Mission): Array<{ text: string; salience: number }> {
+  const hot = /(angry|complaint|missed|cancel|refund|urgent|today|tomorrow|dispute|chargeback)/i;
+  const value = Number(mission.expected_value ?? 0);
+  return signals.map((text) => {
+    let s = 0.3;
+    if (hot.test(text)) s += 0.5;
+    if (/value_at_risk/.test(text)) s += Math.min(value / 5000, 0.4);
+    if (/^goal=/.test(text)) s = 1;
+    return { text, salience: Math.min(1, s) };
+  }).sort((a, b) => b.salience - a.salience).slice(0, 8);
+}
+
+function basalGanglia(candidates: Candidate[], mode: Mode) {
+  const mutating = (t: string) => (BIZ_TOOLS[t] && !BIZ_TOOLS[t].readOnly) || ["db_write", "http_post", "invoke_edge_function"].includes(t);
+  const scored = candidates.map((c) => {
+    let score = c.utility - c.risk * 0.8 - c.cost * 0.3;
+    if (mode === "safe" && mutating(c.tool)) score -= 1;
+    return { c, score };
+  }).sort((a, b) => b.score - a.score);
+  return { winner: scored[0]?.c ?? null, scores: scored.map((s) => ({ tool: s.c.tool, score: Number(s.score.toFixed(3)) })) };
+}
+
+function cerebellum(prediction: string, outcome: unknown): string {
+  const text = JSON.stringify(outcome ?? {}).slice(0, 400).toLowerCase();
+  const failed = /"ok":false|error|blocked|denied|4\d\d|5\d\d/.test(text);
+  if (!failed) return "";
+  return `predicted "${prediction.slice(0, 90)}" but got ${text.slice(0, 120)}`;
+}
+
+export async function runBrain7Turn(
+  agent: AoAgent,
+  mission: Mission,
+  goal: string,
+  policies: Record<string, any>,
+  mode: Mode,
+): Promise<LobeTurn> {
+  const signals = thalamus(mission, goal);
+  const attention = amygdala(signals, mission);
+
+  const { data: recent } = await sb().from("ao_dialogue")
+    .select("from_agent,lobe,content,kind").eq("mission_id", mission.id)
+    .order("created_at", { ascending: false }).limit(8);
+  const episodic = (recent ?? []).reverse().map((r) => `- ${r.from_agent}/${r.lobe ?? r.kind}: ${r.content}`).join("\n").slice(0, 2000);
+  const { data: errs } = await sb().from("ao_dialogue")
+    .select("content").eq("mission_id", mission.id).eq("kind", "prediction_error")
+    .order("created_at", { ascending: false }).limit(3);
+  const deltas = (errs ?? []).map((e) => e.content).join(" | ") || "(no prediction errors yet)";
+
+  // ---- 3. PREFRONTAL CORTEX: hold the goal, emit candidates with predictions
+  const pfcSys = [
+    `You are the PREFRONTAL CORTEX of "${agent.display_name}" (${agent.department}) — a Brain-7 agent built on the dual-lobe base.`,
+    `CHARTER: ${agent.charter}`,
+    agent.strategist_prompt,
+    policyBlock(policies),
+    `STAGE GOAL: ${goal}`,
+    toolCatalog(agent.tools),
+    `Mode: ${mode} — mutating/spending capabilities are blocked in safe mode.`,
+    "You do NOT execute. Basal ganglia selects one candidate; the motor region runs it; cerebellum scores your prediction.",
+    "",
+    'Emit ONE JSON object: {"goal_progress":"one sentence","note":"one-line rationale","escalate":{"reason":"..."}|null,"stage_complete":false,',
+    ' "candidates":[{"tool":"name","args":{},"why":"","expected":"what you predict happens","utility":0..1,"risk":0..1,"cost":0..1}]}',
+    "Max 3 candidates. Never repeat a candidate that already failed twice for the same reason.",
+  ].join("\n");
+
+  const pfcRaw = await llm(pfcSys, [{
+    role: "user",
+    content: [
+      `MISSION: ${JSON.stringify({ id: mission.id, title: mission.title, payload: mission.payload }).slice(0, 2000)}`,
+      `ATTENTION WINDOW (thalamus → amygdala, salience-ranked):\n${attention.map((a) => `- (${a.salience.toFixed(2)}) ${a.text}`).join("\n")}`,
+      `EPISODIC MEMORY (hippocampus):\n${episodic || "(empty)"}`,
+      `CEREBELLUM FEEDBACK:\n${deltas}`,
+    ].join("\n\n"),
+  }], agent.model, { max_tokens: 800 });
+  const pfc = safeParse(pfcRaw);
+  const plan: string = pfc.goal_progress ?? pfc.note ?? pfc.say ?? "(no plan)";
+  await log(mission.id, agent.agent_key, plan, { lobe: "prefrontal", kind: "plan", meta: { note: pfc.note ?? null } });
+
+  if (pfc.escalate?.reason) {
+    return { agent: agent.agent_key, plan, report: "Escalated by prefrontal cortex.", advanceStage: false, escalate: { reason: String(pfc.escalate.reason) } };
+  }
+
+  const candidates: Candidate[] = (Array.isArray(pfc.candidates) ? pfc.candidates : []).slice(0, 3)
+    .map((c: any) => ({
+      tool: String(c.tool ?? ""), args: c.args ?? {},
+      why: String(c.why ?? "").slice(0, 200), expected: String(c.expected ?? "").slice(0, 200),
+      utility: clamp01(c.utility, 0.5), risk: clamp01(c.risk, 0.3), cost: clamp01(c.cost, 0.2),
+    })).filter((c: Candidate) => c.tool);
+
+  // ---- 4. BASAL GANGLIA: deterministic gate
+  const { winner, scores } = basalGanglia(candidates, mode);
+  if (candidates.length) {
+    await log(mission.id, agent.agent_key, `gate → ${winner?.tool ?? "none"} ${JSON.stringify(scores)}`, { lobe: "basal_ganglia", kind: "select" });
+  }
+
+  // ---- 5. MOTOR: execute exactly one action
+  let toolResult: unknown = null;
+  const action = winner ? { name: winner.tool, args: winner.args } : null;
+  if (action) {
+    toolResult = (await runBizTool(action.name, action.args ?? {}, mode))
+      ?? (await execTool(action.name, action.args ?? {}, agent.tools, mode));
+    await log(mission.id, agent.agent_key, `${action.name}(${JSON.stringify(action.args ?? {}).slice(0, 300)})`, {
+      lobe: "motor", kind: "tool", meta: { result: JSON.stringify(toolResult).slice(0, 1500) },
+    });
+  }
+
+  // ---- 6. CEREBELLUM: prediction error
+  const delta = winner ? cerebellum(winner.expected, toolResult) : "";
+  if (delta) await log(mission.id, agent.agent_key, delta, { lobe: "cerebellum", kind: "prediction_error" });
+
+  // ---- 7. HIPPOCAMPUS: consolidate into a report + mission patch
+  const hippoSys = [
+    `You are the HIPPOCAMPUS + reporting region of "${agent.display_name}".`,
+    agent.executor_prompt,
+    policyBlock(policies),
+    `STAGE GOAL: ${goal}`,
+    "",
+    'Emit ONE JSON object: {"report":"what is now true, with evidence","mission_patch":{},"stage_complete":boolean,"handoff":"agent_key or null"}',
+    "mission_patch may set: payload (merged object), expected_value, realized_value, customer_name, customer_email, outcome.",
+    "Facts only. If the prediction error says the route is blocked, say so and propose the handoff instead of retrying.",
+  ].join("\n");
+  const hippoRaw = await llm(hippoSys, [{
+    role: "user",
+    content: `PLAN: ${plan}\nACTION: ${action ? action.name : "(none)"}\nRESULT: ${JSON.stringify(toolResult ?? null).slice(0, 2000)}\nPREDICTION ERROR: ${delta || "(none)"}`,
+  }], agent.model, { max_tokens: 700 });
+  const hippo = safeParse(hippoRaw);
+  const report: string = hippo.report ?? hippo.say ?? "(no report)";
+  await log(mission.id, agent.agent_key, report, { lobe: "hippocampus", kind: "report" });
+
+  const patch = hippo.mission_patch ?? {};
+  const update: Record<string, unknown> = {};
+  if (patch.payload && typeof patch.payload === "object") update.payload = { ...(mission.payload ?? {}), ...patch.payload };
+  for (const k of ["expected_value", "realized_value", "customer_name", "customer_email", "outcome"]) {
+    if (patch[k] !== undefined && patch[k] !== null) update[k] = patch[k];
+  }
+  if (Object.keys(update).length) await sb().from("ao_missions").update(update).eq("id", mission.id);
+
+  return {
+    agent: agent.agent_key,
+    plan,
+    action,
+    toolResult,
+    report,
+    handoff: hippo.handoff ?? null,
+    advanceStage: Boolean(hippo.stage_complete ?? pfc.stage_complete),
+  };
+}
+
+/** Base = dual-lobe. Brain-7 is an additive layer selected per agent. */
+export async function runAgentTurn(
+  agent: AoAgent,
+  mission: Mission,
+  goal: string,
+  policies: Record<string, any>,
+  mode: Mode,
+): Promise<LobeTurn> {
+  const brain7 = Boolean((agent.addons ?? {})["brain7"]);
+  return brain7
+    ? await runBrain7Turn(agent, mission, goal, policies, mode)
+    : await runDualLobeTurn(agent, mission, goal, policies, mode);
+}
+

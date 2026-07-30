@@ -2,6 +2,7 @@
 // Every dual-lobe variant reuses these tools, allowlists, and the LLM helper.
 // The variation lives in each function's dispatch loop, not the primitives.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { routeChat } from "./model-router.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,7 +24,9 @@ export const ALLOWLIST_TABLES = new Set([
 export const SENSORY_TOOLS = ["db_read", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
 export const MOTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_notification", "http_get"];
 
-export const DEFAULT_MODEL = "google/gemini-2.5-flash";
+// "auto" => the model router picks the best healthy Featherless model and
+// changes model automatically whenever one errors out.
+export const DEFAULT_MODEL = "auto";
 
 export type Lobe = "sensory" | "motor";
 export type Mode = "safe" | "full";
@@ -34,24 +37,27 @@ export async function llm(
   model: string,
   opts?: { temperature?: number; max_tokens?: number },
 ): Promise<string> {
-  const supportsTemp = !/^openai\//i.test(model);
+  const res = await llmDetailed(system, messages, model, opts);
+  return res.content;
+}
+
+/** Same as llm() but returns which model actually served the call. */
+export async function llmDetailed(
+  system: string,
+  messages: Array<{ role: string; content: string }>,
+  model: string,
+  opts?: { temperature?: number; max_tokens?: number },
+) {
   const body: any = {
-    model,
     messages: [{ role: "system", content: system }, ...messages],
     response_format: { type: "json_object" },
+    temperature: opts?.temperature ?? 0.4,
   };
-  if (supportsTemp) body.temperature = opts?.temperature ?? 0.4;
-
   if (opts?.max_tokens) body.max_tokens = opts.max_tokens;
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error("LLM " + r.status + ": " + (await r.text()).slice(0, 300));
-  const j = await r.json();
-  return j.choices?.[0]?.message?.content ?? "{}";
+  const r = await routeChat(body, model || DEFAULT_MODEL);
+  return { content: r.content || "{}", model: r.model, provider: r.provider, attempts: r.attempts };
 }
+
 
 export function safeParse(s: string): any {
   try { return JSON.parse(s); } catch { return { say: s.slice(0, 500), tool: null, done: false }; }

@@ -45,6 +45,11 @@ const DEPT_TONE: Record<string, string> = {
 const LOBE_TONE: Record<string, string> = {
   strategist: "text-sky-400",
   executor: "text-emerald-400",
+  prefrontal: "text-sky-400",
+  basal_ganglia: "text-amber-400",
+  motor: "text-emerald-400",
+  cerebellum: "text-rose-400",
+  hippocampus: "text-violet-400",
 };
 
 export default function AdminAgencyOS() {

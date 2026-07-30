@@ -28,6 +28,7 @@ import AdminDuffelCard from "./pages/AdminDuffelCard";
 import AdminAzure from "./pages/AdminAzure";
 import AdminDualLobe from "./pages/AdminDualLobe";
 import AdminAgencyOS from "./pages/AdminAgencyOS";
+import AdminModels from "./pages/AdminModels";
 import AdminLeadEngine from "./pages/AdminLeadEngine";
 import AdminAgentRooms from "./pages/AdminAgentRooms";
 import AdminShopperProfile from "./pages/AdminShopperProfile";
@@ -97,6 +98,7 @@ const App = () => (
             <Route path="/admin/azure" element={<AdminAzure />} />
             <Route path="/admin/dual-lobe" element={<AdminDualLobe />} />
             <Route path="/admin/agency-os" element={<AdminAgencyOS />} />
+            <Route path="/admin/models" element={<AdminModels />} />
             <Route path="/admin/leads" element={<AdminLeadEngine />} />
 
             <Route path="/admin/agent-rooms" element={<AdminAgentRooms />} />
