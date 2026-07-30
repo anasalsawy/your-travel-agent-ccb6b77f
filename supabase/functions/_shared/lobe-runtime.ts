@@ -2,6 +2,7 @@
 // Every dual-lobe variant reuses these tools, allowlists, and the LLM helper.
 // The variation lives in each function's dispatch loop, not the primitives.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { routeChat } from "./model-router.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
