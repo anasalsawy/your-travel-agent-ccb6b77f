@@ -1,241 +1,165 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Loader2, Gavel, Radar, ShieldCheck, Play, Inbox, Code2, GitPullRequest } from "lucide-react";
+import { Loader2, Send, MessagesSquare } from "lucide-react";
 
-type Row = Record<string, any>;
+type Msg = {
+  id: string; speaker: string; role: string; content: string; created_at: string;
+};
+
+const CHIEF_ROOM = "Direct line — Chief of Staff";
 
 export default function AdminCouncil() {
-  const [status, setStatus] = useState<{ delegations: Row[]; supervision: Row[]; missions: Row[]; leads: Row[] }>({
-    delegations: [], supervision: [], missions: [], leads: [],
-  });
-  const [dev, setDev] = useState<{ proposals: Row[]; votes: Row[]; site_write: boolean }>({
-    proposals: [], votes: [], site_write: false,
-  });
-  const [busy, setBusy] = useState<string | null>(null);
-  const [directive, setDirective] = useState("");
-  const [live, setLive] = useState<any>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [booting, setBooting] = useState(true);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
 
-  const load = async () => {
-    const { data, error } = await supabase.functions.invoke("council", { body: { action: "status" } });
-    if (error) return toast.error(error.message);
-    setStatus({
-      delegations: data?.delegations ?? [], supervision: data?.supervision ?? [],
-      missions: data?.missions ?? [], leads: data?.leads ?? [],
-    });
-    const { data: d } = await supabase.functions.invoke("dev-council", { body: { action: "status" } });
-    if (d) setDev({ proposals: d.proposals ?? [], votes: d.votes ?? [], site_write: Boolean(d.site_write) });
+  const call = async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke("dialogue-room", { body });
+    if (error) throw new Error(error.message);
+    if (data && data.ok === false) throw new Error(data.error ?? "request failed");
+    return data;
   };
 
-  useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, []);
-
-
-  const run = async (label: string, fn: string, body: Record<string, unknown>) => {
-    setBusy(label);
-    const { data, error } = await supabase.functions.invoke(fn, { body });
-    setBusy(null);
-    if (error) return toast.error(error.message);
-    setLive(data);
-    toast.success(`${label} complete`);
-    load();
+  const openRoom = async (id: string) => {
+    const d = await call({ action: "history", room_id: id });
+    setRoomId(id);
+    setMessages(d.messages ?? []);
   };
 
-  const sendDirective = async () => {
-    if (!directive.trim()) return;
-    await run("Directive", "council", { action: "directive", text: directive });
-    setDirective("");
-  };
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await call({ action: "rooms" });
+        const found = (d.rooms ?? []).find((r: any) => r.title === CHIEF_ROOM);
+        if (found) {
+          await openRoom(found.id);
+        } else {
+          const c = await call({
+            action: "create",
+            title: CHIEF_ROOM,
+            goal: "Standing direct line between the operator and the Chief of Staff. Answer, delegate to any agent, and report back.",
+            mode: "full",
+            participants: ["chief"],
+          });
+          await openRoom(c.room.id);
+        }
+      } catch (e) {
+        toast.error((e as Error).message);
+      } finally {
+        setBooting(false);
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
+    })();
+  }, []);
 
-  const verdictTone = (v: string) =>
-    v === "block" ? "destructive" : v === "revise" ? "secondary" : "default";
-  const statusTone = (s: string) =>
-    s === "escalated" ? "destructive" : s === "done" ? "default" : "secondary";
+  useEffect(() => {
+    if (!roomId) return;
+    const t = setInterval(() => { openRoom(roomId).catch(() => {}); }, 15000);
+    return () => clearInterval(t);
+  }, [roomId]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, sending]);
+
+  const send = async () => {
+    if (!roomId || !text.trim() || sending) return;
+    const mine = text.trim();
+    setText("");
+    setSending(true);
+    setMessages((m) => [
+      ...m,
+      { id: "tmp-" + Date.now(), speaker: "you", role: "human", content: mine, created_at: new Date().toISOString() },
+    ]);
+    try {
+      const d = await call({ action: "say", room_id: roomId, text: mine });
+      setMessages(d.messages ?? []);
+    } catch (e) {
+      toast.error((e as Error).message);
+      setText(mine);
+    } finally {
+      setSending(false);
+      inputRef.current?.focus();
+    }
+  };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <header className="space-y-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Council</h1>
-        <p className="text-muted-foreground">
-          Chief of Staff delegates, specialists execute, the supervisor grades. Featherless models, no human in the loop.
-        </p>
+    <div className="mx-auto flex h-[calc(100vh-2rem)] max-w-3xl flex-col gap-4 p-4 md:p-6">
+      <header className="flex items-center gap-2">
+        <MessagesSquare className="h-5 w-5 text-primary" />
+        <h1 className="text-xl font-semibold">Chief of Staff</h1>
+        <span className="hidden text-sm text-muted-foreground sm:inline">
+          Just tell it what you want — it runs the team for you.
+        </span>
+        <Link to="/admin/dialogue" className="ml-auto text-xs text-muted-foreground underline">
+          Advanced
+        </Link>
       </header>
 
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => run("Round", "council", { action: "tick", mode: "full", limit: 4 })} disabled={!!busy}>
-          {busy === "Round" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-          Run council round
-        </Button>
-        <Button variant="secondary" onClick={() => run("Orders", "council", { action: "orders" })} disabled={!!busy}>
-          <Gavel className="mr-2 h-4 w-4" /> Issue orders only
-        </Button>
-        <Button variant="secondary" onClick={() => run("Prospect", "prospect-tick", { mode: "full", max_posts: 10 })} disabled={!!busy}>
-          {busy === "Prospect" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Radar className="mr-2 h-4 w-4" />}
-          Hunt leads on Facebook
-        </Button>
-        <Button variant="secondary" onClick={() => run("Outreach", "outreach-tick", { limit: 4, mode: "full" })} disabled={!!busy}>
-          <ShieldCheck className="mr-2 h-4 w-4" /> Work the follow-ups
-        </Button>
-        <Button variant="secondary" onClick={() => run("Inbox", "inbox-tick", { mode: "full", max: 8 })} disabled={!!busy}>
-          {busy === "Inbox" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Inbox className="mr-2 h-4 w-4" />}
-          Pull the Facebook inbox
-        </Button>
-        <Button variant="secondary" onClick={() => run("Audit", "dev-council", { action: "audit", limit: 2 })} disabled={!!busy}>
-          {busy === "Audit" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Code2 className="mr-2 h-4 w-4" />}
-          Dev audit of the website
-        </Button>
-      </div>
-
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Owner directive</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <Textarea
-            value={directive}
-            onChange={(e) => setDirective(e.target.value)}
-            placeholder="e.g. Push every lead with a December departure to a quote today, and open 5 new Punta Cana prospects."
-            rows={3}
-          />
-          <Button onClick={sendDirective} disabled={!!busy || !directive.trim()}>Send to Chief of Staff</Button>
-        </CardContent>
-      </Card>
-
-      <Tabs defaultValue="delegations">
-        <TabsList>
-          <TabsTrigger value="delegations">Delegations ({status.delegations.length})</TabsTrigger>
-          <TabsTrigger value="supervision">Supervision ({status.supervision.length})</TabsTrigger>
-          <TabsTrigger value="pipeline">Pipeline ({status.missions.length})</TabsTrigger>
-          <TabsTrigger value="engineering">Engineering ({dev.proposals.length})</TabsTrigger>
-          <TabsTrigger value="raw">Last run</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="engineering" className="space-y-3">
-          {!dev.site_write && (
-            <Card>
-              <CardContent className="p-4 text-sm text-muted-foreground">
-                Write access to the site is not configured yet, so approved changes stop at the review stage.
-                Add the repository details and the department ships on its own.
-              </CardContent>
-            </Card>
-          )}
-          {dev.proposals.map((p) => {
-            const votes = dev.votes.filter((v) => v.proposal_id === p.id);
+      <ScrollArea className="flex-1 rounded-lg border p-4">
+        {booting && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Opening the line…
+          </div>
+        )}
+        {!booting && messages.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Say something like "find me new leads from Facebook today" or "what's the pipeline looking like?"
+          </p>
+        )}
+        <div className="space-y-3">
+          {messages.map((m) => {
+            const mine = m.role === "human";
             return (
-              <Card key={p.id}>
-                <CardContent className="space-y-2 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={p.status === "shipped" ? "default" : p.status === "rejected" || p.status === "failed" ? "destructive" : "secondary"}>
-                      {p.status}
-                    </Badge>
-                    <span className="font-medium">{p.title}</span>
-                    <span className="text-xs text-muted-foreground">{p.area} · risk {p.risk} · raised by {p.raised_by}</span>
-                  </div>
-                  <p className="text-sm">{p.proposal}</p>
-                  {p.problem && <p className="text-xs text-muted-foreground">{p.problem}</p>}
-                  {Array.isArray(p.files) && p.files.length > 0 && (
-                    <p className="font-mono text-xs text-muted-foreground">{p.files.join(", ")}</p>
-                  )}
-                  {votes.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {votes.map((v) => `${v.agent_key}:${v.vote}`).join(" · ")}
+              <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
+                <div
+                  className={
+                    "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm " +
+                    (mine ? "bg-primary text-primary-foreground" : "bg-muted")
+                  }
+                >
+                  {!mine && (
+                    <p className="mb-1 text-xs font-medium opacity-70">
+                      {m.speaker === "system" ? "System" : m.speaker}
                     </p>
                   )}
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    {p.status === "proposed" && (
-                      <Button size="sm" variant="secondary" disabled={!!busy}
-                        onClick={() => run("Vote", "dev-council", { action: "vote", proposal_id: p.id })}>
-                        <Gavel className="mr-2 h-4 w-4" /> Call the vote
-                      </Button>
-                    )}
-                    {p.status === "approved" && (
-                      <Button size="sm" disabled={!!busy}
-                        onClick={() => run("Ship", "dev-council", { action: "ship", proposal_id: p.id })}>
-                        <GitPullRequest className="mr-2 h-4 w-4" /> Ship it
-                      </Button>
-                    )}
-                    {p.pr_url && (
-                      <a className="text-xs underline" href={p.pr_url} target="_blank" rel="noreferrer">View change</a>
-                    )}
-                    {p.error && <span className="text-xs text-destructive">{p.error}</span>}
-                  </div>
-                </CardContent>
-              </Card>
+                  {m.content}
+                </div>
+              </div>
             );
           })}
-          {!dev.proposals.length && (
-            <p className="text-sm text-muted-foreground">No website proposals yet. Run a dev audit.</p>
+          {sending && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Thinking…
+            </div>
           )}
-        </TabsContent>
+          <div ref={endRef} />
+        </div>
+      </ScrollArea>
 
-
-        <TabsContent value="delegations" className="space-y-3">
-          {status.delegations.map((d) => (
-            <Card key={d.id}>
-              <CardContent className="space-y-2 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={statusTone(d.status) as any}>{d.status}</Badge>
-                  <span className="font-medium">chief → {d.to_agent}</span>
-                  <span className="text-xs text-muted-foreground">attempt {d.attempts}</span>
-                </div>
-                <p className="text-sm">{d.directive}</p>
-                {d.rationale && <p className="text-xs text-muted-foreground">{d.rationale}</p>}
-                {d.result?.grade?.finding && (
-                  <p className="text-xs text-muted-foreground">Supervisor: {d.result.grade.finding}</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-          {!status.delegations.length && <p className="text-sm text-muted-foreground">No orders issued yet.</p>}
-        </TabsContent>
-
-        <TabsContent value="supervision" className="space-y-3">
-          {status.supervision.map((r) => (
-            <Card key={r.id}>
-              <CardContent className="space-y-2 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={verdictTone(r.verdict) as any}>{r.verdict}</Badge>
-                  <span className="text-xs text-muted-foreground">{r.kind} · {r.agent_key} · score {Number(r.score ?? 0).toFixed(2)}</span>
-                </div>
-                {r.final_text !== r.draft && (
-                  <p className="text-xs text-muted-foreground line-through">{r.draft}</p>
-                )}
-                <p className="text-sm">{r.final_text}</p>
-                {Array.isArray(r.issues) && r.issues.length > 0 && (
-                  <p className="text-xs text-destructive">{r.issues.map((i: any) => i.id).join(", ")}</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-          {!status.supervision.length && <p className="text-sm text-muted-foreground">No messages reviewed yet.</p>}
-        </TabsContent>
-
-        <TabsContent value="pipeline" className="space-y-3">
-          {status.missions.map((m) => (
-            <Card key={m.id}>
-              <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
-                <div>
-                  <p className="font-medium">{m.title}</p>
-                  <p className="text-xs text-muted-foreground">stage {m.stage} · {m.status}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {m.needs_human && <Badge variant="destructive">needs human</Badge>}
-                  <Badge variant="secondary">${Number(m.expected_value ?? 0).toLocaleString()}</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-
-        <TabsContent value="raw">
-          <pre className="max-h-[480px] overflow-auto rounded-md bg-muted p-4 text-xs">
-            {live ? JSON.stringify(live, null, 2) : "Run something to see the trace."}
-          </pre>
-        </TabsContent>
-      </Tabs>
+      <div className="flex items-end gap-2">
+        <Textarea
+          ref={inputRef}
+          rows={2}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+          }}
+          placeholder="Message the Chief of Staff…"
+          className="resize-none"
+        />
+        <Button onClick={send} disabled={sending || !text.trim()} size="icon" className="h-10 w-10 shrink-0">
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </Button>
+      </div>
     </div>
   );
 }
