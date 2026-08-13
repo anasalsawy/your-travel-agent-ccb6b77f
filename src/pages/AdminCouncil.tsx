@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Gavel, Radar, ShieldCheck, Play } from "lucide-react";
+import { Loader2, Gavel, Radar, ShieldCheck, Play, Inbox, Code2, GitPullRequest } from "lucide-react";
 
 type Row = Record<string, any>;
 
