@@ -265,7 +265,9 @@ export type Database = {
           expires_at: string
           holder: string | null
           id: string
+          lane: string | null
           model_id: string
+          ticket: number
           units: number
         }
         Insert: {
@@ -273,7 +275,9 @@ export type Database = {
           expires_at?: string
           holder?: string | null
           id?: string
+          lane?: string | null
           model_id: string
+          ticket?: number
           units?: number
         }
         Update: {
@@ -281,7 +285,9 @@ export type Database = {
           expires_at?: string
           holder?: string | null
           id?: string
+          lane?: string | null
           model_id?: string
+          ticket?: number
           units?: number
         }
         Relationships: []
@@ -453,6 +459,7 @@ export type Database = {
       }
       ai_router_settings: {
         Row: {
+          allow_lovable_fallback: boolean
           auto_select: boolean
           cooldown_seconds: number
           default_model: string | null
@@ -460,10 +467,13 @@ export type Database = {
           fallback_models: string[]
           id: string
           max_attempts: number
+          max_switches_per_min: number
           primary_provider: string
+          unit_budget: number
           updated_at: string
         }
         Insert: {
+          allow_lovable_fallback?: boolean
           auto_select?: boolean
           cooldown_seconds?: number
           default_model?: string | null
@@ -471,10 +481,13 @@ export type Database = {
           fallback_models?: string[]
           id?: string
           max_attempts?: number
+          max_switches_per_min?: number
           primary_provider?: string
+          unit_budget?: number
           updated_at?: string
         }
         Update: {
+          allow_lovable_fallback?: boolean
           auto_select?: boolean
           cooldown_seconds?: number
           default_model?: string | null
@@ -482,8 +495,40 @@ export type Database = {
           fallback_models?: string[]
           id?: string
           max_attempts?: number
+          max_switches_per_min?: number
           primary_provider?: string
+          unit_budget?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_traffic_queue: {
+        Row: {
+          enqueued_at: string
+          expires_at: string
+          holder: string
+          id: string
+          lane: string | null
+          model_id: string | null
+          units: number
+        }
+        Insert: {
+          enqueued_at?: string
+          expires_at?: string
+          holder: string
+          id?: string
+          lane?: string | null
+          model_id?: string | null
+          units?: number
+        }
+        Update: {
+          enqueued_at?: string
+          expires_at?: string
+          holder?: string
+          id?: string
+          lane?: string | null
+          model_id?: string | null
+          units?: number
         }
         Relationships: []
       }
@@ -3986,6 +4031,28 @@ export type Database = {
         }
         Returns: string
       }
+      ai_traffic_claim: {
+        Args: {
+          p_budget: number
+          p_holder: string
+          p_model: string
+          p_ticket: string
+          p_ttl_seconds?: number
+          p_units: number
+        }
+        Returns: string
+      }
+      ai_traffic_dequeue: { Args: { p_id: string }; Returns: undefined }
+      ai_traffic_enqueue: {
+        Args: {
+          p_holder: string
+          p_lane: string
+          p_model: string
+          p_units: number
+        }
+        Returns: string
+      }
+      ai_traffic_status: { Args: never; Returns: Json }
       get_customer_context: { Args: { p_customer_id: string }; Returns: Json }
       get_or_create_customer_by_phone: {
         Args: { p_phone: string }
@@ -4005,6 +4072,10 @@ export type Database = {
         Returns: undefined
       }
       release_ai_slot: { Args: { p_id: string }; Returns: undefined }
+      renew_ai_slot: {
+        Args: { p_id: string; p_ttl_seconds?: number }
+        Returns: undefined
+      }
       search_documents: {
         Args: {
           match_count?: number
