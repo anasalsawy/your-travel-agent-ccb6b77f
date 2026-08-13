@@ -167,6 +167,16 @@ Deno.serve(async (req) => {
   if (!telegramConfigured()) return json({ ok: false, error: "telegram_not_configured" });
 
   const update = await req.json().catch(() => ({} as any));
+
+  // One-time self-registration: POST {"action":"setup"} and the bot points
+  // Telegram at this function. No token ever leaves the backend.
+  if (update.action === "setup") {
+    const url = `${SB_URL}/functions/v1/council-telegram`;
+    const set = await tg("setWebhook", { url, allowed_updates: ["message", "edited_message"], drop_pending_updates: true });
+    const info = await tg("getWebhookInfo", {});
+    return json({ ok: set.ok, webhook: url, set: set.body, info: info.body });
+  }
+
   const msg = update.message ?? update.edited_message;
   const chatId = msg?.chat?.id;
   const text = String(msg?.text ?? "").trim();
