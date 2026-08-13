@@ -263,6 +263,12 @@ async function callOnce(model: string, body: any): Promise<{ ok: boolean; status
   let out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
   // A unit-budget rejection is transient: wait for the in-flight work to drain
   // and try the same model twice before blaming it.
+  // A switch-limit rejection is also transient and is NOT the model's fault:
+  // retrying the SAME model costs no switch quota, so wait it out.
+  for (let i = 0; i < 2 && !out.res.ok && isSwitchLimit(out.body); i++) {
+    await sleep(12000 * (i + 1));
+    out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
+  }
   for (let i = 0; i < 2 && !out.res.ok && isConcurrencyLimit(out.body); i++) {
     lightOnlyUntil = Date.now() + 5 * 60_000;
     await sleep(2500 * (i + 1));
@@ -289,20 +295,20 @@ export async function buildChain(requested?: string): Promise<string[]> {
   if (explicit) push(explicit);
 
   const switchLocked = Date.now() < switchLockUntil;
-  if (hasFeatherless() && !switchLocked) {
+  if (hasFeatherless()) {
     if (!explicit) {
       push(settings.default_model);          // operator pin wins
       const st = await stickyModel();        // then: whatever is already working
       if (st && !(Date.now() < lightOnlyUntil && HEAVY.test(st))) push(st);
     }
-    if (settings.auto_select) {
+    if (settings.auto_select && !switchLocked) {
       // Only TWO exploratory candidates — switching is a rationed resource.
       const ranked = await rankModels(8);
       const light = Date.now() < lightOnlyUntil;
       const pickable = light ? ranked.filter((r) => !HEAVY.test(r.model_id)) : ranked;
       for (const r of pickable.slice(0, 2)) push(r.model_id);
     }
-    for (const f of settings.fallback_models ?? []) push(f);
+    if (!switchLocked) for (const f of settings.fallback_models ?? []) push(f);
   }
   // Featherless-only by owner policy. The other-provider safety net is used
   // ONLY when explicitly allowed, or when Featherless is not configured at all.
