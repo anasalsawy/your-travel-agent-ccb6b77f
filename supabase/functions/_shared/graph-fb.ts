@@ -8,11 +8,11 @@
 //
 // Every function returns a plain result object — callers never see Graph.
 const GRAPH = "https://graph.facebook.com/v21.0";
-const TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
-const PAGE_ID = Deno.env.get("META_PAGE_ID") ?? "";
+const getToken = () => Deno.env.get("META_ACCESS_TOKEN") ?? "";
+const getPageId = () => Deno.env.get("META_PAGE_ID") ?? "";
 
 export function graphConfigured() {
-  return Boolean(TOKEN && PAGE_ID);
+  return Boolean(getToken() && getPageId());
 }
 
 async function g(path: string, init?: RequestInit & { params?: Record<string, string> }) {
