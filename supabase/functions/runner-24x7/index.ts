@@ -101,10 +101,30 @@ Deno.serve(async (req) => {
     notes: ok ? null : "one or more jobs reported failure",
   });
 
+  // 5. Owner briefing over Telegram: new customers as they arrive, and an
+  //    hourly line on the board. The owner never has to open a dashboard.
+  try {
+    const admitted = Number((jobs.inbox as any)?.body?.admitted ?? 0);
+    if (admitted > 0) {
+      const names = ((jobs.inbox as any)?.body?.leads ?? [])
+        .map((l: any) => `• ${l.who}: ${l.headline}`).join("\n").slice(0, 1200);
+      await notifyOwner(`🟢 <b>${admitted} new customer(s)</b>\n${esc(names)}`);
+    }
+    const { data: esc10 } = await s.from("ao_missions")
+      .select("title").eq("needs_human", true).limit(3);
+    if (new Date().getUTCMinutes() === 0) {
+      await notifyOwner(
+        `⏱ <b>Hourly</b> — leads touched ${leadsTouched}, missions ${missionsTouched}` +
+        (esc10?.length ? `\n⚠️ needs human: ${esc10.map((m: any) => esc(m.title)).join(", ")}` : ""),
+      );
+    }
+  } catch { /* the heartbeat never dies for a notification */ }
+
   // Keep the beat log bounded (the same fill-then-free rule applied to telemetry).
   const { data: old } = await s.from("ao_runner_beats")
     .select("id").order("beat_at", { ascending: false }).range(5000, 5200);
   if (old?.length) await s.from("ao_runner_beats").delete().in("id", old.map((o: any) => o.id));
+
 
   return json({ ok, mode, duration_ms: Date.now() - started, jobs });
 });
