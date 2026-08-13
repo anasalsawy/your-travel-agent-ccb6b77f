@@ -299,7 +299,7 @@ function providerOf(model: string): Provider {
   return /^(openai|google|anthropic)\//i.test(model) ? "lovable" : "featherless";
 }
 
-async function callOnce(model: string, body: any): Promise<{ ok: boolean; status: number; text: string; content?: string }> {
+async function callOnce(model: string, body: any, holder = "router"): Promise<{ ok: boolean; status: number; text: string; content?: string }> {
   const provider = providerOf(model);
   const url = (provider === "featherless" ? FEATHERLESS_BASE : LOVABLE_BASE) + "/chat/completions";
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -316,20 +316,25 @@ async function callOnce(model: string, body: any): Promise<{ ok: boolean; status
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
     return { res, body: await res.text() };
   };
-  let out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
-  // A unit-budget rejection is transient: wait for the in-flight work to drain
-  // and try the same model twice before blaming it.
-  // A switch-limit rejection is also transient and is NOT the model's fault:
+  // Unit-capped provider → cross the global intersection first.
+  const guarded = () => provider === "featherless" ? withGlobalSlot(model, holder, doFetch) : doFetch();
+
+  let out = await guarded();
+  // A switch-limit rejection is transient and is NOT the model's fault:
   // retrying the SAME model costs no switch quota, so wait it out.
   for (let i = 0; i < 2 && !out.res.ok && isSwitchLimit(out.body); i++) {
     await sleep(12000 * (i + 1));
-    out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
+    out = await guarded();
   }
+  // With the organizer in place this should be unreachable; if the provider
+  // still says "over budget", the real budget is lower than configured, so
+  // shrink it for a while and retry politely.
   for (let i = 0; i < 2 && !out.res.ok && isConcurrencyLimit(out.body); i++) {
     lightOnlyUntil = Date.now() + 5 * 60_000;
     await sleep(2500 * (i + 1));
-    out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
+    out = await guarded();
   }
+
   const r = out.res;
   const text = out.body;
   if (!r.ok) return { ok: false, status: r.status, text: text.slice(0, 400) };
