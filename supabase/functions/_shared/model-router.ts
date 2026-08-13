@@ -8,6 +8,9 @@
 // Every call records health (latency, errors, cooldown) so the auto-selector
 // stops choosing models that are failing and re-tries them after a cooldown.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { withAiSlot, TrafficBusyError, unitsFor, trafficStatus } from "./ai-traffic.ts";
+
+export { trafficStatus, unitsFor };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -390,6 +393,7 @@ export type RouteResult = { content: string; model: string; provider: Provider; 
 export async function routeChat(
   body: { messages: any[]; response_format?: any; temperature?: number; max_tokens?: number },
   requested?: string,
+  holder = "router",
 ): Promise<RouteResult> {
   const chain = await buildChain(requested);
   const attempts: RouteResult["attempts"] = [];
@@ -401,7 +405,7 @@ export async function routeChat(
     if (provider === "lovable" && !LOVABLE_KEY) continue;
     const t0 = Date.now();
     try {
-      const res = await callOnce(model, body);
+      const res = await callOnce(model, body, holder);
       const latency = Date.now() - t0;
       if (!res.ok && isConcurrencyLimit(res.text)) {
         lightOnlyUntil = Date.now() + 5 * 60_000;
@@ -427,6 +431,13 @@ export async function routeChat(
       attempts.push({ model, ok: false, status: res.status, error: res.text });
       lastErr = model + " → " + res.status + ": " + res.text;
     } catch (e) {
+      if (e instanceof TrafficBusyError) {
+        // The intersection was full — the model is innocent, so do not punish
+        // its health score. Fall through to the patient last-resort pass.
+        attempts.push({ model, ok: false, error: "concurrency_limit" });
+        lastErr = model + " → traffic organizer busy";
+        continue;
+      }
       await recordHealth(provider, model, false, Date.now() - t0, 0, (e as Error).message);
       attempts.push({ model, ok: false, error: (e as Error).message });
       lastErr = model + " → " + (e as Error).message;
@@ -443,7 +454,7 @@ export async function routeChat(
       for (let i = 0; i < 3; i++) {
         await sleep(8000 * (i + 1));
         const t0 = Date.now();
-        const res = await callOnce(lastResort, body);
+        const res = await callOnce(lastResort, body, holder);
         if (res.ok) {
           await recordHealth("featherless", lastResort, true, Date.now() - t0, res.status);
           sticky = { model: lastResort, at: Date.now() };
