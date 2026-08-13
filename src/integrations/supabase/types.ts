@@ -259,6 +259,33 @@ export type Database = {
           },
         ]
       }
+      ai_concurrency_leases: {
+        Row: {
+          acquired_at: string
+          expires_at: string
+          holder: string | null
+          id: string
+          model_id: string
+          units: number
+        }
+        Insert: {
+          acquired_at?: string
+          expires_at?: string
+          holder?: string | null
+          id?: string
+          model_id: string
+          units?: number
+        }
+        Update: {
+          acquired_at?: string
+          expires_at?: string
+          holder?: string | null
+          id?: string
+          model_id?: string
+          units?: number
+        }
+        Relationships: []
+      }
       ai_conversations: {
         Row: {
           admin_notes: string | null
@@ -3724,6 +3751,15 @@ export type Database = {
         Args: { fn: string; job: string; payload?: Json }
         Returns: undefined
       }
+      acquire_ai_slot: {
+        Args: {
+          p_budget: number
+          p_holder: string
+          p_model: string
+          p_units: number
+        }
+        Returns: string
+      }
       get_customer_context: { Args: { p_customer_id: string }; Returns: Json }
       get_or_create_customer_by_phone: {
         Args: { p_phone: string }
@@ -3742,6 +3778,7 @@ export type Database = {
         Args: { p_conversation_id: string; p_customer_id: string }
         Returns: undefined
       }
+      release_ai_slot: { Args: { p_id: string }; Returns: undefined }
       search_documents: {
         Args: {
           match_count?: number
