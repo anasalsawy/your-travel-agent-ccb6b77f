@@ -426,11 +426,17 @@ export async function buildChain(requested?: string): Promise<string[]> {
       if (st && !(Date.now() < lightOnlyUntil && HEAVY.test(st))) push(st);
     }
     if (settings.auto_select && !switchLocked) {
-      // Only TWO exploratory candidates — switching is a rationed resource.
-      const ranked = await rankModels(8);
       const light = Date.now() < lightOnlyUntil;
-      const pickable = light ? ranked.filter((r) => !HEAVY.test(r.model_id)) : ranked;
-      for (const r of pickable.slice(0, 2)) push(r.model_id);
+      // Proven servers first: a model that has actually answered before is
+      // worth more than a highly ranked fine-tune that is permanently at
+      // capacity. Only if history is empty do we explore the ranking.
+      const proven = (await provenModels(4)).filter((m) => !(light && HEAVY.test(m)));
+      for (const m of proven.slice(0, 3)) push(m);
+      if (proven.length === 0) {
+        const ranked = await rankModels(8);
+        const pickable = light ? ranked.filter((r) => !HEAVY.test(r.model_id)) : ranked;
+        for (const r of pickable.slice(0, 2)) push(r.model_id);
+      }
     }
     if (!switchLocked) for (const f of settings.fallback_models ?? []) push(f);
   }
@@ -444,7 +450,14 @@ export async function buildChain(requested?: string): Promise<string[]> {
     // Stay on Featherless: widen the in-provider candidate set instead.
     for (const r of await rankModels(6)) push(r.model_id);
   }
-  return chain.slice(0, Math.max(2, settings.max_attempts + 1));
+  const out = chain.slice(0, Math.max(3, settings.max_attempts + 1));
+  // The switch quota is an account-wide resource: if the head of the chain
+  // would burn a switch we cannot afford, lead with a model already hot.
+  if (out.length) {
+    const governed = await switchGoverned(out[0]);
+    if (governed !== out[0]) out.unshift(governed);
+  }
+  return out.filter((m, i) => out.indexOf(m) === i);
 }
 
 export type RouteResult = { content: string; model: string; provider: Provider; attempts: Array<{ model: string; ok: boolean; status?: number; error?: string }> };
