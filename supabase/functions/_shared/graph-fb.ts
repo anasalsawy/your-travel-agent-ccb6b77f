@@ -16,8 +16,9 @@ export function graphConfigured() {
 }
 
 async function g(path: string, init?: RequestInit & { params?: Record<string, string> }) {
+  const token = getToken();
   const url = new URL(GRAPH + path);
-  url.searchParams.set("access_token", TOKEN);
+  url.searchParams.set("access_token", token);
   for (const [k, v] of Object.entries(init?.params ?? {})) url.searchParams.set(k, v);
   const r = await fetch(url.toString(), {
     method: init?.method ?? "GET",
