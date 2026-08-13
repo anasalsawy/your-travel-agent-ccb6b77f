@@ -16,7 +16,7 @@
 //
 // Only the owner chat id may command. Everyone else is ignored silently.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { tg, esc, isOwner, telegramConfigured } from "../_shared/telegram-council.ts";
+import { tg, esc, isOwner, telegramConfigured, postChannelUpdate } from "../_shared/telegram-council.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -86,6 +86,7 @@ async function handle(text: string, chatId: string): Promise<string> {
         "/audit — raise new website proposals",
         "/ship &lt;id&gt; — ship an approved proposal",
         "/build &lt;what to change&gt; — put a change to the vote",
+        "/broadcast &lt;text&gt; — post an update to the Telegram channel",
         "Anything else is sent to the Chief of Staff as a directive.",
       ].join("\n");
 
@@ -151,6 +152,12 @@ async function handle(text: string, chatId: string): Promise<string> {
       const v: any = await call("dev-council", { action: "vote", proposal_id: p.proposal.id }, 90_000);
       return `Raised <code>${p.proposal.id.slice(0, 8)}</code> → vote: <b>${esc(v.verdict ?? "?")}</b> (${v.approve ?? 0} for / ${v.reject ?? 0} against).` +
         (v.verdict === "approved" ? "\nShipping on the next beat, or send /ship " + p.proposal.id.slice(0, 8) : "");
+    }
+
+    case "/broadcast": {
+      if (!args) return "Usage: /broadcast &lt;message&gt;";
+      const r = await postChannelUpdate(esc(args));
+      return r.ok ? "Posted to channel." : `Post failed: ${esc(String((r as any).error ?? "unknown"))}`;
     }
 
     default: {
