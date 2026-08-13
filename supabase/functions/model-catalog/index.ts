@@ -4,6 +4,7 @@ import { corsHeaders } from "../_shared/lobe-runtime.ts";
 import {
   refreshCatalog, listCatalog, rankModels, getSettings, routeChat, buildChain, hasFeatherless,
 } from "../_shared/model-router.ts";
+import { trafficStatus } from "../_shared/ai-traffic.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const sb = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -28,6 +29,7 @@ Deno.serve(async (req) => {
       }
       return json({ ok: true, configured: hasFeatherless(), models, settings: await getSettings() });
     }
+    if (action === "traffic") return json({ ok: true, traffic: await trafficStatus() });
     if (action === "rank") return json({ ok: true, ranked: await rankModels(body.limit ?? 25) });
     if (action === "health") {
       const { data } = await sb().from("ai_model_health").select("*").order("updated_at", { ascending: false }).limit(100);
@@ -36,7 +38,7 @@ Deno.serve(async (req) => {
     if (action === "settings") return json({ ok: true, settings: await getSettings(), chain: await buildChain(body.model) });
     if (action === "save") {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      for (const k of ["auto_select", "default_model", "fallback_models", "emergency_model", "cooldown_seconds", "max_attempts", "primary_provider"]) {
+      for (const k of ["auto_select", "default_model", "fallback_models", "emergency_model", "cooldown_seconds", "max_attempts", "primary_provider", "unit_budget", "max_switches_per_min", "allow_lovable_fallback"]) {
         if (body[k] !== undefined) patch[k] = body[k];
       }
       const { data, error } = await sb().from("ai_router_settings").update(patch).eq("id", "default").select().single();
@@ -53,7 +55,7 @@ Deno.serve(async (req) => {
         response_format: { type: "json_object" },
         temperature: 0.2,
         max_tokens: 200,
-      }, body.model ?? "auto");
+      }, body.model ?? "auto", "model-catalog-test");
       return json({ ok: true, latency_ms: Date.now() - t0, served_by: r.model, provider: r.provider, attempts: r.attempts, content: r.content });
     }
     return json({ ok: false, error: "unknown action " + action }, 400);
