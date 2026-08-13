@@ -8,16 +8,17 @@
 //
 // Every function returns a plain result object — callers never see Graph.
 const GRAPH = "https://graph.facebook.com/v21.0";
-const TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
-const PAGE_ID = Deno.env.get("META_PAGE_ID") ?? "";
+const getToken = () => Deno.env.get("META_ACCESS_TOKEN") ?? "";
+const getPageId = () => Deno.env.get("META_PAGE_ID") ?? "";
 
 export function graphConfigured() {
-  return Boolean(TOKEN && PAGE_ID);
+  return Boolean(getToken() && getPageId());
 }
 
 async function g(path: string, init?: RequestInit & { params?: Record<string, string> }) {
+  const token = getToken();
   const url = new URL(GRAPH + path);
-  url.searchParams.set("access_token", TOKEN);
+  url.searchParams.set("access_token", token);
   for (const [k, v] of Object.entries(init?.params ?? {})) url.searchParams.set(k, v);
   const r = await fetch(url.toString(), {
     method: init?.method ?? "GET",
@@ -38,7 +39,7 @@ async function g(path: string, init?: RequestInit & { params?: Record<string, st
 export async function whoami() {
   if (!graphConfigured()) return { ok: false, error: "meta_not_configured" };
   try {
-    const me = await g(`/${PAGE_ID}`, { params: { fields: "id,name,category,fan_count" } });
+    const me = await g(`/${getPageId()}`, { params: { fields: "id,name,category,fan_count" } });
     return { ok: true, page: me };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
@@ -57,7 +58,8 @@ export type GraphThread = {
 };
 
 export async function listConversations(limit = 25): Promise<GraphThread[]> {
-  const res = await g(`/${PAGE_ID}/conversations`, {
+  const pageId = getPageId();
+  const res = await g(`/${pageId}/conversations`, {
     params: {
       platform: "messenger",
       limit: String(limit),
@@ -65,7 +67,7 @@ export async function listConversations(limit = 25): Promise<GraphThread[]> {
     },
   });
   return (res.data ?? []).map((c: any) => {
-    const other = (c.participants?.data ?? []).find((p: any) => p.id !== PAGE_ID);
+    const other = (c.participants?.data ?? []).find((p: any) => p.id !== pageId);
     const m = c.messages?.data?.[0];
     return {
       id: c.id,
@@ -73,18 +75,19 @@ export async function listConversations(limit = 25): Promise<GraphThread[]> {
       name: other?.name ?? "unknown",
       updated_time: c.updated_time,
       last_message: m?.message ?? "",
-      last_from: m?.from?.id === PAGE_ID ? "us" : "them",
+      last_from: m?.from?.id === pageId ? "us" : "them",
       unread: Number(c.unread_count ?? 0),
     } as GraphThread;
   });
 }
 
 export async function readConversation(conversationId: string, limit = 20) {
+  const pageId = getPageId();
   const res = await g(`/${conversationId}/messages`, {
     params: { limit: String(limit), fields: "message,from,created_time" },
   });
   return (res.data ?? []).reverse().map((m: any) => ({
-    who: m.from?.id === PAGE_ID ? "us" : (m.from?.name ?? "them"),
+    who: m.from?.id === pageId ? "us" : (m.from?.name ?? "them"),
     body: m.message ?? "",
     at: m.created_time,
   }));
@@ -98,7 +101,7 @@ export async function sendDm(psid: string, text: string, tag?: string) {
     messaging_type: tag ? "MESSAGE_TAG" : "RESPONSE",
   };
   if (tag) body.tag = tag;
-  const res = await g(`/${PAGE_ID}/messages`, { method: "POST", body: JSON.stringify(body) });
+  const res = await g(`/${getPageId()}/messages`, { method: "POST", body: JSON.stringify(body) });
   return { ok: true, message_id: res.message_id ?? null, recipient_id: res.recipient_id ?? psid };
 }
 
@@ -106,7 +109,7 @@ export async function sendDm(psid: string, text: string, tag?: string) {
 export async function publishPost(message: string, link?: string) {
   const body: Record<string, unknown> = { message: message.slice(0, 5000) };
   if (link) body.link = link;
-  const res = await g(`/${PAGE_ID}/feed`, { method: "POST", body: JSON.stringify(body) });
+  const res = await g(`/${getPageId()}/feed`, { method: "POST", body: JSON.stringify(body) });
   return { ok: true, post_id: res.id };
 }
 
@@ -122,7 +125,8 @@ export type GraphComment = {
 
 /** Comments left on our own posts — the highest-intent inbound surface there is. */
 export async function recentComments(limit = 25): Promise<GraphComment[]> {
-  const res = await g(`/${PAGE_ID}/posts`, {
+  const pageId = getPageId();
+  const res = await g(`/${pageId}/posts`, {
     params: {
       limit: "10",
       fields: `id,permalink_url,comments.limit(${limit}).order(reverse_chronological){id,message,from,created_time}`,
@@ -131,7 +135,7 @@ export async function recentComments(limit = 25): Promise<GraphComment[]> {
   const out: GraphComment[] = [];
   for (const post of res.data ?? []) {
     for (const c of post.comments?.data ?? []) {
-      if (c.from?.id === PAGE_ID) continue;
+      if (c.from?.id === pageId) continue;
       out.push({
         id: c.id,
         post_id: post.id,
@@ -156,7 +160,7 @@ export async function replyToComment(commentId: string, message: string) {
 
 /** Private reply to a public comment — moves the lead into the DM channel. */
 export async function privateReplyToComment(commentId: string, message: string) {
-  const res = await g(`/${PAGE_ID}/messages`, {
+  const res = await g(`/${getPageId()}/messages`, {
     method: "POST",
     body: JSON.stringify({ recipient: { comment_id: commentId }, message: { text: message.slice(0, 1900) } }),
   });
@@ -165,7 +169,7 @@ export async function privateReplyToComment(commentId: string, message: string) 
 
 // ── Lead Ads (real buyers, submitted through Meta forms) ───────────────────
 export async function leadgenForms() {
-  const res = await g(`/${PAGE_ID}/leadgen_forms`, { params: { limit: "25", fields: "id,name,status" } });
+  const res = await g(`/${getPageId()}/leadgen_forms`, { params: { limit: "25", fields: "id,name,status" } });
   return res.data ?? [];
 }
 
