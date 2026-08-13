@@ -735,6 +735,54 @@ export type Database = {
           },
         ]
       }
+      ao_delegations: {
+        Row: {
+          attempts: number
+          created_at: string
+          directive: string
+          escalation_reason: string | null
+          from_agent: string
+          id: string
+          lead_id: string | null
+          mission_id: string | null
+          rationale: string | null
+          result: Json
+          status: string
+          to_agent: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          directive: string
+          escalation_reason?: string | null
+          from_agent?: string
+          id?: string
+          lead_id?: string | null
+          mission_id?: string | null
+          rationale?: string | null
+          result?: Json
+          status?: string
+          to_agent: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          directive?: string
+          escalation_reason?: string | null
+          from_agent?: string
+          id?: string
+          lead_id?: string | null
+          mission_id?: string | null
+          rationale?: string | null
+          result?: Json
+          status?: string
+          to_agent?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ao_dialogue: {
         Row: {
           content: string
@@ -1123,6 +1171,54 @@ export type Database = {
           target_path?: string | null
           title?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      ao_supervision: {
+        Row: {
+          agent_key: string
+          created_at: string
+          delivered: boolean
+          draft: string
+          final_text: string | null
+          id: string
+          issues: Json
+          kind: string
+          lead_id: string | null
+          mission_id: string | null
+          reviewer_model: string | null
+          score: number | null
+          verdict: string
+        }
+        Insert: {
+          agent_key?: string
+          created_at?: string
+          delivered?: boolean
+          draft: string
+          final_text?: string | null
+          id?: string
+          issues?: Json
+          kind?: string
+          lead_id?: string | null
+          mission_id?: string | null
+          reviewer_model?: string | null
+          score?: number | null
+          verdict?: string
+        }
+        Update: {
+          agent_key?: string
+          created_at?: string
+          delivered?: boolean
+          draft?: string
+          final_text?: string | null
+          id?: string
+          issues?: Json
+          kind?: string
+          lead_id?: string | null
+          mission_id?: string | null
+          reviewer_model?: string | null
+          score?: number | null
+          verdict?: string
         }
         Relationships: []
       }
