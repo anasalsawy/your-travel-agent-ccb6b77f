@@ -32,6 +32,7 @@ import AdminModels from "./pages/AdminModels";
 import AdminLeadEngine from "./pages/AdminLeadEngine";
 import AdminMarketing from "./pages/AdminMarketing";
 import AdminCouncil from "./pages/AdminCouncil";
+import AdminDialogue from "./pages/AdminDialogue";
 import AdminAgentRooms from "./pages/AdminAgentRooms";
 import AdminShopperProfile from "./pages/AdminShopperProfile";
 import AdminWarRoom from "./pages/AdminWarRoom";
@@ -104,6 +105,7 @@ const App = () => (
             <Route path="/admin/leads" element={<AdminLeadEngine />} />
             <Route path="/admin/marketing" element={<AdminMarketing />} />
             <Route path="/admin/council" element={<AdminCouncil />} />
+            <Route path="/admin/dialogue" element={<AdminDialogue />} />
 
             <Route path="/admin/agent-rooms" element={<AdminAgentRooms />} />
             <Route path="/admin/shopper-profile" element={<AdminShopperProfile />} />
