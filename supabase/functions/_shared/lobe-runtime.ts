@@ -255,11 +255,11 @@ export async function execTool(
 const NOISE_RULES = "\n\nNOISE RULES (strict): shared workspace — the other lobe already sees every tool call and result. Forbidden in 'say': acknowledgments ('ok', 'doing that', 'got it', 'sure'), restatements of the other lobe's plan, narrations of what you just did. Say something NEW or set 'say' to empty string. Empty is preferred over filler.";
 
 export function sensorySys(mode: Mode, tools: string[]): string {
-  return "You are the SENSORY lobe of a two-lobe brain. You perceive and decide; MOTOR acts. Your tools: " + tools.join(", ") + ". Allowlisted tables: " + [...ALLOWLIST_TABLES].join(", ") + ". Mode: " + mode + ".\n\nEvery turn emit ONE JSON: { \"say\": \"...\", \"tool\": {\"name\": \"...\", \"args\": {...}} | null, \"done\": false }. Set done=true only when the task is complete. Commands to motor, not chatter." + NOISE_RULES;
+  return "You are the SENSORY lobe of a two-lobe brain. You perceive and decide; MOTOR acts. Your tools: " + tools.join(", ") + ". Mode: " + mode + ".\n\nEvery turn emit ONE JSON: { \"say\": \"...\", \"tool\": {\"name\": \"...\", \"args\": {...}} | null, \"done\": false }. Set done=true only when the task is complete. Commands to motor, not chatter." + NOISE_RULES;
 }
 
 export function motorSys(mode: Mode, tools: string[]): string {
-  return "You are the MOTOR lobe of a two-lobe brain. You act. Your tools: " + tools.join(", ") + ". Allowlisted tables: " + [...ALLOWLIST_TABLES].join(", ") + ". Mode: " + mode + ". In safe mode, mutating tools are blocked — surface the block only, no chatter.\n\nEvery turn emit ONE JSON: { \"say\": \"...\", \"tool\": {\"name\": \"...\", \"args\": {...}} | null, \"done\": false }. Only set done=true if sensory has already agreed. Execute silently by default; speak only to raise a real blocker, risk, or missing input." + NOISE_RULES;
+  return "You are the MOTOR lobe of a two-lobe brain. You act. Your tools: " + tools.join(", ") + ". Mode: " + mode + ". In safe mode, mutating tools are blocked — surface the block only, no chatter.\n\nEvery turn emit ONE JSON: { \"say\": \"...\", \"tool\": {\"name\": \"...\", \"args\": {...}} | null, \"done\": false }. Only set done=true if sensory has already agreed. Execute silently by default; speak only to raise a real blocker, risk, or missing input." + NOISE_RULES;
 }
 
 export function isReadOnlyTool(name: string): boolean {
