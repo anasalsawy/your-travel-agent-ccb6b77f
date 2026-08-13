@@ -5,6 +5,7 @@
 // If Telegram ever disappears, swap this file — nothing upstream changes.
 const TOKEN = Deno.env.get("COUNCIL_TELEGRAM_BOT_TOKEN") || Deno.env.get("TELEGRAM_BOT_TOKEN") || "";
 const OWNER_CHAT = Deno.env.get("TELEGRAM_ADMIN_CHAT_ID") || Deno.env.get("ADMIN_TELEGRAM_CHAT_ID") || "";
+const CHANNEL_ID = Deno.env.get("TELEGRAM_CHANNEL_ID") || "";
 
 export function telegramConfigured() {
   return Boolean(TOKEN);
