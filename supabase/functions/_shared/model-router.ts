@@ -180,8 +180,10 @@ function keyHash(k: string): number {
   return Math.abs(h);
 }
 
+let rosterCache: { keys: string[]; at: number } | null = null;
+
 /** A distinct, healthy model for this agent. Falls back to "auto" if unknown. */
-export async function modelForAgent(agentKey: string, pool = 12): Promise<string> {
+export async function modelForAgent(agentKey: string, pool = 20): Promise<string> {
   if (!hasFeatherless()) return "auto";
   try {
     if (!spreadCache || Date.now() - spreadCache.at > AGENT_MODEL_TTL_MS) {
@@ -190,7 +192,16 @@ export async function modelForAgent(agentKey: string, pool = 12): Promise<string
     }
     const models = spreadCache.models;
     if (models.length === 0) return "auto";
-    return models[keyHash(agentKey) % Math.min(models.length, pool)];
+
+    // Assign by the agent's position in the (stable, alphabetical) roster, so
+    // distinct agents get distinct models instead of colliding on a hash.
+    if (!rosterCache || Date.now() - rosterCache.at > AGENT_MODEL_TTL_MS) {
+      const { data } = await sb().from("ao_agents").select("agent_key").order("agent_key");
+      rosterCache = { keys: (data ?? []).map((r: any) => r.agent_key), at: Date.now() };
+    }
+    const idx = rosterCache.keys.indexOf(agentKey);
+    const slot = idx >= 0 ? idx : keyHash(agentKey);
+    return models[slot % Math.min(models.length, pool)];
   } catch {
     return "auto";
   }
