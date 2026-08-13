@@ -409,6 +409,23 @@ async function callOnce(model: string, body: any, holder = "router"): Promise<{ 
   }
 }
 
+/** Single-model liveness probe. Records health; never throws. */
+export async function probeModel(model: string, holder = "watchdog"): Promise<{ model: string; ok: boolean; latency_ms: number; status?: number; error?: string }> {
+  const t0 = Date.now();
+  try {
+    const res = await callOnce(model, {
+      messages: [{ role: "system", content: "Reply with the single word: ok" }, { role: "user", content: "ping" }],
+      max_tokens: 8, temperature: 0,
+    }, holder);
+    const latency = Date.now() - t0;
+    const accountThrottle = !res.ok && (isConcurrencyLimit(res.text) || isSwitchLimit(res.text));
+    if (!accountThrottle) await recordHealth(providerOf(model), model, res.ok, latency, res.status, res.ok ? undefined : res.text);
+    return { model, ok: res.ok, latency_ms: latency, status: res.status, error: res.ok ? undefined : res.text.slice(0, 200) };
+  } catch (e) {
+    return { model, ok: false, latency_ms: Date.now() - t0, error: (e as Error).message };
+  }
+}
+
 /** Build the ordered attempt list: requested → auto-picked → emergency. */
 export async function buildChain(requested?: string): Promise<string[]> {
   const settings = await getSettings();
