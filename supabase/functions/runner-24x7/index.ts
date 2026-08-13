@@ -62,7 +62,10 @@ Deno.serve(async (req) => {
   }
 
   // 2c. Council: chief issues delegations, specialists execute, supervisor grades.
-  jobs.council = await call("council", { action: "tick", mode, limit: 4 }, 55000);
+  // The provider plan is unit-capped, so the council gets its own slow lane.
+  jobs.council = new Date().getUTCMinutes() % 2 === 0
+    ? await call("council", { action: "tick", mode, limit: 2 }, 55000)
+    : { skipped: true };
 
   // 3. Push missions through the pipeline.
   const agency = await call("agency-os", { action: "tick", mode, limit: 3, cycles: 2 });
