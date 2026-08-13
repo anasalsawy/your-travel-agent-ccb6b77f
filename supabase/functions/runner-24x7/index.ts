@@ -4,7 +4,7 @@
 // runs the memory lifecycle (fill → finetune → free). Every beat is recorded,
 // so "is the agency awake?" is an evidence question, not a feeling.
 import { gsb } from "../_shared/governor.ts";
-import { notifyOwner, esc } from "../_shared/telegram-council.ts";
+import { broadcastUpdate, esc } from "../_shared/telegram-council.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -109,12 +109,12 @@ Deno.serve(async (req) => {
     if (admitted > 0) {
       const names = ((jobs.inbox as any)?.body?.leads ?? [])
         .map((l: any) => `• ${l.who}: ${l.headline}`).join("\n").slice(0, 1200);
-      await notifyOwner(`🟢 <b>${admitted} new customer(s)</b>\n${esc(names)}`);
+      await broadcastUpdate(`🟢 <b>${admitted} new customer(s)</b>\n${esc(names)}`);
     }
     const { data: esc10 } = await s.from("ao_missions")
       .select("title").eq("needs_human", true).limit(3);
     if (new Date().getUTCMinutes() === 0) {
-      await notifyOwner(
+      await broadcastUpdate(
         `⏱ <b>Hourly</b> — leads touched ${leadsTouched}, missions ${missionsTouched}` +
         (esc10?.length ? `\n⚠️ needs human: ${esc10.map((m: any) => esc(m.title)).join(", ")}` : ""),
       );
