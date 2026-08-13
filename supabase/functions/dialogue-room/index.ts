@@ -95,16 +95,24 @@ function mentionsIn(text: string, keys: string[]): string[] {
   return found;
 }
 
+/** Stale refusals ("table X is not allowlisted") poison later turns — agents copy them
+ *  instead of retrying. Drop them from the context window. */
+const STALE_REFUSAL_RX = /not (?:on the )?allowlist|not allowlisted|cannot (?:directly )?access the \w+ table/i;
+
 function transcriptFor(msgs: Msg[], self: string) {
-  return msgs.slice(-HISTORY_WINDOW).map((m) => {
-    const toolNote = Array.isArray(m.tool_calls) && m.tool_calls.length
-      ? "\n[tools] " + JSON.stringify(m.tool_calls).slice(0, 600)
-      : "";
-    if (m.speaker === self) return { role: "assistant", content: m.content + toolNote };
-    const label = m.role === "human" ? "OPERATOR" : m.speaker.toUpperCase();
-    return { role: "user", content: label + ": " + m.content + toolNote };
-  });
+  return msgs
+    .slice(-HISTORY_WINDOW)
+    .filter((m) => !(m.role === "agent" && STALE_REFUSAL_RX.test(m.content)))
+    .map((m) => {
+      const toolNote = Array.isArray(m.tool_calls) && m.tool_calls.length
+        ? "\n[tools] " + JSON.stringify(m.tool_calls).slice(0, 600)
+        : "";
+      if (m.speaker === self) return { role: "assistant", content: m.content + toolNote };
+      const label = m.role === "human" ? "OPERATOR" : m.speaker.toUpperCase();
+      return { role: "user", content: label + ": " + m.content + toolNote };
+    });
 }
+
 
 function systemPrompt(
   agent: Agent,
