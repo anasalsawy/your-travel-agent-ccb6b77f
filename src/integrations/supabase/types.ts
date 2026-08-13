@@ -869,6 +869,7 @@ export type Database = {
           created_at: string
           estimated_value: number | null
           external_thread_id: string | null
+          external_url: string | null
           headline: string
           id: string
           itinerary: Json
@@ -893,6 +894,7 @@ export type Database = {
           created_at?: string
           estimated_value?: number | null
           external_thread_id?: string | null
+          external_url?: string | null
           headline: string
           id?: string
           itinerary?: Json
@@ -917,6 +919,7 @@ export type Database = {
           created_at?: string
           estimated_value?: number | null
           external_thread_id?: string | null
+          external_url?: string | null
           headline?: string
           id?: string
           itinerary?: Json
