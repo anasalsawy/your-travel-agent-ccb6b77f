@@ -5,7 +5,7 @@
 //      finds a fixable defect, returns a corrected message instead of a veto.
 // Every review is persisted, so "why did the agency say that?" is answerable.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { routeChat } from "./model-router.ts";
+import { routeChatSafe } from "./model-router.ts";
 import { playbookBlock, redLineIssues } from "./playbook.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
@@ -41,7 +41,7 @@ export async function reviewOutbound(
   let out: any = {};
   let model = "";
   try {
-    const r = await routeChat({
+    const r = await routeChatSafe({
       messages: [
         { role: "system", content: SYS },
         {

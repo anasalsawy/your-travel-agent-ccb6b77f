@@ -9,7 +9,7 @@
 // Nothing here is vendor-specific: models come from the Featherless router,
 // capabilities come from the tool catalog.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { routeChat } from "./model-router.ts";
+import { routeChatSafe } from "./model-router.ts";
 import { playbookBlock } from "./playbook.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
@@ -35,7 +35,7 @@ function jparse(s: string): any {
 }
 
 async function think(system: string, user: string, maxTokens = 900) {
-  const r = await routeChat({
+  const r = await routeChatSafe({
     messages: [{ role: "system", content: system }, { role: "user", content: user }],
     response_format: { type: "json_object" },
     temperature: 0.3,

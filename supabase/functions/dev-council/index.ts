@@ -11,7 +11,7 @@
 // Write access is a capability (github-site.ts). Swap that file and the council
 // keeps shipping through whatever host replaces it.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { routeChat } from "../_shared/model-router.ts";
+import { routeChatSafe } from "../_shared/model-router.ts";
 import {
   siteWriteConfigured, readFile, listDir, openBranch, writeFile,
   openPullRequest, mergePullRequest,
@@ -32,7 +32,7 @@ const sb = () => createClient(SB_URL, SR);
 const jparse = (s: string) => { try { return JSON.parse(s); } catch { return {}; } };
 
 async function think(system: string, user: string, max = 1400) {
-  const r = await routeChat({
+  const r = await routeChatSafe({
     messages: [{ role: "system", content: system }, { role: "user", content: user }],
     response_format: { type: "json_object" },
     temperature: 0.35,

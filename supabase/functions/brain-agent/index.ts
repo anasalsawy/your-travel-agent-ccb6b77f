@@ -25,7 +25,7 @@
 // Key design principle: no single region sees everything. Each has a narrow
 // input, does one job, hands off a small message. That's how a brain scales.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { routeChat } from "../_shared/model-router.ts";
+import { routeChatSafe } from "../_shared/model-router.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
@@ -167,7 +167,7 @@ Cerebellum feedback (recent prediction errors):
 ${deltas}
 ${consult ? "\nCONSULT from motor-lobe (advisory, use if useful):\n" + consult : ""}`;
 
-  const routed = await routeChat({
+  const routed = await routeChatSafe({
     messages: [{ role: "system", content: sys }, { role: "user", content: user }],
     response_format: { type: "json_object" },
     temperature: 0.3,
@@ -213,7 +213,7 @@ Recent prediction errors: ${brain.cerebellum_deltas.slice(-3).join(" | ") || "(n
 PFC's current candidates:
 ${cands}`;
   try {
-    const routed = await routeChat({
+    const routed = await routeChatSafe({
       messages: [{ role: "system", content: sys }, { role: "user", content: user }],
       temperature: 0.4,
       max_tokens: 120,
