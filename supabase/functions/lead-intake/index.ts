@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
     const source = body.source ?? "facebook";
     const channel = body.channel ?? "facebook";
 
-    const out = safeParse(await llm(PARSER, [{ role: "user", content: raw.slice(0, 12000) }], "google/gemini-2.5-flash", { max_tokens: 2500 }));
+    const out = safeParse(await llm(PARSER, [{ role: "user", content: raw.slice(0, 12000) }], "auto", { max_tokens: 2500 }));
     const parsed: any[] = Array.isArray(out.leads) ? out.leads : [];
     if (!parsed.length) return json({ ok: false, error: "no_leads_parsed", raw_model: out }, 422);
 
