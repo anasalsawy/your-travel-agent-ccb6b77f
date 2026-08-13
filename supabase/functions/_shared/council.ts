@@ -114,9 +114,17 @@ export async function chiefRound(limit = 5) {
     if (o.lead_id && !lead_id) continue;                        // hallucinated lead
     let mission_id = o.mission_id && missionIds.has(o.mission_id) ? o.mission_id : null;
     if (lead_id) mission_id = (leadById.get(lead_id) as any)?.mission_id ?? mission_id;
+    // TARGETING — a contact order with no target cannot send anything. Rather
+    // than burn a specialist turn on a ghost, it becomes prospecting work.
+    if (!lead_id && !mission_id && /outreach|concierge|quote|book/.test(o.to_agent)) {
+      o.to_agent = "scout";
+      o.directive = "Find new reachable travel buyers (Messenger thread, email, or phone required) — the board had no contactable target for: " + String(o.directive).slice(0, 300);
+    }
     if (lead_id) { if (seenLead.has(lead_id)) continue; seenLead.add(lead_id); }
     else if (mission_id) { if (seenMission.has(mission_id)) continue; seenMission.add(mission_id); }
+    else { if (seenMission.has("prospect")) continue; seenMission.add("prospect"); }
     orders.push({ ...o, lead_id, mission_id });
+
     if (orders.length >= limit) break;
   }
 
