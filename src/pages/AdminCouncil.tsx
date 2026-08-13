@@ -3,15 +3,28 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Loader2, Send, Radio } from "lucide-react";
 import { toast } from "sonner";
-import { Loader2, Send, MessagesSquare } from "lucide-react";
 
 type Msg = {
   id: string; speaker: string; role: string; content: string; created_at: string;
 };
 
 const CHIEF_ROOM = "Direct line — Chief of Staff";
+
+const SPEAKERS: Record<string, { display: string; color: string; emoji: string }> = {
+  chief: { display: "Chief of Staff", color: "hsl(0 84% 60%)", emoji: "🎯" },
+  system: { display: "System", color: "hsl(215 20% 65%)", emoji: "⚙️" },
+};
+const meta = (key: string) =>
+  SPEAKERS[key] ?? { display: key, color: "hsl(199 89% 48%)", emoji: "🤖" };
+
+function relTime(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  return Math.floor(s / 3600) + "h";
+}
 
 export default function AdminCouncil() {
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -20,7 +33,7 @@ export default function AdminCouncil() {
   const [sending, setSending] = useState(false);
   const [booting, setBooting] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const call = async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("dialogue-room", { body });
@@ -67,7 +80,10 @@ export default function AdminCouncil() {
     return () => clearInterval(t);
   }, [roomId]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, sending]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length, sending]);
 
   const send = async () => {
     if (!roomId || !text.trim() || sending) return;
@@ -91,74 +107,85 @@ export default function AdminCouncil() {
   };
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-2rem)] max-w-3xl flex-col gap-4 p-4 md:p-6">
-      <header className="flex items-center gap-2">
-        <MessagesSquare className="h-5 w-5 text-primary" />
-        <h1 className="text-xl font-semibold">Chief of Staff</h1>
-        <span className="hidden text-sm text-muted-foreground sm:inline">
-          Just tell it what you want — it runs the team for you.
-        </span>
-        <Link to="/admin/dialogue" className="ml-auto text-xs text-muted-foreground underline">
+    <div className="flex h-screen flex-col bg-background">
+      <div className="flex items-center justify-between border-b px-6 py-3">
+        <div className="flex items-center gap-3">
+          <Radio className="h-5 w-5 animate-pulse text-red-500" />
+          <div>
+            <h1 className="text-xl font-bold">Chief of Staff</h1>
+            <p className="text-xs text-muted-foreground">
+              Direct line · say what you want done · the Chief runs the council for you
+            </p>
+          </div>
+        </div>
+        <Link to="/admin/dialogue" className="text-xs text-muted-foreground underline">
           Advanced
         </Link>
-      </header>
+      </div>
 
-      <ScrollArea className="flex-1 rounded-lg border p-4">
+      <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
         {booting && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="mt-20 flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Opening the line…
           </div>
         )}
         {!booting && messages.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Say something like "find me new leads from Facebook today" or "what's the pipeline looking like?"
-          </p>
+          <div className="mt-20 text-center text-sm text-muted-foreground">
+            Channel is quiet. Try “what’s the pipeline looking like?” or “open 5 new Punta Cana prospects today”.
+          </div>
         )}
-        <div className="space-y-3">
-          {messages.map((m) => {
-            const mine = m.role === "human";
-            return (
-              <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
-                <div
-                  className={
-                    "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm " +
-                    (mine ? "bg-primary text-primary-foreground" : "bg-muted")
-                  }
-                >
-                  {!mine && (
-                    <p className="mb-1 text-xs font-medium opacity-70">
-                      {m.speaker === "system" ? "System" : m.speaker}
-                    </p>
-                  )}
-                  {m.content}
+        {messages.map((m) => {
+          const isUser = m.role === "human";
+          const a = meta(m.speaker);
+          return (
+            <div
+              key={m.id}
+              className={
+                "flex gap-2 rounded-md p-2 " +
+                (isUser ? "bg-primary/5" : m.speaker === "chief" ? "bg-red-500/5" : "")
+              }
+            >
+              <div className="mt-1 flex-shrink-0 text-lg leading-none">{isUser ? "🧑‍✈️" : a.emoji}</div>
+              <div className="min-w-0 flex-1">
+                <div className="mb-0.5 flex items-baseline gap-2">
+                  <span
+                    className="text-xs font-semibold"
+                    style={!isUser ? { color: a.color } : undefined}
+                  >
+                    {isUser ? "You" : a.display}
+                  </span>
+                  <span className="ml-auto text-[10px] opacity-60">{relTime(m.created_at)}</span>
                 </div>
+                <div className="whitespace-pre-wrap break-words text-sm">{m.content}</div>
               </div>
-            );
-          })}
-          {sending && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Thinking…
             </div>
-          )}
-          <div ref={endRef} />
-        </div>
-      </ScrollArea>
+          );
+        })}
+        {sending && (
+          <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Chief is working…
+          </div>
+        )}
+      </div>
 
-      <div className="flex items-end gap-2">
-        <Textarea
-          ref={inputRef}
-          rows={2}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-          }}
-          placeholder="Message the Chief of Staff…"
-          className="resize-none"
-        />
-        <Button onClick={send} disabled={sending || !text.trim()} size="icon" className="h-10 w-10 shrink-0">
-          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        </Button>
+      <div className="border-t p-3">
+        <div className="flex gap-2">
+          <Textarea
+            ref={inputRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+              else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+            }}
+            placeholder="Give the Chief an order…"
+            className="min-h-[60px] resize-none"
+          />
+          <Button onClick={send} disabled={sending || !text.trim()} className="self-stretch">
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
+        <div className="mt-1 text-[10px] text-muted-foreground">Enter to send · Shift + Enter for a new line</div>
       </div>
     </div>
   );
