@@ -56,13 +56,38 @@ export default function AdminDialogue() {
     } catch (e) { toast.error((e as Error).message); }
   };
 
+  const CHIEF_ROOM = "Direct line — Chief of Staff";
+
+  const chatWithChief = async (existing?: Room[]) => {
+    setBusy("chief");
+    try {
+      const list = existing ?? rooms;
+      const found = list.find((r) => r.title === CHIEF_ROOM);
+      if (found) { await openRoom(found.id); return; }
+      const d = await call({
+        action: "create",
+        title: CHIEF_ROOM,
+        goal: "Standing direct line between the operator and the Chief of Staff. Answer, delegate, and pull in any agent needed.",
+        mode: "full",
+        participants: ["chief"],
+      });
+      await loadRooms();
+      await openRoom(d.room.id);
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+  };
+
   useEffect(() => {
     (async () => {
       try {
         const a = await call({ action: "agents" });
         setAgents(a.agents ?? []);
       } catch (e) { toast.error((e as Error).message); }
-      loadRooms();
+      try {
+        const d = await call({ action: "rooms" });
+        const list: Room[] = d.rooms ?? [];
+        setRooms(list);
+        await chatWithChief(list);
+      } catch (e) { toast.error((e as Error).message); }
     })();
   }, []);
 
@@ -138,7 +163,11 @@ export default function AdminDialogue() {
       <div className="grid gap-4 md:grid-cols-[300px_1fr]">
         {/* Rooms + create */}
         <div className="space-y-3">
-          <Button className="w-full" onClick={() => setCreating((c) => !c)}>
+          <Button className="w-full" onClick={() => chatWithChief()} disabled={busy === "chief"}>
+            {busy === "chief" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessagesSquare className="mr-2 h-4 w-4" />}
+            Chat with Chief of Staff
+          </Button>
+          <Button variant="outline" className="w-full" onClick={() => setCreating((c) => !c)}>
             <Plus className="mr-2 h-4 w-4" /> New room
           </Button>
 
