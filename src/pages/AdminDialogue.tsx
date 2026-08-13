@@ -163,7 +163,11 @@ export default function AdminDialogue() {
       <div className="grid gap-4 md:grid-cols-[300px_1fr]">
         {/* Rooms + create */}
         <div className="space-y-3">
-          <Button className="w-full" onClick={() => setCreating((c) => !c)}>
+          <Button className="w-full" onClick={() => chatWithChief()} disabled={busy === "chief"}>
+            {busy === "chief" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessagesSquare className="mr-2 h-4 w-4" />}
+            Chat with Chief of Staff
+          </Button>
+          <Button variant="outline" className="w-full" onClick={() => setCreating((c) => !c)}>
             <Plus className="mr-2 h-4 w-4" /> New room
           </Button>
 
