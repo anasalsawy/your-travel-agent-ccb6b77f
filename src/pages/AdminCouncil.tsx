@@ -109,8 +109,68 @@ export default function AdminCouncil() {
           <TabsTrigger value="delegations">Delegations ({status.delegations.length})</TabsTrigger>
           <TabsTrigger value="supervision">Supervision ({status.supervision.length})</TabsTrigger>
           <TabsTrigger value="pipeline">Pipeline ({status.missions.length})</TabsTrigger>
+          <TabsTrigger value="engineering">Engineering ({dev.proposals.length})</TabsTrigger>
           <TabsTrigger value="raw">Last run</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="engineering" className="space-y-3">
+          {!dev.site_write && (
+            <Card>
+              <CardContent className="p-4 text-sm text-muted-foreground">
+                Write access to the site is not configured yet, so approved changes stop at the review stage.
+                Add the repository details and the department ships on its own.
+              </CardContent>
+            </Card>
+          )}
+          {dev.proposals.map((p) => {
+            const votes = dev.votes.filter((v) => v.proposal_id === p.id);
+            return (
+              <Card key={p.id}>
+                <CardContent className="space-y-2 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={p.status === "shipped" ? "default" : p.status === "rejected" || p.status === "failed" ? "destructive" : "secondary"}>
+                      {p.status}
+                    </Badge>
+                    <span className="font-medium">{p.title}</span>
+                    <span className="text-xs text-muted-foreground">{p.area} · risk {p.risk} · raised by {p.raised_by}</span>
+                  </div>
+                  <p className="text-sm">{p.proposal}</p>
+                  {p.problem && <p className="text-xs text-muted-foreground">{p.problem}</p>}
+                  {Array.isArray(p.files) && p.files.length > 0 && (
+                    <p className="font-mono text-xs text-muted-foreground">{p.files.join(", ")}</p>
+                  )}
+                  {votes.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {votes.map((v) => `${v.agent_key}:${v.vote}`).join(" · ")}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {p.status === "proposed" && (
+                      <Button size="sm" variant="secondary" disabled={!!busy}
+                        onClick={() => run("Vote", "dev-council", { action: "vote", proposal_id: p.id })}>
+                        <Gavel className="mr-2 h-4 w-4" /> Call the vote
+                      </Button>
+                    )}
+                    {p.status === "approved" && (
+                      <Button size="sm" disabled={!!busy}
+                        onClick={() => run("Ship", "dev-council", { action: "ship", proposal_id: p.id })}>
+                        <GitPullRequest className="mr-2 h-4 w-4" /> Ship it
+                      </Button>
+                    )}
+                    {p.pr_url && (
+                      <a className="text-xs underline" href={p.pr_url} target="_blank" rel="noreferrer">View change</a>
+                    )}
+                    {p.error && <span className="text-xs text-destructive">{p.error}</span>}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+          {!dev.proposals.length && (
+            <p className="text-sm text-muted-foreground">No website proposals yet. Run a dev audit.</p>
+          )}
+        </TabsContent>
+
 
         <TabsContent value="delegations" className="space-y-3">
           {status.delegations.map((d) => (
