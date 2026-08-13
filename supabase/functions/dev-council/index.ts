@@ -117,15 +117,20 @@ async function voteOn(proposalId: string) {
   const { data: agents } = await s.from("ao_agents")
     .select("agent_key,display_name,department,charter").eq("status", "active").limit(12);
 
-  const seated = (agents ?? []).slice(0, 7);
+  // The provider plan is unit-capped, so the chamber is small and votes run in
+  // two lanes. A quorum of clear voices beats a slow crowd that times out.
+  const bench = agents ?? [];
+  const eng = bench.filter((a: any) => a.department === "engineering").slice(0, 3);
+  const rest = bench.filter((a: any) => a.department !== "engineering").slice(0, 2);
+  const seated = [...eng, ...rest];
   const brief = JSON.stringify({
     title: p.title, area: p.area, problem: p.problem, proposal: p.proposal,
     expected_impact: p.expected_impact, risk: p.risk, files: p.files,
-  }).slice(0, 4000);
+  }).slice(0, 2500);
 
-  const votes = await Promise.all(seated.map(async (a: any) => {
+  const castVote = async (a: any) => {
     try {
-      const { json: v } = await think(VOTE_SYS(a), brief, 260);
+      const { json: v } = await think(VOTE_SYS(a), brief, 200);
       const vote = ["approve", "reject", "abstain"].includes(v.vote) ? v.vote : "abstain";
       // QA and engineering carry more weight on engineering risk.
       const weight = a.department === "engineering" ? 1.5 : 1;
@@ -133,7 +138,17 @@ async function voteOn(proposalId: string) {
     } catch (e) {
       return { proposal_id: proposalId, agent_key: a.agent_key, vote: "abstain", weight: 1, reasoning: "vote_failed: " + (e as Error).message };
     }
+  };
+
+  const votes: any[] = [];
+  let cursor = 0;
+  await Promise.all([0, 1].map(async () => {
+    while (cursor < seated.length) {
+      const a = seated[cursor++];
+      votes.push(await castVote(a));
+    }
   }));
+
 
   await s.from("ao_votes").upsert(votes, { onConflict: "proposal_id,agent_key" });
 
