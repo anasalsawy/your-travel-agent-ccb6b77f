@@ -516,27 +516,78 @@ export async function routeChat(
       lastErr = model + " → " + (e as Error).message;
     }
   }
-  // Every candidate was refused for ACCOUNT concurrency, not model health.
-  // The account budget drains within seconds, so a patient last-resort pass on
-  // the smallest model is far more productive than failing the whole round.
-  if (attempts.length && attempts.every((a) => a.error === "concurrency_limit" || a.error === "switch_limit")) {
-    const settings = await getSettings();
-    const ranked = (await rankModels(12)).filter((r) => !HEAVY.test(r.model_id));
-    const lastResort = ranked[0]?.model_id ?? settings.default_model;
-    if (lastResort) {
-      for (let i = 0; i < 3; i++) {
-        await sleep(8000 * (i + 1));
-        const t0 = Date.now();
-        const res = await callOnce(lastResort, body, holder);
-        if (res.ok) {
-          await recordHealth("featherless", lastResort, true, Date.now() - t0, res.status);
-          sticky = { model: lastResort, at: Date.now() };
-          attempts.push({ model: lastResort, ok: true, status: res.status });
-          return { content: res.content ?? "", model: lastResort, provider: "featherless", attempts };
-        }
-        lastErr = lastResort + " → " + res.status + ": " + res.text;
+  // ── SURVIVAL PASS ────────────────────────────────────────────────────────
+  // The chain is exhausted. An agent must not die here: account throttles and
+  // "temporarily at capacity" both clear on their own, so be patient on a
+  // model that has PROVEN it can serve, rather than failing the round.
+  const settings = await getSettings();
+  const patient = (await provenModels(3)).filter((m) => !(Date.now() < lightOnlyUntil && HEAVY.test(m)));
+  const ranked = (await rankModels(12)).filter((r) => !HEAVY.test(r.model_id)).map((r) => r.model_id);
+  const survivors = [...patient, ...ranked, settings.default_model ?? ""].filter(Boolean)
+    .filter((m, i, a) => a.indexOf(m) === i).slice(0, 3);
+  for (let i = 0; i < survivors.length * 2; i++) {
+    const model = survivors[i % survivors.length];
+    await sleep(Math.min(6000 * (Math.floor(i / survivors.length) + 1), 15000));
+    const t0 = Date.now();
+    try {
+      const res = await callOnce(model, body, holder);
+      if (res.ok) {
+        await recordHealth("featherless", model, true, Date.now() - t0, res.status);
+        sticky = { model, at: Date.now() };
+        attempts.push({ model, ok: true, status: res.status });
+        return { content: res.content ?? "", model, provider: "featherless", attempts };
       }
+      lastErr = model + " → " + res.status + ": " + res.text;
+    } catch (e) { lastErr = model + " → " + (e as Error).message; }
+  }
+
+  // ── LIFE SUPPORT ─────────────────────────────────────────────────────────
+  // Owner policy is Featherless-only, but a dead agent serves nobody. When the
+  // primary provider is fully unavailable we cross to the other provider to
+  // stay alive, and say so loudly in the attempt log.
+  if (LOVABLE_KEY) {
+    for (const model of [settings.emergency_model, "google/gemini-2.5-flash", "google/gemini-2.5-flash-lite"]) {
+      if (!model) continue;
+      const t0 = Date.now();
+      try {
+        const res = await callOnce(model, body, holder);
+        if (res.ok) {
+          await recordHealth("lovable", model, true, Date.now() - t0, res.status);
+          attempts.push({ model, ok: true, status: res.status, error: "life_support" });
+          return { content: res.content ?? "", model, provider: "lovable", attempts };
+        }
+        lastErr = model + " → " + res.status + ": " + res.text;
+      } catch (e) { lastErr = model + " → " + (e as Error).message; }
     }
   }
   throw new Error("all models failed (" + chain.length + " tried). last: " + lastErr);
+}
+
+/**
+ * The call an agent loop should use: it NEVER throws. If every provider is
+ * unreachable it returns a structurally valid, explicitly degraded answer so
+ * the agent records a beat, keeps its state machine, and retries next tick —
+ * instead of dying and leaving a task stuck forever.
+ */
+export async function routeChatSafe(
+  body: { messages: any[]; response_format?: any; temperature?: number; max_tokens?: number },
+  requested?: string,
+  holder = "router",
+  degraded?: string,
+): Promise<RouteResult & { degraded?: boolean; error?: string }> {
+  try {
+    return await routeChat(body, requested, holder);
+  } catch (e) {
+    const wantsJson = body.response_format?.type === "json_object";
+    const content = degraded ?? (wantsJson
+      ? JSON.stringify({ ok: false, degraded: true, reason: "no_model_available", note: "Model providers unreachable; retry next tick." })
+      : "");
+    try {
+      await sb().from("ao_events").insert({
+        agent_key: holder, event_type: "model_unavailable",
+        summary: ("all providers unreachable: " + (e as Error).message).slice(0, 500), detail: {},
+      });
+    } catch { /* never let telemetry kill the agent */ }
+    return { content, model: "none", provider: "featherless", attempts: [], degraded: true, error: (e as Error).message };
+  }
 }
