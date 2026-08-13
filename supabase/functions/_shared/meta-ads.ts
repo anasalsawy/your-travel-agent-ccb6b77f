@@ -32,7 +32,8 @@ export const metaStatus = () => {
 export type MetaCall = { ok: boolean; dry_run?: boolean; data?: any; error?: string; payload?: any };
 
 async function graph(path: string, method: "GET" | "POST", params: Record<string, any>): Promise<MetaCall> {
-  if (!TOKEN) return { ok: false, dry_run: true, payload: { path, method, params }, error: "META_ACCESS_TOKEN missing — dry run" };
+  const token = getToken();
+  if (!token) return { ok: false, dry_run: true, payload: { path, method, params }, error: "META_ACCESS_TOKEN missing — dry run" };
   const url = new URL(GRAPH + path);
   const form = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -40,7 +41,7 @@ async function graph(path: string, method: "GET" | "POST", params: Record<string
     if (method === "GET") url.searchParams.set(k, val);
     else form.set(k, val);
   }
-  url.searchParams.set("access_token", TOKEN);
+  url.searchParams.set("access_token", token);
   const r = await fetch(url.toString(), method === "GET" ? {} : { method: "POST", body: form });
   const text = await r.text();
   let data: any; try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 800) }; }
