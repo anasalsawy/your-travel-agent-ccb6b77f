@@ -130,6 +130,7 @@ function systemPrompt(
     "- Disagree openly when you disagree. Say what you would do and why.",
     "- EVIDENCE RULE: never state a number, status or fact about this business from memory. Read it with a tool first (db_read) or say plainly that you have not checked.",
     "- NO ECHO: never repeat, rephrase or agree with what a peer just said. Add something new or stay short.",
+    "- NEVER PROMISE, DELIVER: do not say \"let me check\", \"I'll pull that\" or \"one moment\". Either emit a tool call in the same reply, or answer with what you already verified. You may make many tool calls in a row before you speak — keep going until the question is actually answered.",
     "- If you need something from the operator (a decision, a credential, an approval), ask for exactly that.",
     "",
     "TOOLS (optional, use only when it materially helps): " + (allowed.join(", ") || "none") +
@@ -160,43 +161,89 @@ async function agentTurn(
   let resolution = "";
   let usedModel = "";
 
-  // Up to two tool hops, then the agent must speak.
-  for (let hop = 0; hop < 3; hop++) {
+  // Agentic loop: keep working (tool -> observe -> think) until the agent
+  // actually delivers an answer. No "let me pull that up" dead ends.
+  const MAX_HOPS = 10;
+  const DEADLINE = Date.now() + 100_000;
+  let nudges = 0;
+  let modelFailures = 0;
+
+  const PROMISE_RX =
+    /\b(let me|i'?ll|i am going to|i'?m going to|give me a (sec|moment)|one moment|hold on|checking|pulling|fetching|stand by|will (check|pull|look|get|fetch))\b/i;
+
+  for (let hop = 0; hop < MAX_HOPS; hop++) {
+    if (Date.now() > DEADLINE) break;
     const convo = transcriptFor(msgs, agent.agent_key);
     if (toolCalls.length) {
       convo.push({
         role: "user",
-        content: "TOOL RESULTS so far: " + JSON.stringify(toolCalls).slice(0, 2500) +
-          "\nNow reply to the room in `say` (tool: null) unless one more call is essential.",
+        content:
+          "TOOL RESULTS so far (" + toolCalls.length + " call(s)): " +
+          JSON.stringify(toolCalls).slice(0, 6000) +
+          "\nUse these results. If they answer the question, give the final answer in `say` with the concrete numbers and set tool to null. " +
+          "If they do not, make the next tool call. Never reply with intent — only with findings or a tool call.",
       });
     }
     let out = "{}";
     try {
       const agentModel = await resolveAgentModel(agent.agent_key, agent.model);
-      const res = await llmDetailed(sys, convo, agentModel || DEFAULT_MODEL, { temperature: 0.6, max_tokens: 700 });
+      const res = await llmDetailed(sys, convo, agentModel || DEFAULT_MODEL, { temperature: 0.6, max_tokens: 900 });
       out = res.content;
       usedModel = res.model;
     } catch (e) {
-      say = "(" + agent.agent_key + " could not reach a model: " + ((e as Error)?.message ?? "error") + ")";
-      break;
+      modelFailures++;
+      if (modelFailures >= 3) {
+        say = say || "(" + agent.agent_key + " could not reach a model after 3 tries: " +
+          ((e as Error)?.message ?? "error") + ")";
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 1200 * modelFailures));
+      continue;
     }
     const parsed = safeParse(out);
-    say = String(parsed.say ?? "").trim();
+    const thisSay = String(parsed.say ?? "").trim();
+    if (thisSay) say = thisSay;
     mentions = Array.isArray(parsed.mentions)
       ? parsed.mentions.map(String).filter((m: string) => roster_keys.includes(m))
-      : [];
-    resolved = Boolean(parsed.resolved);
-    resolution = String(parsed.resolution ?? "").slice(0, 400);
+      : mentions;
+    resolved = Boolean(parsed.resolved) || resolved;
+    if (parsed.resolution) resolution = String(parsed.resolution).slice(0, 400);
 
     const tool = parsed.tool;
-    if (tool && tool.name && hop < 2) {
+    if (tool && tool.name && hop < MAX_HOPS - 1) {
+      // Show the work live so the room never looks frozen.
+      await post(room.id, {
+        speaker: agent.agent_key,
+        role: "agent",
+        content: (thisSay ? thisSay + "\n" : "") + "→ running " + String(tool.name),
+        kind: "progress",
+        model: usedModel,
+      });
       const r = await execTool(String(tool.name), tool.args ?? {}, allowed, mode);
       toolCalls.push({ name: tool.name, args: tool.args ?? {}, ok: r.ok, result: r.result, error: r.error });
-      if (say) break;      // spoke and acted in one turn
-      continue;            // acted silently — go get the spoken reply
+      continue; // keep looping until a real answer exists
     }
+
+    // No tool call. If the agent only promised to do something, force it to actually do it.
+    if (say && PROMISE_RX.test(say) && !/\d/.test(say) && nudges < 3 && hop < MAX_HOPS - 1) {
+      nudges++;
+      msgs.push({
+        speaker: "system",
+        role: "system",
+        content:
+          "SYSTEM: You said you would fetch something but produced no result. Do it NOW: emit a tool call " +
+          "(db_read with a concrete query is usually right) and then answer with the actual data. " +
+          "Do not reply again with intent, apologies or promises.",
+        created_at: new Date().toISOString(),
+      } as any);
+      continue;
+    }
+
+    if (say) break; // real answer delivered
+    if (!say && hop < MAX_HOPS - 1) continue; // empty output — try again
     break;
   }
+
 
   // Mentions written inline but not declared still count.
   mentions = [...new Set([...mentions, ...mentionsIn(say, roster_keys)])].filter((m) => m !== agent.agent_key);
