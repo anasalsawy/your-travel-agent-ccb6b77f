@@ -105,20 +105,35 @@ export async function execTool(
   try {
     switch (tool) {
       case "tool_registry":
-        return { tool, ok: true, result: { sensory: SENSORY_TOOLS, motor: MOTOR_TOOLS, tables: [...ALLOWLIST_TABLES] } };
+        return { tool, ok: true, result: { sensory: SENSORY_TOOLS, motor: MOTOR_TOOLS, tables: await tableNames(), edge_functions: EDGE_FUNCTIONS } };
       case "list_tables":
-        return { tool, ok: true, result: { allowlisted: [...ALLOWLIST_TABLES] } };
+        return { tool, ok: true, result: { tables: await liveTables() } };
       case "list_edge_functions":
-        return { tool, ok: true, result: { functions: ["duffel-search", "send-notification", "chat", "war-room"] } };
+        return { tool, ok: true, result: { functions: EDGE_FUNCTIONS } };
+      case "sql": {
+        // Arbitrary read-only SQL over the whole public schema: joins, aggregates,
+        // date math — anything the agent needs to answer a question itself.
+        const q = String(args.query ?? args.sql ?? "");
+        if (!q.trim()) throw new Error("query required");
+        const { data, error } = await supabase.rpc("agent_sql", { q });
+        if (error) throw error;
+        return { tool, ok: true, result: { rows: data } };
+      }
+      case "rpc": {
+        if (mode !== "full") throw new Error("rpc blocked in safe mode");
+        const { name, args: rpcArgs } = args;
+        const { data, error } = await supabase.rpc(String(name), rpcArgs ?? {});
+        if (error) throw error;
+        return { tool, ok: true, result: { data } };
+      }
       case "db_read": {
-        const { table, select = "*", eq, limit = 20 } = args;
-        if (!ALLOWLIST_TABLES.has(table)) throw new Error("table " + table + " not allowlisted");
+        const { table, select = "*", eq, order, desc, limit = 20 } = args;
         // Models often pass select as an array of columns — normalise it.
         const cols = Array.isArray(select) ? select.join(",") : String(select || "*");
         const lim = Number.isFinite(Number(limit)) ? Number(limit) : 20;
-        let q = supabase.from(table).select(cols).limit(Math.min(Math.max(lim, 1), 100));
+        let q = supabase.from(table).select(cols).limit(Math.min(Math.max(lim, 1), 200));
         if (eq && typeof eq === "object") for (const [k, v] of Object.entries(eq)) q = q.eq(k, v as any);
-
+        if (order) q = q.order(String(order), { ascending: desc === true ? false : desc === false ? true : false });
         const { data, error } = await q;
         if (error) throw error;
         return { tool, ok: true, result: { rows: data } };
@@ -126,7 +141,6 @@ export async function execTool(
       case "db_count": {
         // Row counts, optionally grouped by one column — the question agents ask most.
         const { table, eq, group_by } = args;
-        if (!ALLOWLIST_TABLES.has(table)) throw new Error("table " + table + " not allowlisted");
         if (group_by) {
           let gq = supabase.from(table).select(group_by).limit(5000);
           if (eq && typeof eq === "object") for (const [k, v] of Object.entries(eq)) gq = gq.eq(k, v as any);
@@ -150,16 +164,20 @@ export async function execTool(
         const { url, headers } = args;
         if (!url) throw new Error("url required");
         const r = await fetch(url, { headers: headers || {} });
-        return { tool, ok: r.ok, result: { status: r.status, body: (await r.text()).slice(0, 3000) } };
+        return { tool, ok: r.ok, result: { status: r.status, body: (await r.text()).slice(0, 6000) } };
       }
       case "db_write": {
         if (mode !== "full") throw new Error("db_write blocked in safe mode");
         const { table, op = "insert", values, eq } = args;
-        if (!ALLOWLIST_TABLES.has(table)) throw new Error("table " + table + " not allowlisted");
         if (op === "insert") {
           const { data, error } = await supabase.from(table).insert(values).select();
           if (error) throw error;
           return { tool, ok: true, result: { inserted: data } };
+        }
+        if (op === "upsert") {
+          const { data, error } = await supabase.from(table).upsert(values).select();
+          if (error) throw error;
+          return { tool, ok: true, result: { upserted: data } };
         }
         if (op === "update") {
           let q = supabase.from(table).update(values);
@@ -170,15 +188,37 @@ export async function execTool(
         }
         throw new Error("unknown op " + op);
       }
+      case "db_delete": {
+        if (mode !== "full") throw new Error("db_delete blocked in safe mode");
+        const { table, eq } = args;
+        if (!eq || typeof eq !== "object" || !Object.keys(eq).length) throw new Error("eq filter required — refusing unfiltered delete");
+        let q = supabase.from(table).delete();
+        for (const [k, v] of Object.entries(eq)) q = q.eq(k, v as any);
+        const { data, error } = await q.select();
+        if (error) throw error;
+        return { tool, ok: true, result: { deleted: data?.length ?? 0 } };
+      }
       case "http_post": {
-        const { url, headers, body } = args;
+        const { url, headers, body, method } = args;
         if (!url) throw new Error("url required");
         const r = await fetch(url, {
-          method: "POST",
+          method: String(method || "POST").toUpperCase(),
           headers: { "Content-Type": "application/json", ...(headers || {}) },
           body: typeof body === "string" ? body : JSON.stringify(body ?? {}),
         });
-        return { tool, ok: r.ok, result: { status: r.status, body: (await r.text()).slice(0, 3000) } };
+        return { tool, ok: r.ok, result: { status: r.status, body: (await r.text()).slice(0, 6000) } };
+      }
+      case "fb_send_dm": {
+        if (mode !== "full") throw new Error("fb_send_dm blocked in safe mode");
+        const { sendDm } = await import("./graph-fb.ts");
+        const out = await sendDm(String(args.psid), String(args.text), args.tag);
+        return { tool, ok: true, result: out };
+      }
+      case "fb_post": {
+        if (mode !== "full") throw new Error("fb_post blocked in safe mode");
+        const { publishPost } = await import("./graph-fb.ts");
+        const out = await publishPost(String(args.message), args.link);
+        return { tool, ok: true, result: out };
       }
       case "invoke_edge_function": {
         if (mode !== "full") throw new Error("invoke_edge_function blocked in safe mode");
@@ -188,7 +228,7 @@ export async function execTool(
           headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SERVICE_ROLE },
           body: JSON.stringify(body ?? {}),
         });
-        return { tool, ok: r.ok, result: { status: r.status, body: (await r.text()).slice(0, 3000) } };
+        return { tool, ok: r.ok, result: { status: r.status, body: (await r.text()).slice(0, 6000) } };
       }
       case "send_notification": {
         const r = await fetch(SUPABASE_URL + "/functions/v1/send-notification", {
@@ -201,6 +241,7 @@ export async function execTool(
       default:
         throw new Error("unknown tool " + tool);
     }
+
   } catch (e: any) {
     return { tool, ok: false, error: e?.message || String(e) };
   }
