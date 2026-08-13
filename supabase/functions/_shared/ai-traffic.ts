@@ -102,7 +102,6 @@ export async function withAiSlot<T>(opts: SlotOptions, fn: () => Promise<T>): Pr
     }
 
     if (!lease) {
-      await s.rpc("ai_traffic_dequeue", { p_id: ticket }).catch?.(() => {});
       throw new TrafficBusyError(Date.now() - started);
     }
 
