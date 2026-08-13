@@ -5,7 +5,7 @@
 // and schedule the next rung of the follow-up cadence. Never abandons a lead.
 import { llm, safeParse } from "../_shared/lobe-runtime.ts";
 import { gsb, maySpeak, nextActionAt, recordSideEffect, GOVERNOR } from "../_shared/governor.ts";
-import { deliver, type Lead } from "../_shared/channels.ts";
+import { deliver, reachability, type Lead } from "../_shared/channels.ts";
 import { fbDo, readThread } from "../_shared/facebook.ts";
 import { playbookBlock } from "../_shared/playbook.ts";
 import { reviewOutbound, recordReview } from "../_shared/supervisor.ts";
@@ -84,6 +84,21 @@ Deno.serve(async (req) => {
 
 async function workLead(lead: any, dry: boolean) {
   const s = gsb();
+
+  // 0. REACHABILITY GATE — never spend model tokens on a lead we cannot message.
+  const reach = reachability(lead as Lead);
+  if (!reach.reachable) {
+    await s.from("ao_leads").update({
+      status: "unreachable",
+      next_action_at: new Date(Date.now() + 30 * 24 * 3600_000).toISOString(),
+      notes: "parked: " + reach.why,
+    }).eq("id", lead.id);
+    await s.from("ao_dialogue").insert({
+      mission_id: lead.mission_id, from_agent: "concierge", lobe: "executor", kind: "blocker",
+      content: "Lead parked as unreachable: " + reach.why,
+    });
+    return { lead_id: lead.id, ok: true, action: "parked_unreachable", why: reach.why };
+  }
 
   // 1. Refresh the conversation from the channel (inbound replies matter most).
   let inbound = 0;

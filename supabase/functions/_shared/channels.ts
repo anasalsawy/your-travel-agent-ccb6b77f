@@ -92,3 +92,22 @@ export async function deliver(lead: Lead, body: string): Promise<{ delivery: Del
   }
   return { delivery: attempts[attempts.length - 1] ?? { ok: false, channel: "none", error: "no_channel" }, attempts };
 }
+
+/**
+ * REACHABILITY GATE — productivity guard.
+ * A lead with no addressable channel can never be worked, so no model tokens
+ * should ever be spent on it. Callers must check this BEFORE thinking.
+ */
+export function reachability(lead: Lead): { reachable: boolean; via: string[]; why: string } {
+  const via: string[] = [];
+  const psid = lead.contact?.psid ?? (lead.channel === "facebook" ? lead.external_thread_id : null);
+  if (graphConfigured() && psid) via.push("facebook:graph");
+  if (browserAvailable() && lead.external_thread_id) via.push("facebook:browser");
+  if (RESEND && lead.contact?.email) via.push("email");
+  if (TW_SID && TW_TOKEN && TW_FROM && lead.contact?.phone) via.push("sms");
+  return {
+    reachable: via.length > 0,
+    via,
+    why: via.length ? "ok" : "no psid/thread, no email, no phone — nothing to send to",
+  };
+}
