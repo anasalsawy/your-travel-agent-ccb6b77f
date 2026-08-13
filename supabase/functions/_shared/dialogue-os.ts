@@ -4,6 +4,7 @@
 // travel specifically — the domain lives in the seeded agent charters.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { llm, safeParse, execTool, type Mode } from "./lobe-runtime.ts";
+import { resolveAgentModel } from "./model-router.ts";
 import { bus, spawn } from "./bus.ts";
 
 export const corsHeaders = {
@@ -526,6 +527,9 @@ export async function runAgentTurn(
   policies: Record<string, any>,
   mode: Mode,
 ): Promise<LobeTurn> {
+  // Spread agents across DIFFERENT models so they do not queue behind one
+  // model's concurrency slot. An explicit pin on the agent still wins.
+  agent = { ...agent, model: await resolveAgentModel(agent.agent_key, agent.model) };
   const brain7 = Boolean((agent.addons ?? {})["brain7"]);
   return brain7
     ? await runBrain7Turn(agent, mission, goal, policies, mode)

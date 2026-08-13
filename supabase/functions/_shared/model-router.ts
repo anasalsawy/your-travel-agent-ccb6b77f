@@ -166,6 +166,53 @@ export async function rankModels(limit = 25): Promise<Array<{ model_id: string; 
     .slice(0, limit);
 }
 
+// ── Per-agent model spreading ────────────────────────────────────────────────
+// Every agent on ONE model serialises the whole council behind that model's
+// concurrency slot. So each agent gets its OWN model, deterministically derived
+// from its key: same agent → same model across isolates (no switch churn),
+// different agents → different models (parallel lanes).
+const AGENT_MODEL_TTL_MS = 10 * 60_000;
+let spreadCache: { models: string[]; at: number } | null = null;
+
+function keyHash(k: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < k.length; i++) { h ^= k.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return Math.abs(h);
+}
+
+let rosterCache: { keys: string[]; at: number } | null = null;
+
+/** A distinct, healthy model for this agent. Falls back to "auto" if unknown. */
+export async function modelForAgent(agentKey: string, pool = 20): Promise<string> {
+  if (!hasFeatherless()) return "auto";
+  try {
+    if (!spreadCache || Date.now() - spreadCache.at > AGENT_MODEL_TTL_MS) {
+      const ranked = await rankModels(Math.max(pool, 8));
+      spreadCache = { models: ranked.map((r) => r.model_id), at: Date.now() };
+    }
+    const models = spreadCache.models;
+    if (models.length === 0) return "auto";
+
+    // Assign by the agent's position in the (stable, alphabetical) roster, so
+    // distinct agents get distinct models instead of colliding on a hash.
+    if (!rosterCache || Date.now() - rosterCache.at > AGENT_MODEL_TTL_MS) {
+      const { data } = await sb().from("ao_agents").select("agent_key").order("agent_key");
+      rosterCache = { keys: (data ?? []).map((r: any) => r.agent_key), at: Date.now() };
+    }
+    const idx = rosterCache.keys.indexOf(agentKey);
+    const slot = idx >= 0 ? idx : keyHash(agentKey);
+    return models[slot % Math.min(models.length, pool)];
+  } catch {
+    return "auto";
+  }
+}
+
+/** Resolve an agent's configured model: explicit pin wins, else spread. */
+export async function resolveAgentModel(agentKey: string, configured?: string | null): Promise<string> {
+  if (configured && configured !== "auto") return configured;
+  return await modelForAgent(agentKey);
+}
+
 async function recordHealth(provider: string, model: string, ok: boolean, latency: number, status?: number, error?: string) {
   try {
     const s = sb();

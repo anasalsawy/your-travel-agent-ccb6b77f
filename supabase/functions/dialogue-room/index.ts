@@ -14,6 +14,7 @@ import {
   DEFAULT_MODEL,
   type Mode,
 } from "../_shared/lobe-runtime.ts";
+import { resolveAgentModel } from "../_shared/model-router.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -171,7 +172,8 @@ async function agentTurn(
     }
     let out = "{}";
     try {
-      const res = await llmDetailed(sys, convo, agent.model || DEFAULT_MODEL, { temperature: 0.6, max_tokens: 700 });
+      const agentModel = await resolveAgentModel(agent.agent_key, agent.model);
+      const res = await llmDetailed(sys, convo, agentModel || DEFAULT_MODEL, { temperature: 0.6, max_tokens: 700 });
       out = res.content;
       usedModel = res.model;
     } catch (e) {
@@ -353,7 +355,7 @@ Deno.serve(async (req) => {
             "what was agreed, what is still open, and the next concrete action with an owner. " +
             'Reply as JSON: { "say": "..." }. Max 6 short lines. No praise, no restating.',
             transcriptFor(msgs, fac.agent_key),
-            fac.model || DEFAULT_MODEL,
+            (await resolveAgentModel(fac.agent_key, fac.model)) || DEFAULT_MODEL,
             { temperature: 0.3, max_tokens: 400 },
           );
           const summary = String(safeParse(res.content).say ?? "").trim();
