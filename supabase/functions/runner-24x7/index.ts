@@ -90,6 +90,12 @@ Deno.serve(async (req) => {
   jobs.agency = agency;
   const missionsTouched = Number((agency as any)?.body?.processed ?? 0);
 
+  // 3b. Immune system: repair models, pins and stuck work before they rot.
+  //     Cheap, and it runs on its own minute so it never fights a heavy lane.
+  jobs.health = new Date().getUTCMinutes() % 7 === 0
+    ? await call("agent-health-tick", {}, 50000)
+    : { skipped: true };
+
   // 4. Memory lifecycle: fill → finetune → free. Only every 10th minute.
   let memoryOps = 0;
   if (new Date().getUTCMinutes() % 10 === 0) {

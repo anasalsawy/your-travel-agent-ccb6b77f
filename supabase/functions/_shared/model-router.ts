@@ -169,6 +169,62 @@ export async function rankModels(limit = 25): Promise<Array<{ model_id: string; 
     .slice(0, limit);
 }
 
+// ── Proven pool ──────────────────────────────────────────────────────────────
+// Featherless lists thousands of community fine-tunes. Most answer 503
+// "temporarily at capacity" forever: ranking likes them (big, instruct-tuned)
+// but they can never serve an agent. A model earns its place by SERVING, so
+// the roster only ever runs on models with a proven success record.
+const PROVEN_TTL_MS = 60_000;
+let provenCache: { models: string[]; at: number } | null = null;
+
+export async function provenModels(limit = 4): Promise<string[]> {
+  if (provenCache && Date.now() - provenCache.at < PROVEN_TTL_MS) return provenCache.models.slice(0, limit);
+  try {
+    const { data } = await sb().from("ai_model_health")
+      .select("model_id,ok_count,err_count,consecutive_errors,cooldown_until,avg_latency_ms")
+      .eq("provider", "featherless").gte("ok_count", 3)
+      .order("ok_count", { ascending: false }).limit(40);
+    const now = Date.now();
+    const good = (data ?? [])
+      .filter((h: any) => (h.consecutive_errors ?? 0) < 3)
+      .filter((h: any) => !h.cooldown_until || new Date(h.cooldown_until).getTime() < now)
+      .filter((h: any) => (h.ok_count ?? 0) / Math.max((h.ok_count ?? 0) + (h.err_count ?? 0), 1) >= 0.5)
+      .map((h: any) => h.model_id as string);
+    if (good.length) { provenCache = { models: good, at: Date.now() }; return good.slice(0, limit); }
+  } catch { /* fall through */ }
+  return [];
+}
+
+// The plan also caps how many DIFFERENT models the account may switch between
+// per minute. Spreading 16 agents over 16 models therefore guarantees a
+// "model_switching_limit" rejection. The governor keeps the whole organization
+// inside a small hot set: distinct models per minute stay under the cap.
+export const MAX_DISTINCT_MODELS_PER_MIN = 3;
+
+async function hotModels(): Promise<string[]> {
+  try {
+    const since = new Date(Date.now() - 60_000).toISOString();
+    const { data } = await sb().from("ai_model_health")
+      .select("model_id,last_used_at,consecutive_errors")
+      .eq("provider", "featherless").gt("last_used_at", since)
+      .order("last_used_at", { ascending: false }).limit(10);
+    return (data ?? []).filter((h: any) => (h.consecutive_errors ?? 0) < 3).map((h: any) => h.model_id as string);
+  } catch { return []; }
+}
+
+/**
+ * Switch-rate governor: if the account has already touched its quota of
+ * distinct models this minute, reuse a model that is already hot instead of
+ * paying a switch we are not allowed to make.
+ */
+export async function switchGoverned(desired: string): Promise<string> {
+  if (providerOf(desired) !== "featherless") return desired;
+  const hot = await hotModels();
+  if (hot.includes(desired)) return desired;
+  if (hot.length >= MAX_DISTINCT_MODELS_PER_MIN) return hot[0];
+  return desired;
+}
+
 // ── Per-agent model spreading ────────────────────────────────────────────────
 // Every agent on ONE model serialises the whole council behind that model's
 // concurrency slot. So each agent gets its OWN model, deterministically derived
@@ -186,12 +242,16 @@ function keyHash(k: string): number {
 let rosterCache: { keys: string[]; at: number } | null = null;
 
 /** A distinct, healthy model for this agent. Falls back to "auto" if unknown. */
-export async function modelForAgent(agentKey: string, pool = 20): Promise<string> {
+export async function modelForAgent(agentKey: string, pool = MAX_DISTINCT_MODELS_PER_MIN): Promise<string> {
   if (!hasFeatherless()) return "auto";
   try {
     if (!spreadCache || Date.now() - spreadCache.at > AGENT_MODEL_TTL_MS) {
-      const ranked = await rankModels(Math.max(pool, 8));
-      spreadCache = { models: ranked.map((r) => r.model_id), at: Date.now() };
+      // Proven servers first; ranking is only used to seed an empty history.
+      const proven = await provenModels(8);
+      const models = proven.length
+        ? proven
+        : (await rankModels(Math.max(pool, 4))).map((r) => r.model_id);
+      spreadCache = { models, at: Date.now() };
     }
     const models = spreadCache.models;
     if (models.length === 0) return "auto";
@@ -349,6 +409,23 @@ async function callOnce(model: string, body: any, holder = "router"): Promise<{ 
   }
 }
 
+/** Single-model liveness probe. Records health; never throws. */
+export async function probeModel(model: string, holder = "watchdog"): Promise<{ model: string; ok: boolean; latency_ms: number; status?: number; error?: string }> {
+  const t0 = Date.now();
+  try {
+    const res = await callOnce(model, {
+      messages: [{ role: "system", content: "Reply with the single word: ok" }, { role: "user", content: "ping" }],
+      max_tokens: 8, temperature: 0,
+    }, holder);
+    const latency = Date.now() - t0;
+    const accountThrottle = !res.ok && (isConcurrencyLimit(res.text) || isSwitchLimit(res.text));
+    if (!accountThrottle) await recordHealth(providerOf(model), model, res.ok, latency, res.status, res.ok ? undefined : res.text);
+    return { model, ok: res.ok, latency_ms: latency, status: res.status, error: res.ok ? undefined : res.text.slice(0, 200) };
+  } catch (e) {
+    return { model, ok: false, latency_ms: Date.now() - t0, error: (e as Error).message };
+  }
+}
+
 /** Build the ordered attempt list: requested → auto-picked → emergency. */
 export async function buildChain(requested?: string): Promise<string[]> {
   const settings = await getSettings();
@@ -366,11 +443,17 @@ export async function buildChain(requested?: string): Promise<string[]> {
       if (st && !(Date.now() < lightOnlyUntil && HEAVY.test(st))) push(st);
     }
     if (settings.auto_select && !switchLocked) {
-      // Only TWO exploratory candidates — switching is a rationed resource.
-      const ranked = await rankModels(8);
       const light = Date.now() < lightOnlyUntil;
-      const pickable = light ? ranked.filter((r) => !HEAVY.test(r.model_id)) : ranked;
-      for (const r of pickable.slice(0, 2)) push(r.model_id);
+      // Proven servers first: a model that has actually answered before is
+      // worth more than a highly ranked fine-tune that is permanently at
+      // capacity. Only if history is empty do we explore the ranking.
+      const proven = (await provenModels(4)).filter((m) => !(light && HEAVY.test(m)));
+      for (const m of proven.slice(0, 3)) push(m);
+      if (proven.length === 0) {
+        const ranked = await rankModels(8);
+        const pickable = light ? ranked.filter((r) => !HEAVY.test(r.model_id)) : ranked;
+        for (const r of pickable.slice(0, 2)) push(r.model_id);
+      }
     }
     if (!switchLocked) for (const f of settings.fallback_models ?? []) push(f);
   }
@@ -384,7 +467,14 @@ export async function buildChain(requested?: string): Promise<string[]> {
     // Stay on Featherless: widen the in-provider candidate set instead.
     for (const r of await rankModels(6)) push(r.model_id);
   }
-  return chain.slice(0, Math.max(2, settings.max_attempts + 1));
+  const out = chain.slice(0, Math.max(3, settings.max_attempts + 1));
+  // The switch quota is an account-wide resource: if the head of the chain
+  // would burn a switch we cannot afford, lead with a model already hot.
+  if (out.length) {
+    const governed = await switchGoverned(out[0]);
+    if (governed !== out[0]) out.unshift(governed);
+  }
+  return out.filter((m, i) => out.indexOf(m) === i);
 }
 
 export type RouteResult = { content: string; model: string; provider: Provider; attempts: Array<{ model: string; ok: boolean; status?: number; error?: string }> };
@@ -443,27 +533,78 @@ export async function routeChat(
       lastErr = model + " → " + (e as Error).message;
     }
   }
-  // Every candidate was refused for ACCOUNT concurrency, not model health.
-  // The account budget drains within seconds, so a patient last-resort pass on
-  // the smallest model is far more productive than failing the whole round.
-  if (attempts.length && attempts.every((a) => a.error === "concurrency_limit" || a.error === "switch_limit")) {
-    const settings = await getSettings();
-    const ranked = (await rankModels(12)).filter((r) => !HEAVY.test(r.model_id));
-    const lastResort = ranked[0]?.model_id ?? settings.default_model;
-    if (lastResort) {
-      for (let i = 0; i < 3; i++) {
-        await sleep(8000 * (i + 1));
-        const t0 = Date.now();
-        const res = await callOnce(lastResort, body, holder);
-        if (res.ok) {
-          await recordHealth("featherless", lastResort, true, Date.now() - t0, res.status);
-          sticky = { model: lastResort, at: Date.now() };
-          attempts.push({ model: lastResort, ok: true, status: res.status });
-          return { content: res.content ?? "", model: lastResort, provider: "featherless", attempts };
-        }
-        lastErr = lastResort + " → " + res.status + ": " + res.text;
+  // ── SURVIVAL PASS ────────────────────────────────────────────────────────
+  // The chain is exhausted. An agent must not die here: account throttles and
+  // "temporarily at capacity" both clear on their own, so be patient on a
+  // model that has PROVEN it can serve, rather than failing the round.
+  const settings = await getSettings();
+  const patient = (await provenModels(3)).filter((m) => !(Date.now() < lightOnlyUntil && HEAVY.test(m)));
+  const ranked = (await rankModels(12)).filter((r) => !HEAVY.test(r.model_id)).map((r) => r.model_id);
+  const survivors = [...patient, ...ranked, settings.default_model ?? ""].filter(Boolean)
+    .filter((m, i, a) => a.indexOf(m) === i).slice(0, 3);
+  for (let i = 0; i < survivors.length * 2; i++) {
+    const model = survivors[i % survivors.length];
+    await sleep(Math.min(6000 * (Math.floor(i / survivors.length) + 1), 15000));
+    const t0 = Date.now();
+    try {
+      const res = await callOnce(model, body, holder);
+      if (res.ok) {
+        await recordHealth("featherless", model, true, Date.now() - t0, res.status);
+        sticky = { model, at: Date.now() };
+        attempts.push({ model, ok: true, status: res.status });
+        return { content: res.content ?? "", model, provider: "featherless", attempts };
       }
+      lastErr = model + " → " + res.status + ": " + res.text;
+    } catch (e) { lastErr = model + " → " + (e as Error).message; }
+  }
+
+  // ── LIFE SUPPORT ─────────────────────────────────────────────────────────
+  // Owner policy is Featherless-only, but a dead agent serves nobody. When the
+  // primary provider is fully unavailable we cross to the other provider to
+  // stay alive, and say so loudly in the attempt log.
+  if (LOVABLE_KEY) {
+    for (const model of [settings.emergency_model, "google/gemini-2.5-flash", "google/gemini-2.5-flash-lite"]) {
+      if (!model) continue;
+      const t0 = Date.now();
+      try {
+        const res = await callOnce(model, body, holder);
+        if (res.ok) {
+          await recordHealth("lovable", model, true, Date.now() - t0, res.status);
+          attempts.push({ model, ok: true, status: res.status, error: "life_support" });
+          return { content: res.content ?? "", model, provider: "lovable", attempts };
+        }
+        lastErr = model + " → " + res.status + ": " + res.text;
+      } catch (e) { lastErr = model + " → " + (e as Error).message; }
     }
   }
   throw new Error("all models failed (" + chain.length + " tried). last: " + lastErr);
+}
+
+/**
+ * The call an agent loop should use: it NEVER throws. If every provider is
+ * unreachable it returns a structurally valid, explicitly degraded answer so
+ * the agent records a beat, keeps its state machine, and retries next tick —
+ * instead of dying and leaving a task stuck forever.
+ */
+export async function routeChatSafe(
+  body: { messages: any[]; response_format?: any; temperature?: number; max_tokens?: number },
+  requested?: string,
+  holder = "router",
+  degraded?: string,
+): Promise<RouteResult & { degraded?: boolean; error?: string }> {
+  try {
+    return await routeChat(body, requested, holder);
+  } catch (e) {
+    const wantsJson = body.response_format?.type === "json_object";
+    const content = degraded ?? (wantsJson
+      ? JSON.stringify({ ok: false, degraded: true, reason: "no_model_available", note: "Model providers unreachable; retry next tick." })
+      : "");
+    try {
+      await sb().from("ao_events").insert({
+        agent_key: holder, event_type: "model_unavailable",
+        summary: ("all providers unreachable: " + (e as Error).message).slice(0, 500), detail: {},
+      });
+    } catch { /* never let telemetry kill the agent */ }
+    return { content, model: "none", provider: "featherless", attempts: [], degraded: true, error: (e as Error).message };
+  }
 }

@@ -13,7 +13,7 @@ import {
   graphConfigured, listConversations, readConversation, recentComments,
   privateReplyToComment, leadgenForms, leadgenLeads, whoami,
 } from "../_shared/graph-fb.ts";
-import { routeChat } from "../_shared/model-router.ts";
+import { routeChatSafe } from "../_shared/model-router.ts";
 import { playbookBlock } from "../_shared/playbook.ts";
 
 const cors = {
@@ -36,7 +36,7 @@ const TRIAGE_SYS = [
 const jparse = (s: string) => { try { return JSON.parse(s); } catch { return {}; } };
 
 async function triage(text: string) {
-  const r = await routeChat({
+  const r = await routeChatSafe({
     messages: [{ role: "system", content: TRIAGE_SYS }, { role: "user", content: text.slice(0, 4000) }],
     response_format: { type: "json_object" },
     temperature: 0.3,

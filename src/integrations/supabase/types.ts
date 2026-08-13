@@ -4053,6 +4053,7 @@ export type Database = {
         Returns: string
       }
       ai_traffic_status: { Args: never; Returns: Json }
+      ai_traffic_sweep: { Args: never; Returns: Json }
       get_customer_context: { Args: { p_customer_id: string }; Returns: Json }
       get_or_create_customer_by_phone: {
         Args: { p_phone: string }

@@ -43,6 +43,7 @@ export default function AdminModels() {
   const [prompt, setPrompt] = useState("Say hello and name yourself.");
   const [testResult, setTestResult] = useState<any>(null);
   const [traffic, setTraffic] = useState<any>(null);
+  const [roster, setRoster] = useState<any[] | null>(null);
 
   const load = useCallback(async (search?: string) => {
     try {
@@ -122,6 +123,24 @@ export default function AdminModels() {
               {busy === "refresh" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Refresh catalog
             </Button>
+            <Button variant="outline" size="sm" disabled={busy === "rollcall"} onClick={() => run("rollcall", async () => {
+              const { data, error } = await supabase.functions.invoke("agent-health-tick", { body: { action: "roll_call" } });
+              if (error) throw error;
+              setRoster(data?.agents ?? []);
+              toast.success(`Roll call — ${data?.ready ?? 0}/${data?.total ?? 0} agents answered`);
+            })}>
+              {busy === "rollcall" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Brain className="mr-2 h-4 w-4" />}
+              Roll call
+            </Button>
+            <Button variant="outline" size="sm" disabled={busy === "heal"} onClick={() => run("heal", async () => {
+              const { data, error } = await supabase.functions.invoke("agent-health-tick", { body: {} });
+              if (error) throw error;
+              toast.success(`Self-heal — ${data?.proven?.length ?? 0} proven models, ${data?.delegations_revived ?? 0} tasks revived`);
+              await load();
+            })}>
+              {busy === "heal" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldAlert className="mr-2 h-4 w-4" />}
+              Self-heal
+            </Button>
             <Button size="sm" variant="secondary" onClick={() => void load()}>
               <Activity className="mr-2 h-4 w-4" /> Reload
             </Button>
@@ -132,6 +151,26 @@ export default function AdminModels() {
           <Card className="border-destructive/50 bg-destructive/5 p-4 text-sm">
             <div className="flex items-center gap-2 font-medium"><ShieldAlert className="h-4 w-4" /> FEATHERLESS_API_KEY is not configured</div>
             <p className="mt-1 text-muted-foreground">The router is running on the emergency provider until the key is saved.</p>
+          </Card>
+        )}
+
+        {roster && (
+          <Card className="p-4">
+            <div className="mb-2 flex items-center gap-2 font-medium">
+              <Brain className="h-4 w-4 text-primary" /> Roster liveness
+              <Badge variant="secondary">{roster.filter((a) => a.ready).length}/{roster.length} answering</Badge>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {roster.map((a) => (
+                <div key={a.agent} className="flex items-center justify-between gap-2 rounded-lg border p-2 text-sm">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{a.agent}</div>
+                    <div className="truncate text-xs text-muted-foreground">{a.served_by}</div>
+                  </div>
+                  <Badge variant={a.ready ? "secondary" : "destructive"}>{a.ready ? `${Math.round(a.latency_ms / 100) / 10}s` : "degraded"}</Badge>
+                </div>
+              ))}
+            </div>
           </Card>
         )}
 

@@ -5,7 +5,7 @@
 // governed outreach cadence). Public commenting is optional and supervised.
 import { gsb, nextActionAt, recordSideEffect } from "../_shared/governor.ts";
 import { fbDo, searchPosts, commentOnPost, browserAvailable, type FoundPost } from "../_shared/facebook.ts";
-import { routeChat } from "../_shared/model-router.ts";
+import { routeChatSafe } from "../_shared/model-router.ts";
 import { playbookBlock, INTENT_SIGNALS } from "../_shared/playbook.ts";
 import { reviewOutbound, recordReview } from "../_shared/supervisor.ts";
 import { runTask, skyvernAvailable } from "../_shared/skyvern.ts";
@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
     }
 
     // 2. Score with the scout lobe (Featherless).
-    const scored = jparse((await routeChat({
+    const scored = jparse((await routeChatSafe({
       messages: [
         { role: "system", content: SCORER_SYS },
         { role: "user", content: candidates.map((c, i) => `#${i} by ${c.author}: ${c.text}`).join("\n\n").slice(0, 8000) },

@@ -1,6 +1,8 @@
 project_id = "wpwdxtyufpewdyffxlgo"
 
 [functions]
+  [functions.agent-health-tick]
+    verify_jwt = false
   [functions.model-catalog]
     verify_jwt = false
   [functions.war-room]
