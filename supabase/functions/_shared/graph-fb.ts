@@ -160,7 +160,7 @@ export async function replyToComment(commentId: string, message: string) {
 
 /** Private reply to a public comment — moves the lead into the DM channel. */
 export async function privateReplyToComment(commentId: string, message: string) {
-  const res = await g(`/${PAGE_ID}/messages`, {
+  const res = await g(`/${getPageId()}/messages`, {
     method: "POST",
     body: JSON.stringify({ recipient: { comment_id: commentId }, message: { text: message.slice(0, 1900) } }),
   });
@@ -169,7 +169,7 @@ export async function privateReplyToComment(commentId: string, message: string) 
 
 // ── Lead Ads (real buyers, submitted through Meta forms) ───────────────────
 export async function leadgenForms() {
-  const res = await g(`/${PAGE_ID}/leadgen_forms`, { params: { limit: "25", fields: "id,name,status" } });
+  const res = await g(`/${getPageId()}/leadgen_forms`, { params: { limit: "25", fields: "id,name,status" } });
   return res.data ?? [];
 }
 
