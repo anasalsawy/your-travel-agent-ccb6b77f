@@ -169,6 +169,62 @@ export async function rankModels(limit = 25): Promise<Array<{ model_id: string; 
     .slice(0, limit);
 }
 
+// ── Proven pool ──────────────────────────────────────────────────────────────
+// Featherless lists thousands of community fine-tunes. Most answer 503
+// "temporarily at capacity" forever: ranking likes them (big, instruct-tuned)
+// but they can never serve an agent. A model earns its place by SERVING, so
+// the roster only ever runs on models with a proven success record.
+const PROVEN_TTL_MS = 60_000;
+let provenCache: { models: string[]; at: number } | null = null;
+
+export async function provenModels(limit = 4): Promise<string[]> {
+  if (provenCache && Date.now() - provenCache.at < PROVEN_TTL_MS) return provenCache.models.slice(0, limit);
+  try {
+    const { data } = await sb().from("ai_model_health")
+      .select("model_id,ok_count,err_count,consecutive_errors,cooldown_until,avg_latency_ms")
+      .eq("provider", "featherless").gte("ok_count", 3)
+      .order("ok_count", { ascending: false }).limit(40);
+    const now = Date.now();
+    const good = (data ?? [])
+      .filter((h: any) => (h.consecutive_errors ?? 0) < 3)
+      .filter((h: any) => !h.cooldown_until || new Date(h.cooldown_until).getTime() < now)
+      .filter((h: any) => (h.ok_count ?? 0) / Math.max((h.ok_count ?? 0) + (h.err_count ?? 0), 1) >= 0.5)
+      .map((h: any) => h.model_id as string);
+    if (good.length) { provenCache = { models: good, at: Date.now() }; return good.slice(0, limit); }
+  } catch { /* fall through */ }
+  return [];
+}
+
+// The plan also caps how many DIFFERENT models the account may switch between
+// per minute. Spreading 16 agents over 16 models therefore guarantees a
+// "model_switching_limit" rejection. The governor keeps the whole organization
+// inside a small hot set: distinct models per minute stay under the cap.
+export const MAX_DISTINCT_MODELS_PER_MIN = 3;
+
+async function hotModels(): Promise<string[]> {
+  try {
+    const since = new Date(Date.now() - 60_000).toISOString();
+    const { data } = await sb().from("ai_model_health")
+      .select("model_id,last_used_at,consecutive_errors")
+      .eq("provider", "featherless").gt("last_used_at", since)
+      .order("last_used_at", { ascending: false }).limit(10);
+    return (data ?? []).filter((h: any) => (h.consecutive_errors ?? 0) < 3).map((h: any) => h.model_id as string);
+  } catch { return []; }
+}
+
+/**
+ * Switch-rate governor: if the account has already touched its quota of
+ * distinct models this minute, reuse a model that is already hot instead of
+ * paying a switch we are not allowed to make.
+ */
+export async function switchGoverned(desired: string): Promise<string> {
+  if (providerOf(desired) !== "featherless") return desired;
+  const hot = await hotModels();
+  if (hot.includes(desired)) return desired;
+  if (hot.length >= MAX_DISTINCT_MODELS_PER_MIN) return hot[0];
+  return desired;
+}
+
 // ── Per-agent model spreading ────────────────────────────────────────────────
 // Every agent on ONE model serialises the whole council behind that model's
 // concurrency slot. So each agent gets its OWN model, deterministically derived
@@ -186,12 +242,16 @@ function keyHash(k: string): number {
 let rosterCache: { keys: string[]; at: number } | null = null;
 
 /** A distinct, healthy model for this agent. Falls back to "auto" if unknown. */
-export async function modelForAgent(agentKey: string, pool = 20): Promise<string> {
+export async function modelForAgent(agentKey: string, pool = MAX_DISTINCT_MODELS_PER_MIN): Promise<string> {
   if (!hasFeatherless()) return "auto";
   try {
     if (!spreadCache || Date.now() - spreadCache.at > AGENT_MODEL_TTL_MS) {
-      const ranked = await rankModels(Math.max(pool, 8));
-      spreadCache = { models: ranked.map((r) => r.model_id), at: Date.now() };
+      // Proven servers first; ranking is only used to seed an empty history.
+      const proven = await provenModels(8);
+      const models = proven.length
+        ? proven
+        : (await rankModels(Math.max(pool, 4))).map((r) => r.model_id);
+      spreadCache = { models, at: Date.now() };
     }
     const models = spreadCache.models;
     if (models.length === 0) return "auto";
