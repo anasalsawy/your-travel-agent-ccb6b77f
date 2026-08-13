@@ -11,6 +11,8 @@ import {
   execTool,
   SENSORY_TOOLS,
   MOTOR_TOOLS,
+  ALLOWLIST_TABLES,
+
   DEFAULT_MODEL,
   type Mode,
 } from "../_shared/lobe-runtime.ts";
@@ -128,13 +130,19 @@ function systemPrompt(
     "- 1-6 sentences unless real detail is required. Never praise, never preamble.",
     "- To bring a peer in, put their @agent_key in `mentions` AND address them by name in `say`.",
     "- Disagree openly when you disagree. Say what you would do and why.",
-    "- EVIDENCE RULE: never state a number, status or fact about this business from memory. Read it with a tool first (db_read) or say plainly that you have not checked.",
+    "- EVIDENCE RULE: never state a number, status or fact about this business from memory. Read it with a tool first (db_read/db_count) or say plainly that you have not checked.",
+    "- ONE TOOL PER REPLY: if a question needs two lookups, call the first tool now and the second on your next hop. NEVER report a number for a lookup you have not actually run in THIS conversation — that is a fabrication, worse than saying \"checking next\" with a tool call attached.",
+
     "- NO ECHO: never repeat, rephrase or agree with what a peer just said. Add something new or stay short.",
     "- NEVER PROMISE, DELIVER: do not say \"let me check\", \"I'll pull that\" or \"one moment\". Either emit a tool call in the same reply, or answer with what you already verified. You may make many tool calls in a row before you speak — keep going until the question is actually answered.",
     "- If you need something from the operator (a decision, a credential, an approval), ask for exactly that.",
     "",
     "TOOLS (optional, use only when it materially helps): " + (allowed.join(", ") || "none") +
       ". Mode: " + room.mode + (room.mode === "safe" ? " (writes blocked)" : " (writes allowed)") + ".",
+    "READABLE TABLES (db_read / db_count work on all of these — never claim a table is off-limits without trying it): " +
+      [...ALLOWLIST_TABLES].join(", "),
+    "For counts use db_count: {\"name\":\"db_count\",\"args\":{\"table\":\"ao_leads\",\"group_by\":\"status\"}}. For rows use db_read with table/select/eq/limit.",
+
     "",
     "Reply with ONE JSON object:",
     '{ "say": "your message", "mentions": ["agent_key", ...], "tool": {"name":"...","args":{...}} | null, "resolved": false, "resolution": "" }',
@@ -268,6 +276,82 @@ async function agentTurn(
   return { mentions, resolved, resolution };
 }
 
+/* ------------------------------------------------------------------ *
+ * DURABLE RUN QUEUE
+ * Every reply an agent owes is a row in ao_agent_runs. A run is leased,
+ * executed, and only deleted when the agent actually spoke. Crash, timeout
+ * or model outage → the lease expires and the next tick resumes it.
+ * ------------------------------------------------------------------ */
+
+async function enqueueRun(roomId: string, agentKey: string, reason: string, depth: number) {
+  const s = sb();
+  const { data: dupe } = await s.from("ao_agent_runs").select("id")
+    .eq("room_id", roomId).eq("agent_key", agentKey)
+    .in("status", ["pending", "running"]).maybeSingle();
+  if (dupe) return;
+  await s.from("ao_agent_runs").insert({
+    room_id: roomId, agent_key: agentKey, reason: reason.slice(0, 300), depth,
+  });
+}
+
+/** Work the durable queue until the budget runs out. Never throws. */
+async function drainRuns(
+  roster: Agent[],
+  opts: { roomId?: string; budgetMs: number; limit: number },
+): Promise<string[]> {
+  const s = sb();
+  const deadline = Date.now() + opts.budgetMs;
+  const spoken: string[] = [];
+
+  for (let i = 0; i < opts.limit && Date.now() < deadline; i++) {
+    const { data: claimed } = await s.rpc("ao_claim_agent_runs", { p_limit: 1, p_lease_seconds: 150 });
+    const run = (claimed ?? [])[0];
+    if (!run) break;
+    if (opts.roomId && run.room_id !== opts.roomId) {
+      // Not our room — hand it back for the global tick.
+      await s.from("ao_agent_runs").update({ status: "pending", lease_until: null }).eq("id", run.id);
+      break;
+    }
+
+    const agent = roster.find((a) => a.agent_key === run.agent_key);
+    const { data: room } = await s.from("ao_rooms").select("*").eq("id", run.room_id).maybeSingle();
+    if (!agent || !room) { await s.from("ao_agent_runs").delete().eq("id", run.id); continue; }
+
+    try {
+      const turn = await agentTurn(room, agent, roster);
+      await s.from("ao_agent_runs").delete().eq("id", run.id);
+      spoken.push(run.agent_key);
+      if (!turn.resolved && run.depth < MAX_HANDOFFS) {
+        for (const m of turn.mentions) {
+          if ((room.participants ?? []).includes(m)) {
+            await enqueueRun(room.id, m, "handoff from " + run.agent_key, run.depth + 1);
+          }
+        }
+      }
+    } catch (e) {
+      const msg = ((e as Error)?.message ?? String(e)).slice(0, 500);
+      const dead = run.attempts >= run.max_attempts;
+      await s.from("ao_agent_runs").update({
+        status: dead ? "failed" : "pending",
+        last_error: msg,
+        lease_until: null,
+        next_run_at: new Date(Date.now() + Math.min(60_000, 3000 * run.attempts)).toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", run.id);
+      await post(run.room_id, {
+        speaker: "system", role: "system", kind: "system",
+        content: dead
+          ? "⚠️ " + run.agent_key + " could not complete after " + run.attempts + " attempts: " + msg
+          : "↻ " + run.agent_key + " hit an error (" + msg + ") — retrying automatically (attempt " +
+            run.attempts + "/" + run.max_attempts + ").",
+      });
+      if (dead) spoken.push(run.agent_key + ":failed");
+    }
+  }
+  return spoken;
+}
+
+
 /** Pick who answers a human message: explicit mentions, else facilitator, else the only agent. */
 function firstResponders(room: any, text: string, roster: Agent[]): string[] {
   const keys = roster.map((a) => a.agent_key);
@@ -364,7 +448,8 @@ Deno.serve(async (req) => {
       return json({ ok: true, participants });
     }
 
-    // Human speaks. Responders answer, and each @mention cascades a real handoff.
+    // Human speaks. Work is DURABLE: every reply owed becomes a queued run, so
+    // if this isolate dies mid-thought the 24/7 runner picks the work back up.
     if (action === "say") {
       const roomId = String(body.room_id ?? "");
       const text = String(body.text ?? "").trim();
@@ -377,23 +462,40 @@ Deno.serve(async (req) => {
         mentions: mentionsIn(text, roster.map((a) => a.agent_key)),
       });
 
-      let queue = firstResponders(room, text, roster);
-      const spoken: string[] = [];
-      for (let i = 0; i < MAX_HANDOFFS && queue.length; i++) {
-        const key = queue.shift()!;
-        const agent = roster.find((a) => a.agent_key === key);
-        if (!agent) continue;
-        const turn = await agentTurn(room, agent, roster);
-        spoken.push(key);
-        if (turn.resolved) break;
-        for (const m of turn.mentions) {
-          if (!spoken.includes(m) && !queue.includes(m) && room.participants.includes(m)) queue.push(m);
-        }
-      }
+      const responders = firstResponders(room, text, roster);
+      for (const key of responders) await enqueueRun(roomId, key, "operator message", 0);
+
+      // Best effort: work the queue inline while the operator waits, then leave
+      // whatever is left to the durable tick.
+      const spoken = await drainRuns(roster, { roomId, budgetMs: 45_000, limit: MAX_HANDOFFS });
+
       const { data } = await sb().from("ao_room_messages").select("*")
         .eq("room_id", roomId).order("created_at", { ascending: true }).limit(400);
-      return json({ ok: true, spoke: spoken, messages: data ?? [] });
+      const { count: pending } = await sb().from("ao_agent_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("room_id", roomId).in("status", ["pending", "running"]);
+      return json({ ok: true, spoke: spoken, pending: pending ?? 0, messages: data ?? [] });
     }
+
+    // Durable worker: called by the 24/7 runner every minute (and by the UI while
+    // a room still has work). Resumes any run whose lease expired or that failed.
+    if (action === "tick") {
+      const spoken = await drainRuns(roster, {
+        roomId: body.room_id ? String(body.room_id) : undefined,
+        budgetMs: Math.min(Number(body.budget_ms ?? 45_000), 55_000),
+        limit: Math.min(Number(body.limit ?? 4), 10),
+      });
+      const { count: pending } = await sb().from("ao_agent_runs")
+        .select("id", { count: "exact", head: true }).in("status", ["pending", "running"]);
+      let messages: unknown[] | undefined;
+      if (body.room_id) {
+        const { data } = await sb().from("ao_room_messages").select("*")
+          .eq("room_id", String(body.room_id)).order("created_at", { ascending: true }).limit(400);
+        messages = data ?? [];
+      }
+      return json({ ok: true, spoke: spoken, pending: pending ?? 0, messages });
+    }
+
 
     // Agents converse among themselves toward the goal — no human in the loop.
     if (action === "converse") {

@@ -39,6 +39,8 @@ export default function AdminCouncil() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [booting, setBooting] = useState(true);
+  const [pending, setPending] = useState(0);
+
   const [tab, setTab] = useState<"agents" | "delegations" | "chatter">("agents");
 
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -100,13 +102,25 @@ export default function AdminCouncil() {
     refreshFeed();
   }, [call, openRoom, refreshFeed]);
 
+  // Fast loop while a room still owes replies: pump the durable queue so work
+  // finishes even if the request that started it died.
   useEffect(() => {
-    const t = setInterval(() => {
+    const t = setInterval(async () => {
       refreshFeed();
-      if (roomId) openRoom(roomId).catch(() => {});
-    }, 15000);
+      if (!roomId) return;
+      if (pending > 0) {
+        try {
+          const d = await call({ action: "tick", room_id: roomId, limit: 2, budget_ms: 25000 });
+          if (d.messages) setMessages(d.messages);
+          setPending(Number(d.pending ?? 0));
+          return;
+        } catch { /* fall through to a plain refresh */ }
+      }
+      openRoom(roomId).catch(() => {});
+    }, pending > 0 ? 6000 : 15000);
     return () => clearInterval(t);
-  }, [roomId, openRoom, refreshFeed]);
+  }, [roomId, pending, openRoom, refreshFeed, call]);
+
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -149,10 +163,15 @@ export default function AdminCouncil() {
     try {
       const d = await call({ action: "say", room_id: roomId, text: mine });
       setMessages(d.messages ?? []);
+      setPending(Number(d.pending ?? 0));
       refreshFeed();
+
     } catch (e) {
-      toast.error((e as Error).message);
-      setText(mine);
+      // The message is already queued server-side — let the durable loop finish it.
+      toast.message("Request dropped — the room keeps working in the background", {
+        description: (e as Error).message,
+      });
+      setPending((p) => Math.max(p, 1));
     } finally {
       setSending(false);
       inputRef.current?.focus();

@@ -19,11 +19,17 @@ export const ALLOWLIST_TABLES = new Set([
   // Agency OS domain surface
   "ao_agents", "ao_missions", "ao_tasks", "ao_dialogue", "ao_policies", "ao_events",
   "ao_campaigns", "ao_creatives", "ao_ad_metrics", "ao_site_tasks",
+  "ao_leads", "ao_outreach", "ao_delegations", "ao_supervision", "ao_rooms",
+  "ao_room_messages", "ao_runner_beats", "ao_agent_runs", "ao_votes",
+  "ao_dev_proposals", "ao_channel_sessions", "ao_telegram_commands",
+  "ai_model_health", "ai_traffic_queue",
   "ticket_requests", "duffel_bookings", "orders", "nyop_bids", "quote_logs", "call_logs", "profiles",
+
 ]);
 
-export const SENSORY_TOOLS = ["db_read", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
-export const MOTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_notification", "http_get"];
+export const SENSORY_TOOLS = ["db_read", "db_count", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
+export const MOTOR_TOOLS = ["db_write", "db_read", "db_count", "http_post", "invoke_edge_function", "send_notification", "http_get"];
+
 
 // "auto" => the model router picks the best healthy Featherless model and
 // changes model automatically whenever one errors out.
@@ -83,12 +89,39 @@ export async function execTool(
       case "db_read": {
         const { table, select = "*", eq, limit = 20 } = args;
         if (!ALLOWLIST_TABLES.has(table)) throw new Error("table " + table + " not allowlisted");
-        let q = supabase.from(table).select(select).limit(Math.min(limit, 100));
+        // Models often pass select as an array of columns — normalise it.
+        const cols = Array.isArray(select) ? select.join(",") : String(select || "*");
+        const lim = Number.isFinite(Number(limit)) ? Number(limit) : 20;
+        let q = supabase.from(table).select(cols).limit(Math.min(Math.max(lim, 1), 100));
         if (eq && typeof eq === "object") for (const [k, v] of Object.entries(eq)) q = q.eq(k, v as any);
+
         const { data, error } = await q;
         if (error) throw error;
         return { tool, ok: true, result: { rows: data } };
       }
+      case "db_count": {
+        // Row counts, optionally grouped by one column — the question agents ask most.
+        const { table, eq, group_by } = args;
+        if (!ALLOWLIST_TABLES.has(table)) throw new Error("table " + table + " not allowlisted");
+        if (group_by) {
+          let gq = supabase.from(table).select(group_by).limit(5000);
+          if (eq && typeof eq === "object") for (const [k, v] of Object.entries(eq)) gq = gq.eq(k, v as any);
+          const { data, error } = await gq;
+          if (error) throw error;
+          const counts: Record<string, number> = {};
+          for (const row of (data ?? []) as Record<string, unknown>[]) {
+            const key = String(row[group_by] ?? "null");
+            counts[key] = (counts[key] ?? 0) + 1;
+          }
+          return { tool, ok: true, result: { table, group_by, counts, total: (data ?? []).length } };
+        }
+        let cq = supabase.from(table).select("*", { count: "exact", head: true });
+        if (eq && typeof eq === "object") for (const [k, v] of Object.entries(eq)) cq = cq.eq(k, v as any);
+        const { count, error } = await cq;
+        if (error) throw error;
+        return { tool, ok: true, result: { table, count: count ?? 0 } };
+      }
+
       case "http_get": {
         const { url, headers } = args;
         if (!url) throw new Error("url required");
