@@ -42,6 +42,7 @@ export default function AdminModels() {
   const [busy, setBusy] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("Say hello and name yourself.");
   const [testResult, setTestResult] = useState<any>(null);
+  const [traffic, setTraffic] = useState<any>(null);
 
   const load = useCallback(async (search?: string) => {
     try {
@@ -60,6 +61,20 @@ export default function AdminModels() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Live view of the AI traffic organizer: what is driving, what is waiting.
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await call("traffic");
+        if (alive) setTraffic(r?.traffic ?? null);
+      } catch { /* the readout never breaks the page */ }
+    };
+    void poll();
+    const t = setInterval(poll, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
   useEffect(() => {
     const t = setTimeout(() => { void load(query.trim() || undefined); }, 350);
     return () => clearTimeout(t);
@@ -117,6 +132,37 @@ export default function AdminModels() {
           <Card className="border-destructive/50 bg-destructive/5 p-4 text-sm">
             <div className="flex items-center gap-2 font-medium"><ShieldAlert className="h-4 w-4" /> FEATHERLESS_API_KEY is not configured</div>
             <p className="mt-1 text-muted-foreground">The router is running on the emergency provider until the key is saved.</p>
+          </Card>
+        )}
+
+        {traffic && (
+          <Card className="p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 font-medium"><Activity className="h-4 w-4 text-primary" /> Traffic organizer</div>
+                <p className="text-sm text-muted-foreground">
+                  Every model call crosses one global intersection, so the provider budget is never exceeded.
+                </p>
+              </div>
+              <div className="flex gap-6 text-sm">
+                <div><div className="text-muted-foreground">In flight</div><div className="text-lg font-semibold">{traffic.in_flight ?? 0} / {traffic.budget ?? "-"} units</div></div>
+                <div><div className="text-muted-foreground">Waiting</div><div className="text-lg font-semibold">{traffic.waiting ?? 0}</div></div>
+              </div>
+            </div>
+            {Array.isArray(traffic.leases) && traffic.leases.length > 0 && (
+              <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                {traffic.leases.map((l: any, i: number) => (
+                  <li key={i} className="truncate">▶ {l.holder} — {l.model} ({l.units}u)</li>
+                ))}
+              </ul>
+            )}
+            {Array.isArray(traffic.queue) && traffic.queue.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {traffic.queue.map((q: any, i: number) => (
+                  <li key={i} className="truncate">⏳ {q.holder} waiting ({q.units}u)</li>
+                ))}
+              </ul>
+            )}
           </Card>
         )}
 
