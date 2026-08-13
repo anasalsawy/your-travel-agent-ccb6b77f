@@ -41,3 +41,20 @@ export function isOwner(chatId: string | number) {
   if (!OWNER_CHAT) return false;
   return String(chatId) === String(OWNER_CHAT);
 }
+
+export async function postChannelUpdate(text: string) {
+  if (!CHANNEL_ID) return { ok: false, error: "no_channel_id" };
+  return await tg("sendMessage", {
+    chat_id: CHANNEL_ID,
+    text: text.slice(0, 3900),
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+}
+
+export async function broadcastUpdate(text: string) {
+  const results: Record<string, unknown> = {};
+  if (OWNER_CHAT) results.owner = await notifyOwner(text);
+  if (CHANNEL_ID) results.channel = await postChannelUpdate(text);
+  return results;
+}
