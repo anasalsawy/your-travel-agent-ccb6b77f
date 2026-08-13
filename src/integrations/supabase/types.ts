@@ -810,6 +810,75 @@ export type Database = {
         }
         Relationships: []
       }
+      ao_dev_proposals: {
+        Row: {
+          area: string
+          branch: string | null
+          created_at: string
+          error: string | null
+          expected_impact: string | null
+          files: Json
+          id: string
+          patch_plan: Json
+          pr_number: number | null
+          pr_url: string | null
+          problem: string
+          proposal: string
+          raised_by: string
+          result: Json
+          risk: string
+          status: string
+          tally: Json
+          title: string
+          updated_at: string
+          verdict: string | null
+        }
+        Insert: {
+          area?: string
+          branch?: string | null
+          created_at?: string
+          error?: string | null
+          expected_impact?: string | null
+          files?: Json
+          id?: string
+          patch_plan?: Json
+          pr_number?: number | null
+          pr_url?: string | null
+          problem?: string
+          proposal?: string
+          raised_by?: string
+          result?: Json
+          risk?: string
+          status?: string
+          tally?: Json
+          title: string
+          updated_at?: string
+          verdict?: string | null
+        }
+        Update: {
+          area?: string
+          branch?: string | null
+          created_at?: string
+          error?: string | null
+          expected_impact?: string | null
+          files?: Json
+          id?: string
+          patch_plan?: Json
+          pr_number?: number | null
+          pr_url?: string | null
+          problem?: string
+          proposal?: string
+          raised_by?: string
+          result?: Json
+          risk?: string
+          status?: string
+          tally?: Json
+          title?: string
+          updated_at?: string
+          verdict?: string | null
+        }
+        Relationships: []
+      }
       ao_dialogue: {
         Row: {
           content: string
@@ -1298,6 +1367,77 @@ export type Database = {
             columns: ["mission_id"]
             isOneToOne: false
             referencedRelation: "ao_missions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ao_telegram_commands: {
+        Row: {
+          args: string | null
+          chat_id: string
+          command: string
+          created_at: string
+          from_user: string | null
+          handled: boolean
+          id: string
+          response: string | null
+        }
+        Insert: {
+          args?: string | null
+          chat_id: string
+          command: string
+          created_at?: string
+          from_user?: string | null
+          handled?: boolean
+          id?: string
+          response?: string | null
+        }
+        Update: {
+          args?: string | null
+          chat_id?: string
+          command?: string
+          created_at?: string
+          from_user?: string | null
+          handled?: boolean
+          id?: string
+          response?: string | null
+        }
+        Relationships: []
+      }
+      ao_votes: {
+        Row: {
+          agent_key: string
+          created_at: string
+          id: string
+          proposal_id: string
+          reasoning: string | null
+          vote: string
+          weight: number
+        }
+        Insert: {
+          agent_key: string
+          created_at?: string
+          id?: string
+          proposal_id: string
+          reasoning?: string | null
+          vote: string
+          weight?: number
+        }
+        Update: {
+          agent_key?: string
+          created_at?: string
+          id?: string
+          proposal_id?: string
+          reasoning?: string | null
+          vote?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ao_votes_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "ao_dev_proposals"
             referencedColumns: ["id"]
           },
         ]

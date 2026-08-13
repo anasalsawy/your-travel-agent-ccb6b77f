@@ -2,6 +2,7 @@
 // The agent asks for "reach this person"; it never names a vendor.
 import { gsb } from "./governor.ts";
 import { fbDo, sendMessage as fbSend, browserAvailable } from "./facebook.ts";
+import { graphConfigured, sendDm } from "./graph-fb.ts";
 
 export type Lead = {
   id: string;
@@ -20,12 +21,24 @@ const TW_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
 const TW_FROM = Deno.env.get("TWILIO_PHONE_NUMBER") ?? "";
 
 async function facebook(lead: Lead, body: string): Promise<Delivery> {
-  if (!browserAvailable()) return { ok: false, channel: "facebook", error: "browser_not_configured" };
-  if (!lead.external_thread_id) return { ok: false, channel: "facebook", error: "no_thread_id" };
+  let graphError: string | null = null;
+  // PRIMARY: page identity over the Graph API — no browser, no human session.
+  const psid = lead.contact?.psid ?? (lead.channel === "facebook" ? lead.external_thread_id : null);
+  if (graphConfigured() && psid) {
+    try {
+      const r = await sendDm(String(psid), body);
+      return { ok: true, channel: "facebook", evidence: "graph message_id=" + (r.message_id ?? "?") };
+    } catch (e) {
+      graphError = (e as Error).message; // fall through to the browser identity
+    }
+  }
+  // FALLBACK: persistent browser profile driving mbasic.
+  if (!browserAvailable()) return { ok: false, channel: "facebook", error: graphError ?? "browser_not_configured" };
+  if (!lead.external_thread_id) return { ok: false, channel: "facebook", error: graphError ?? "no_thread_id" };
   const { data: sess } = await gsb().from("ao_channel_sessions")
     .select("context_id,status").eq("channel", "facebook").eq("label", "primary").maybeSingle();
   if (!sess?.context_id || sess.status !== "connected") {
-    return { ok: false, channel: "facebook", error: "facebook_session_not_connected" };
+    return { ok: false, channel: "facebook", error: graphError ?? "facebook_session_not_connected" };
   }
   try {
     const r = await fbDo(sess.context_id, (cdp) => fbSend(cdp, lead.external_thread_id!, body));
@@ -34,6 +47,7 @@ async function facebook(lead: Lead, body: string): Promise<Delivery> {
     return { ok: false, channel: "facebook", error: (e as Error).message };
   }
 }
+
 
 async function email(lead: Lead, body: string): Promise<Delivery> {
   const to = lead.contact?.email;
