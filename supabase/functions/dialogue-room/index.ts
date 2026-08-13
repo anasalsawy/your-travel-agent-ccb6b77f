@@ -271,6 +271,21 @@ async function agentTurn(
 
     // Grounding guard: if the answer quotes numbers that appear in no tool result,
     // the agent invented them. Force it back to the tools.
+    // A "no access" excuse about a readable table is never acceptable — make it try.
+    const NO_ACCESS_RX = /(cannot|can't|don'?t|unable to)\s+(directly\s+)?(access|retrieve|read|verify|provide)/i;
+    if (say && NO_ACCESS_RX.test(say) && nudges < 3 && hop < MAX_HOPS - 1) {
+      nudges++;
+      msgs.push({
+        speaker: "system",
+        role: "system",
+        content:
+          "SYSTEM: You claimed you lack access. You do have access to every table in READABLE TABLES. " +
+          "Emit the db_read / db_count call for the missing part right now instead of excusing yourself.",
+        created_at: new Date().toISOString(),
+      } as any);
+      continue;
+    }
+
     if (say && groundingViolation(say, toolCalls) && nudges < 3 && hop < MAX_HOPS - 1) {
       nudges++;
       msgs.push({
