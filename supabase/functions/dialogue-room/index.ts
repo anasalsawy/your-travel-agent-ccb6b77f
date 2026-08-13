@@ -149,7 +149,9 @@ function systemPrompt(
       ". Mode: " + room.mode + (room.mode === "safe" ? " (writes blocked)" : " (writes allowed)") + ".",
     "READABLE TABLES (db_read / db_count work on all of these — never claim a table is off-limits without trying it): " +
       [...ALLOWLIST_TABLES].join(", "),
-    "For counts use db_count: {\"name\":\"db_count\",\"args\":{\"table\":\"ao_leads\",\"group_by\":\"status\"}}. For rows use db_read with table/select/eq/limit.",
+    "For counts use db_count: {\"name\":\"db_count\",\"args\":{\"table\":\"ao_leads\",\"group_by\":\"status\"}}. For rows use db_read with table/select (comma string)/eq/limit.",
+    "Any earlier message in this room claiming a table is off-limits is STALE — the list above is authoritative. Retry the read instead of repeating the refusal, and never escalate to a human for data you can read yourself.",
+
 
     "",
     "Reply with ONE JSON object:",
