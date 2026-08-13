@@ -15,7 +15,7 @@
 //   5. Intersection    — abandoned traffic leases are swept so the light can
 //                        never jam closed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { provenModels, rankModels, probeModel, hasFeatherless, trafficStatus } from "../_shared/model-router.ts";
+import { provenModels, rankModels, probeModel, hasFeatherless, trafficStatus, resolveAgentModel, routeChatSafe } from "../_shared/model-router.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -30,11 +30,48 @@ const MIN_PROVEN = 3;
 const STUCK_MINUTES = 25;
 const MAX_ATTEMPTS = 3;
 
+/**
+ * ROLL CALL — ask every active agent to answer for itself, all at once.
+ * This is the proof that the whole roster is alive: each agent speaks through
+ * its own resolved model, across the shared traffic light, with no exceptions
+ * allowed to escape.
+ */
+async function rollCall() {
+  const s = sb();
+  const { data: agents } = await s.from("ao_agents")
+    .select("agent_key,display_name,department,model").eq("status", "active").order("agent_key");
+  const results = await Promise.all((agents ?? []).map(async (a: any) => {
+    const model = await resolveAgentModel(a.agent_key, a.model);
+    const t0 = Date.now();
+    const r = await routeChatSafe({
+      messages: [
+        { role: "system", content: 'You are ' + a.display_name + ' (' + a.department + '). Answer ONLY as JSON: {"agent":"' + a.agent_key + '","ready":true,"duty":"<your job in six words>"}' },
+        { role: "user", content: "Roll call. Report ready." },
+      ],
+      response_format: { type: "json_object" }, temperature: 0, max_tokens: 120,
+    }, model, "rollcall:" + a.agent_key);
+    let duty = "";
+    try { duty = String(JSON.parse(r.content ?? "{}").duty ?? ""); } catch { /* free text is fine */ }
+    return {
+      agent: a.agent_key, ready: !r.degraded, degraded: Boolean(r.degraded),
+      served_by: r.model, latency_ms: Date.now() - t0, duty: duty.slice(0, 60),
+      error: (r as any).error ?? null,
+    };
+  }));
+  return { total: results.length, ready: results.filter((r) => r.ready).length, agents: results };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   const started = Date.now();
   const s = sb();
   const report: Record<string, unknown> = {};
+  const action = await req.json().then((b: any) => b?.action).catch(() => undefined);
+
+  if (action === "roll_call") {
+    const rc = await rollCall();
+    return json({ ok: true, duration_ms: Date.now() - started, ...rc });
+  }
 
   try {
     // 1. Second chances: clear stale punishment so the pool can refill.
