@@ -260,12 +260,21 @@ const HEAVY = /(70b|72b|123b|235b|405b|480b|8x22b)/i;
 let lightOnlyUntil = 0;
 
 let fxQueue: Promise<unknown> = Promise.resolve();
-/** One Featherless request at a time per isolate. */
+/** One Featherless request at a time per isolate (local half of the light). */
 function withFeatherlessSlot<T>(fn: () => Promise<T>): Promise<T> {
   const run = fxQueue.then(fn, fn);
   fxQueue = run.then(() => undefined, () => undefined);
   return run;
 }
+
+/**
+ * Global half of the light: the database-backed traffic organizer, shared by
+ * every isolate, so the account budget can never be exceeded in the first place.
+ */
+function withGlobalSlot<T>(model: string, holder: string, fn: () => Promise<T>): Promise<T> {
+  return withAiSlot({ model, holder, lane: holder, maxWaitMs: 90_000 }, () => withFeatherlessSlot(fn));
+}
+
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
