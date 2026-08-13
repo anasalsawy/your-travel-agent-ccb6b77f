@@ -54,22 +54,26 @@ Deno.serve(async (req) => {
   //    ad. Application identity (Graph token) — works with no browser at all.
   jobs.inbox = await call("inbox-tick", { mode, limit: 20, max: 8 }, 50000);
 
+  // LANE SCHEDULER — the provider plan is unit-capped, so exactly ONE
+  // model-heavy lane runs per minute. Serialising lanes beats letting them
+  // fight for concurrency and all fail.
+  const lane = new Date().getUTCMinutes() % 5;
+
   // 2a. Outreach: contact and follow up every lead that is due.
-  const outreach = await call("outreach-tick", { limit: 6, mode });
+  const outreach = lane === 3
+    ? await call("outreach-tick", { limit: 6, mode }, 55000)
+    : { fn: "outreach-tick", ok: true, body: { skipped: true } } as any;
   jobs.outreach = outreach;
   const leadsTouched = Number((outreach as any)?.body?.processed ?? 0)
     + Number((jobs.inbox as any)?.body?.admitted ?? 0);
 
-  // 2b. Prospecting: go FIND buyers (every 5th minute — search is expensive).
-  if (new Date().getUTCMinutes() % 5 === 0) {
-    jobs.prospect = await call("prospect-tick", { mode, max_posts: 10 }, 50000);
-  } else {
-    jobs.prospect = { skipped: true };
-  }
+  // 2b. Prospecting: go FIND buyers.
+  jobs.prospect = lane === 0
+    ? await call("prospect-tick", { mode, max_posts: 10 }, 50000)
+    : { skipped: true };
 
   // 2c. Council: chief issues delegations, specialists execute, supervisor grades.
-  // The provider plan is unit-capped, so the council gets its own slow lane.
-  jobs.council = new Date().getUTCMinutes() % 2 === 0
+  jobs.council = (lane === 1 || lane === 4)
     ? await call("council", { action: "tick", mode, limit: 2 }, 55000)
     : { skipped: true };
 
@@ -79,9 +83,10 @@ Deno.serve(async (req) => {
     ? await call("dev-council", { action: "tick" }, 55000)
     : { skipped: true };
 
-
   // 3. Push missions through the pipeline.
-  const agency = await call("agency-os", { action: "tick", mode, limit: 3, cycles: 2 });
+  const agency = lane === 2
+    ? await call("agency-os", { action: "tick", mode, limit: 3, cycles: 2 }, 55000)
+    : { fn: "agency-os", ok: true, body: { skipped: true } } as any;
   jobs.agency = agency;
   const missionsTouched = Number((agency as any)?.body?.processed ?? 0);
 

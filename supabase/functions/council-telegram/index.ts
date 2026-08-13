@@ -77,6 +77,8 @@ async function handle(text: string, chatId: string): Promise<string> {
     case "/help":
       return [
         "<b>Council remote</b>",
+        "/whoami — which bot and which agent answers you",
+        "/agents — the roster and the model each one runs",
         "/status — the board",
         "/leads — live pipeline",
         "/inbox — pull new Facebook messages, comments, lead ads",
@@ -89,6 +91,26 @@ async function handle(text: string, chatId: string): Promise<string> {
         "/broadcast &lt;text&gt; — post an update to the Telegram channel",
         "Anything else is sent to the Chief of Staff as a directive.",
       ].join("\n");
+
+    case "/whoami": {
+      const me: any = await tg("getMe", {});
+      const b = me.body?.result ?? {};
+      const { data: ag } = await sb().from("ao_agents").select("agent_key").eq("status", "active");
+      return [
+        "<b>Who you are talking to</b>",
+        `Bot: <b>@${esc(String(b.username ?? "?"))}</b> (${esc(String(b.first_name ?? ""))})`,
+        `You: owner chat <code>${esc(chatId)}</code> — commands accepted.`,
+        "Plain messages go to the <b>Chief of Staff</b>, who issues orders to the specialists.",
+        `Roster: ${(ag ?? []).length} active agents. /agents for the list.`,
+      ].join("\n");
+    }
+
+    case "/agents": {
+      const { data } = await sb().from("ao_agents")
+        .select("agent_key,display_name,department,model,status").order("department").limit(40);
+      return "<b>Roster</b>\n" + (data ?? []).map((a: any) =>
+        `• ${esc(a.display_name)} <code>${esc(a.agent_key)}</code> — ${esc(a.department)} · ${esc(a.model)} · ${esc(a.status)}`).join("\n");
+    }
 
     case "/status": return await board();
 
@@ -182,6 +204,13 @@ Deno.serve(async (req) => {
     const set = await tg("setWebhook", { url, allowed_updates: ["message", "edited_message"], drop_pending_updates: true });
     const info = await tg("getWebhookInfo", {});
     return json({ ok: set.ok, webhook: url, set: set.body, info: info.body });
+  }
+
+  // Diagnostic: which bot identity is this console bound to? (no secrets returned)
+  if (update.action === "identity") {
+    const me: any = await tg("getMe", {});
+    const info: any = await tg("getWebhookInfo", {});
+    return json({ ok: true, bot: me.body?.result ?? null, webhook: info.body?.result?.url ?? null });
   }
 
   const msg = update.message ?? update.edited_message;

@@ -418,5 +418,27 @@ export async function routeChat(
       lastErr = model + " → " + (e as Error).message;
     }
   }
+  // Every candidate was refused for ACCOUNT concurrency, not model health.
+  // The account budget drains within seconds, so a patient last-resort pass on
+  // the smallest model is far more productive than failing the whole round.
+  if (attempts.length && attempts.every((a) => a.error === "concurrency_limit" || a.error === "switch_limit")) {
+    const settings = await getSettings();
+    const ranked = (await rankModels(12)).filter((r) => !HEAVY.test(r.model_id));
+    const lastResort = ranked[0]?.model_id ?? settings.default_model;
+    if (lastResort) {
+      for (let i = 0; i < 3; i++) {
+        await sleep(8000 * (i + 1));
+        const t0 = Date.now();
+        const res = await callOnce(lastResort, body);
+        if (res.ok) {
+          await recordHealth("featherless", lastResort, true, Date.now() - t0, res.status);
+          sticky = { model: lastResort, at: Date.now() };
+          attempts.push({ model: lastResort, ok: true, status: res.status });
+          return { content: res.content ?? "", model: lastResort, provider: "featherless", attempts };
+        }
+        lastErr = lastResort + " → " + res.status + ": " + res.text;
+      }
+    }
+  }
   throw new Error("all models failed (" + chain.length + " tried). last: " + lastErr);
 }
