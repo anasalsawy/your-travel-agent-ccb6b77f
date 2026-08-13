@@ -166,11 +166,20 @@ Deno.serve(async (req) => {
         });
         if (review.verdict === "block") {
           comment = { blocked: review.issues };
-        } else {
+        } else if (sess?.context_id && sess.status === "connected") {
           try {
             const r = await fbDo(sess.context_id, (cdp) => commentOnPost(cdp, post.permalink, review.final));
             comment = { ok: r.ok, text: review.final };
           } catch (e) { comment = { ok: false, error: (e as Error).message }; }
+        } else if (skyvernAvailable()) {
+          const r: any = await runTask({
+            url: post.permalink,
+            goal: "Post this reply as a public comment on the post: " + review.final,
+            maxSteps: 8,
+          }, 90_000);
+          comment = { ok: Boolean(r.ok), via: "skyvern", text: review.final, error: r.error ?? r.failure ?? null };
+        } else {
+          comment = { ok: false, error: "no_comment_channel", text: review.final };
         }
       }
 
