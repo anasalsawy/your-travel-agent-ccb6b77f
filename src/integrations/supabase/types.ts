@@ -592,6 +592,54 @@ export type Database = {
           },
         ]
       }
+      ao_agent_runs: {
+        Row: {
+          agent_key: string
+          attempts: number
+          created_at: string
+          depth: number
+          id: string
+          last_error: string | null
+          lease_until: string | null
+          max_attempts: number
+          next_run_at: string
+          reason: string | null
+          room_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agent_key: string
+          attempts?: number
+          created_at?: string
+          depth?: number
+          id?: string
+          last_error?: string | null
+          lease_until?: string | null
+          max_attempts?: number
+          next_run_at?: string
+          reason?: string | null
+          room_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_key?: string
+          attempts?: number
+          created_at?: string
+          depth?: number
+          id?: string
+          last_error?: string | null
+          lease_until?: string | null
+          max_attempts?: number
+          next_run_at?: string
+          reason?: string | null
+          room_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ao_agents: {
         Row: {
           addons: Json
@@ -4054,6 +4102,30 @@ export type Database = {
       }
       ai_traffic_status: { Args: never; Returns: Json }
       ai_traffic_sweep: { Args: never; Returns: Json }
+      ao_claim_agent_runs: {
+        Args: { p_lease_seconds?: number; p_limit?: number }
+        Returns: {
+          agent_key: string
+          attempts: number
+          created_at: string
+          depth: number
+          id: string
+          last_error: string | null
+          lease_until: string | null
+          max_attempts: number
+          next_run_at: string
+          reason: string | null
+          room_id: string
+          status: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ao_agent_runs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_customer_context: { Args: { p_customer_id: string }; Returns: Json }
       get_or_create_customer_by_phone: {
         Args: { p_phone: string }
