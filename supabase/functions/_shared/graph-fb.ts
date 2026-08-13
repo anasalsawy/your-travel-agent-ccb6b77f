@@ -109,7 +109,7 @@ export async function sendDm(psid: string, text: string, tag?: string) {
 export async function publishPost(message: string, link?: string) {
   const body: Record<string, unknown> = { message: message.slice(0, 5000) };
   if (link) body.link = link;
-  const res = await g(`/${PAGE_ID}/feed`, { method: "POST", body: JSON.stringify(body) });
+  const res = await g(`/${getPageId()}/feed`, { method: "POST", body: JSON.stringify(body) });
   return { ok: true, post_id: res.id };
 }
 
@@ -119,13 +119,16 @@ export type GraphComment = {
   message: string;
   from_id: string | null;
   from_name: string;
+  function from_id: string | null;
+  from_name: string;
   created_time: string;
   permalink: string;
 };
 
 /** Comments left on our own posts — the highest-intent inbound surface there is. */
 export async function recentComments(limit = 25): Promise<GraphComment[]> {
-  const res = await g(`/${PAGE_ID}/posts`, {
+  const pageId = getPageId();
+  const res = await g(`/${pageId}/posts`, {
     params: {
       limit: "10",
       fields: `id,permalink_url,comments.limit(${limit}).order(reverse_chronological){id,message,from,created_time}`,
@@ -134,7 +137,7 @@ export async function recentComments(limit = 25): Promise<GraphComment[]> {
   const out: GraphComment[] = [];
   for (const post of res.data ?? []) {
     for (const c of post.comments?.data ?? []) {
-      if (c.from?.id === PAGE_ID) continue;
+      if (c.from?.id === pageId) continue;
       out.push({
         id: c.id,
         post_id: post.id,
