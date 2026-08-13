@@ -160,7 +160,19 @@ function systemPrompt(
   ].join("\n");
 }
 
+/** True when the spoken answer states figures that appear in no tool output. */
+function groundingViolation(say: string, toolCalls: unknown[]): boolean {
+  const figures = (say.match(/\d[\d,.:/-]*/g) ?? [])
+    .map((f) => f.replace(/[,.]$/, ""))
+    .filter((f) => f.replace(/\D/g, "").length >= 1 && !/^[01]$/.test(f));
+  if (!figures.length) return false;
+  if (!toolCalls.length) return true; // numbers with zero evidence
+  const evidence = JSON.stringify(toolCalls);
+  return figures.some((f) => !evidence.includes(f.replace(/,/g, "")) && !evidence.includes(f));
+}
+
 /** One agent turn: optional tool call, then a spoken message posted to the room. */
+
 async function agentTurn(
   room: any,
   agent: Agent,
