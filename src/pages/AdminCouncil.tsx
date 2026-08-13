@@ -80,7 +80,16 @@ export default function AdminCouncil() {
         <Button variant="secondary" onClick={() => run("Outreach", "outreach-tick", { limit: 4, mode: "full" })} disabled={!!busy}>
           <ShieldCheck className="mr-2 h-4 w-4" /> Work the follow-ups
         </Button>
+        <Button variant="secondary" onClick={() => run("Inbox", "inbox-tick", { mode: "full", max: 8 })} disabled={!!busy}>
+          {busy === "Inbox" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Inbox className="mr-2 h-4 w-4" />}
+          Pull the Facebook inbox
+        </Button>
+        <Button variant="secondary" onClick={() => run("Audit", "dev-council", { action: "audit", limit: 2 })} disabled={!!busy}>
+          {busy === "Audit" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Code2 className="mr-2 h-4 w-4" />}
+          Dev audit of the website
+        </Button>
       </div>
+
 
       <Card>
         <CardHeader><CardTitle className="text-base">Owner directive</CardTitle></CardHeader>
