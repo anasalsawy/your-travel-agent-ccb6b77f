@@ -51,13 +51,14 @@ async function graph(path: string, method: "GET" | "POST", params: Record<string
 
 /** Organic post on the Facebook Page — free reach, no ad account needed. */
 export function pagePost(message: string, link?: string): Promise<MetaCall> {
-  if (!PAGE_ID) return Promise.resolve({ ok: false, dry_run: true, payload: { message, link }, error: "META_PAGE_ID missing — dry run" });
-  return graph(`/${PAGE_ID}/feed`, "POST", link ? { message, link } : { message });
+  const pageId = getPageId();
+  if (!pageId) return Promise.resolve({ ok: false, dry_run: true, payload: { message, link }, error: "META_PAGE_ID missing — dry run" });
+  return graph(`/${pageId}/feed`, "POST", link ? { message, link } : { message });
 }
 
 /** Paid campaign shell. Created PAUSED — nothing spends until the caller flips it. */
 export function createCampaign(name: string, objective = "OUTCOME_LEADS"): Promise<MetaCall> {
-  return graph(`/act_${AD_ACCOUNT}/campaigns`, "POST", {
+  return graph(`/act_${getAdAccount()}/campaigns`, "POST", {
     name, objective, status: "PAUSED", special_ad_categories: [],
   });
 }
@@ -65,7 +66,7 @@ export function createCampaign(name: string, objective = "OUTCOME_LEADS"): Promi
 export function createAdSet(opts: {
   name: string; campaignId: string; dailyBudgetUsd: number; countries: string[]; ageMin?: number; ageMax?: number; interests?: string[];
 }): Promise<MetaCall> {
-  return graph(`/act_${AD_ACCOUNT}/adsets`, "POST", {
+  return graph(`/act_${getAdAccount()}/adsets`, "POST", {
     name: opts.name,
     campaign_id: opts.campaignId,
     daily_budget: Math.round(opts.dailyBudgetUsd * 100), // Meta wants minor units
@@ -86,10 +87,10 @@ export function createAdSet(opts: {
 export function createCreative(opts: {
   name: string; message: string; headline: string; description?: string; link: string; imageUrl?: string; cta?: string;
 }): Promise<MetaCall> {
-  return graph(`/act_${AD_ACCOUNT}/adcreatives`, "POST", {
+  return graph(`/act_${getAdAccount()}/adcreatives`, "POST", {
     name: opts.name,
     object_story_spec: {
-      page_id: PAGE_ID,
+      page_id: getPageId(),
       link_data: {
         message: opts.message,
         link: opts.link,
@@ -104,7 +105,7 @@ export function createCreative(opts: {
 }
 
 export function createAd(name: string, adsetId: string, creativeId: string, active: boolean): Promise<MetaCall> {
-  return graph(`/act_${AD_ACCOUNT}/ads`, "POST", {
+  return graph(`/act_${getAdAccount()}/ads`, "POST", {
     name, adset_id: adsetId, creative: { creative_id: creativeId }, status: active ? "ACTIVE" : "PAUSED",
   });
 }
