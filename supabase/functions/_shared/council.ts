@@ -40,7 +40,7 @@ async function think(system: string, user: string, maxTokens = 900) {
     response_format: { type: "json_object" },
     temperature: 0.3,
     max_tokens: maxTokens,
-  }, "auto");
+  }, "auto", "council");
   return { json: jparse(r.content), model: r.model };
 }
 
