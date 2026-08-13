@@ -32,6 +32,7 @@ import AdminModels from "./pages/AdminModels";
 import AdminLeadEngine from "./pages/AdminLeadEngine";
 import AdminMarketing from "./pages/AdminMarketing";
 import AdminCouncil from "./pages/AdminCouncil";
+import AdminDialogue from "./pages/AdminDialogue";
 import AdminAgentRooms from "./pages/AdminAgentRooms";
 import AdminShopperProfile from "./pages/AdminShopperProfile";
 import AdminWarRoom from "./pages/AdminWarRoom";
