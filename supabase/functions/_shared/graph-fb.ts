@@ -58,7 +58,8 @@ export type GraphThread = {
 };
 
 export async function listConversations(limit = 25): Promise<GraphThread[]> {
-  const res = await g(`/${PAGE_ID}/conversations`, {
+  const pageId = getPageId();
+  const res = await g(`/${pageId}/conversations`, {
     params: {
       platform: "messenger",
       limit: String(limit),
@@ -66,7 +67,7 @@ export async function listConversations(limit = 25): Promise<GraphThread[]> {
     },
   });
   return (res.data ?? []).map((c: any) => {
-    const other = (c.participants?.data ?? []).find((p: any) => p.id !== PAGE_ID);
+    const other = (c.participants?.data ?? []).find((p: any) => p.id !== pageId);
     const m = c.messages?.data?.[0];
     return {
       id: c.id,
@@ -74,7 +75,7 @@ export async function listConversations(limit = 25): Promise<GraphThread[]> {
       name: other?.name ?? "unknown",
       updated_time: c.updated_time,
       last_message: m?.message ?? "",
-      last_from: m?.from?.id === PAGE_ID ? "us" : "them",
+      last_from: m?.from?.id === pageId ? "us" : "them",
       unread: Number(c.unread_count ?? 0),
     } as GraphThread;
   });
