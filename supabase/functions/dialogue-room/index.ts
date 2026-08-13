@@ -257,9 +257,26 @@ async function agentTurn(
       continue;
     }
 
+    // Grounding guard: if the answer quotes numbers that appear in no tool result,
+    // the agent invented them. Force it back to the tools.
+    if (say && groundingViolation(say, toolCalls) && nudges < 3 && hop < MAX_HOPS - 1) {
+      nudges++;
+      msgs.push({
+        speaker: "system",
+        role: "system",
+        content:
+          "SYSTEM: Your answer contains numbers or dates that appear in NO tool result. That is fabrication. " +
+          "Run the tool that actually produces each figure (db_count for counts, db_read for rows) and answer only " +
+          "with values present in the tool output. If a tool cannot give it, say you do not have it.",
+        created_at: new Date().toISOString(),
+      } as any);
+      continue;
+    }
+
     if (say) break; // real answer delivered
     if (!say && hop < MAX_HOPS - 1) continue; // empty output — try again
     break;
+
   }
 
 
