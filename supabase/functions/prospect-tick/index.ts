@@ -8,6 +8,7 @@ import { fbDo, searchPosts, commentOnPost, browserAvailable, type FoundPost } fr
 import { routeChat } from "../_shared/model-router.ts";
 import { playbookBlock, INTENT_SIGNALS } from "../_shared/playbook.ts";
 import { reviewOutbound, recordReview } from "../_shared/supervisor.ts";
+import { runTask, skyvernAvailable } from "../_shared/skyvern.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
