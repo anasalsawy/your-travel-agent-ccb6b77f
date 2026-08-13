@@ -158,3 +158,9 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.prospect-tick]
     verify_jwt = false
+  [functions.council-telegram]
+    verify_jwt = false
+  [functions.dev-council]
+    verify_jwt = false
+  [functions.inbox-tick]
+    verify_jwt = false
