@@ -11,18 +11,23 @@
 //               caller, which sees `configured:false` and routes around us.
 const GRAPH = "https://graph.facebook.com/v21.0";
 
-const TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
-const AD_ACCOUNT = (Deno.env.get("META_AD_ACCOUNT_ID") ?? "").replace(/^act_/, "");
-const PAGE_ID = Deno.env.get("META_PAGE_ID") ?? "";
+const getToken = () => Deno.env.get("META_ACCESS_TOKEN") ?? "";
+const getAdAccount = () => (Deno.env.get("META_AD_ACCOUNT_ID") ?? "").replace(/^act_/, "");
+const getPageId = () => Deno.env.get("META_PAGE_ID") ?? "";
 
-export const metaStatus = () => ({
-  configured: Boolean(TOKEN && AD_ACCOUNT && PAGE_ID),
-  has_token: Boolean(TOKEN),
-  has_ad_account: Boolean(AD_ACCOUNT),
-  has_page: Boolean(PAGE_ID),
-  ad_account: AD_ACCOUNT ? "act_" + AD_ACCOUNT : null,
-  page_id: PAGE_ID || null,
-});
+export const metaStatus = () => {
+  const token = getToken();
+  const adAccount = getAdAccount();
+  const pageId = getPageId();
+  return {
+    configured: Boolean(token && adAccount && pageId),
+    has_token: Boolean(token),
+    has_ad_account: Boolean(adAccount),
+    has_page: Boolean(pageId),
+    ad_account: adAccount ? "act_" + adAccount : null,
+    page_id: pageId || null,
+  };
+};
 
 export type MetaCall = { ok: boolean; dry_run?: boolean; data?: any; error?: string; payload?: any };
 
