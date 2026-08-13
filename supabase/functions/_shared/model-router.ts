@@ -28,6 +28,8 @@ export type RouterSettings = {
   emergency_model: string;
   cooldown_seconds: number;
   max_attempts: number;
+  /** Owner policy: when false the council runs on Featherless models ONLY. */
+  allow_lovable_fallback?: boolean;
 };
 
 const DEFAULTS: RouterSettings = {
@@ -38,6 +40,7 @@ const DEFAULTS: RouterSettings = {
   emergency_model: "google/gemini-2.5-flash",
   cooldown_seconds: 600,
   max_attempts: 4,
+  allow_lovable_fallback: false,
 };
 
 export function hasFeatherless() {
@@ -265,8 +268,16 @@ export async function buildChain(requested?: string): Promise<string[]> {
     }
     for (const f of settings.fallback_models ?? []) push(f);
   }
-  push(settings.emergency_model);            // different provider: no switch cost
-  push("google/gemini-2.5-flash");
+  // Featherless-only by owner policy. The other-provider safety net is used
+  // ONLY when explicitly allowed, or when Featherless is not configured at all.
+  const allowOther = settings.allow_lovable_fallback === true || !hasFeatherless();
+  if (allowOther) {
+    push(settings.emergency_model);          // different provider: no switch cost
+    push("google/gemini-2.5-flash");
+  } else if (chain.length < 2) {
+    // Stay on Featherless: widen the in-provider candidate set instead.
+    for (const r of await rankModels(6)) push(r.model_id);
+  }
   return chain.slice(0, Math.max(2, settings.max_attempts + 1));
 }
 

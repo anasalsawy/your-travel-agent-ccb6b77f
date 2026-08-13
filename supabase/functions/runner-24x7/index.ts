@@ -54,6 +54,16 @@ Deno.serve(async (req) => {
   jobs.outreach = outreach;
   const leadsTouched = Number((outreach as any)?.body?.processed ?? 0);
 
+  // 2b. Prospecting: go FIND buyers (every 5th minute — search is expensive).
+  if (new Date().getUTCMinutes() % 5 === 0) {
+    jobs.prospect = await call("prospect-tick", { mode, max_posts: 10 }, 50000);
+  } else {
+    jobs.prospect = { skipped: true };
+  }
+
+  // 2c. Council: chief issues delegations, specialists execute, supervisor grades.
+  jobs.council = await call("council", { action: "tick", mode, limit: 4 }, 55000);
+
   // 3. Push missions through the pipeline.
   const agency = await call("agency-os", { action: "tick", mode, limit: 3, cycles: 2 });
   jobs.agency = agency;
