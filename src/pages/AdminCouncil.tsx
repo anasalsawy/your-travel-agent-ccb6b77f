@@ -14,6 +14,9 @@ export default function AdminCouncil() {
   const [status, setStatus] = useState<{ delegations: Row[]; supervision: Row[]; missions: Row[]; leads: Row[] }>({
     delegations: [], supervision: [], missions: [], leads: [],
   });
+  const [dev, setDev] = useState<{ proposals: Row[]; votes: Row[]; site_write: boolean }>({
+    proposals: [], votes: [], site_write: false,
+  });
   const [busy, setBusy] = useState<string | null>(null);
   const [directive, setDirective] = useState("");
   const [live, setLive] = useState<any>(null);
@@ -25,9 +28,12 @@ export default function AdminCouncil() {
       delegations: data?.delegations ?? [], supervision: data?.supervision ?? [],
       missions: data?.missions ?? [], leads: data?.leads ?? [],
     });
+    const { data: d } = await supabase.functions.invoke("dev-council", { body: { action: "status" } });
+    if (d) setDev({ proposals: d.proposals ?? [], votes: d.votes ?? [], site_write: Boolean(d.site_write) });
   };
 
   useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, []);
+
 
   const run = async (label: string, fn: string, body: Record<string, unknown>) => {
     setBusy(label);
