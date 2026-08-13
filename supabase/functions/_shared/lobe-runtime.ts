@@ -13,22 +13,46 @@ export const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 export const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 export const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-export const ALLOWLIST_TABLES = new Set([
-  "war_room_messages", "war_room_tasks", "war_room_heartbeats",
-  "agent_room_messages", "agent_rooms", "notification_log", "documents",
-  // Agency OS domain surface
-  "ao_agents", "ao_missions", "ao_tasks", "ao_dialogue", "ao_policies", "ao_events",
-  "ao_campaigns", "ao_creatives", "ao_ad_metrics", "ao_site_tasks",
-  "ao_leads", "ao_outreach", "ao_delegations", "ao_supervision", "ao_rooms",
-  "ao_room_messages", "ao_runner_beats", "ao_agent_runs", "ao_votes",
-  "ao_dev_proposals", "ao_channel_sessions", "ao_telegram_commands",
-  "ai_model_health", "ai_traffic_queue",
-  "ticket_requests", "duffel_bookings", "orders", "nyop_bids", "quote_logs", "call_logs", "profiles",
+// NO TABLE ALLOWLIST. Agents run under the service role and may read or write
+// ANY table in the public schema. The catalogue below is discovered live from
+// the database so a new table is usable the second it exists.
+let _tableCache: { at: number; tables: Record<string, string> } = { at: 0, tables: {} };
 
-]);
+export async function liveTables(): Promise<Record<string, string>> {
+  if (Date.now() - _tableCache.at < 120_000 && Object.keys(_tableCache.tables).length) return _tableCache.tables;
+  try {
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+    const { data, error } = await supabase.rpc("agent_list_tables");
+    if (error) throw error;
+    const tables: Record<string, string> = {};
+    for (const r of (data ?? []) as any[]) tables[r.table_name] = r.columns;
+    _tableCache = { at: Date.now(), tables };
+  } catch { /* keep last known catalogue */ }
+  return _tableCache.tables;
+}
 
-export const SENSORY_TOOLS = ["db_read", "db_count", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
-export const MOTOR_TOOLS = ["db_write", "db_read", "db_count", "http_post", "invoke_edge_function", "send_notification", "http_get"];
+export async function tableNames(): Promise<string[]> {
+  return Object.keys(await liveTables()).sort();
+}
+
+/** Back-compat shim: anything that still reads this gets the live catalogue. */
+export const ALLOWLIST_TABLES = new Set<string>([]);
+
+export const EDGE_FUNCTIONS = [
+  "duffel-search", "duffel-offer", "duffel-book-card", "duffel-book-customer-card", "duffel-list-bookings",
+  "duffel-stays-search", "duffel-cars-search", "duffel-places",
+  "smart-quote-v2", "claude-quote", "nyop-create-bid", "nyop-hunt-tick",
+  "inbox-tick", "outreach-tick", "prospect-tick", "lead-intake", "marketing-os", "agency-os",
+  "council", "dev-council", "dialogue-room", "runner-24x7", "agent-health-tick", "model-catalog",
+  "send-notification", "send-promo-email", "send-whatsapp-quote", "telegram-bot", "council-telegram",
+  "make-outbound-call", "voice-proxy-call", "elevenlabs-tts", "elevenlabs-stt",
+  "browserbase-browse", "rag-search", "rag-embed", "memory-agent", "memory-lifecycle-tick",
+  "war-room", "brain-agent", "dual-lobe-agent", "foundry-agent-run", "azure-rest", "create-stripe-checkout",
+];
+
+export const SENSORY_TOOLS = ["db_read", "db_count", "sql", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
+export const MOTOR_TOOLS = ["db_write", "db_delete", "db_read", "db_count", "sql", "rpc", "http_post", "http_get", "invoke_edge_function", "send_notification", "fb_send_dm", "fb_post"];
+
 
 
 // "auto" => the model router picks the best healthy Featherless model and
