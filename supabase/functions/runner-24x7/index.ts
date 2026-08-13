@@ -4,7 +4,7 @@
 // runs the memory lifecycle (fill → finetune → free). Every beat is recorded,
 // so "is the agency awake?" is an evidence question, not a feeling.
 import { gsb } from "../_shared/governor.ts";
-import { notifyOwner, esc } from "../_shared/telegram-council.ts";
+import { broadcastUpdate, esc } from "../_shared/telegram-council.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
