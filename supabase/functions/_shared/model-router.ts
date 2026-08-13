@@ -8,6 +8,9 @@
 // Every call records health (latency, errors, cooldown) so the auto-selector
 // stops choosing models that are failing and re-tries them after a cooldown.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { withAiSlot, TrafficBusyError, unitsFor, trafficStatus } from "./ai-traffic.ts";
+
+export { trafficStatus, unitsFor };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -260,12 +263,21 @@ const HEAVY = /(70b|72b|123b|235b|405b|480b|8x22b)/i;
 let lightOnlyUntil = 0;
 
 let fxQueue: Promise<unknown> = Promise.resolve();
-/** One Featherless request at a time per isolate. */
+/** One Featherless request at a time per isolate (local half of the light). */
 function withFeatherlessSlot<T>(fn: () => Promise<T>): Promise<T> {
   const run = fxQueue.then(fn, fn);
   fxQueue = run.then(() => undefined, () => undefined);
   return run;
 }
+
+/**
+ * Global half of the light: the database-backed traffic organizer, shared by
+ * every isolate, so the account budget can never be exceeded in the first place.
+ */
+function withGlobalSlot<T>(model: string, holder: string, fn: () => Promise<T>): Promise<T> {
+  return withAiSlot({ model, holder, lane: holder, maxWaitMs: 90_000 }, () => withFeatherlessSlot(fn));
+}
+
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -290,7 +302,7 @@ function providerOf(model: string): Provider {
   return /^(openai|google|anthropic)\//i.test(model) ? "lovable" : "featherless";
 }
 
-async function callOnce(model: string, body: any): Promise<{ ok: boolean; status: number; text: string; content?: string }> {
+async function callOnce(model: string, body: any, holder = "router"): Promise<{ ok: boolean; status: number; text: string; content?: string }> {
   const provider = providerOf(model);
   const url = (provider === "featherless" ? FEATHERLESS_BASE : LOVABLE_BASE) + "/chat/completions";
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -307,20 +319,25 @@ async function callOnce(model: string, body: any): Promise<{ ok: boolean; status
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
     return { res, body: await res.text() };
   };
-  let out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
-  // A unit-budget rejection is transient: wait for the in-flight work to drain
-  // and try the same model twice before blaming it.
-  // A switch-limit rejection is also transient and is NOT the model's fault:
+  // Unit-capped provider → cross the global intersection first.
+  const guarded = () => provider === "featherless" ? withGlobalSlot(model, holder, doFetch) : doFetch();
+
+  let out = await guarded();
+  // A switch-limit rejection is transient and is NOT the model's fault:
   // retrying the SAME model costs no switch quota, so wait it out.
   for (let i = 0; i < 2 && !out.res.ok && isSwitchLimit(out.body); i++) {
     await sleep(12000 * (i + 1));
-    out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
+    out = await guarded();
   }
+  // With the organizer in place this should be unreachable; if the provider
+  // still says "over budget", the real budget is lower than configured, so
+  // shrink it for a while and retry politely.
   for (let i = 0; i < 2 && !out.res.ok && isConcurrencyLimit(out.body); i++) {
     lightOnlyUntil = Date.now() + 5 * 60_000;
     await sleep(2500 * (i + 1));
-    out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
+    out = await guarded();
   }
+
   const r = out.res;
   const text = out.body;
   if (!r.ok) return { ok: false, status: r.status, text: text.slice(0, 400) };
@@ -376,6 +393,7 @@ export type RouteResult = { content: string; model: string; provider: Provider; 
 export async function routeChat(
   body: { messages: any[]; response_format?: any; temperature?: number; max_tokens?: number },
   requested?: string,
+  holder = "router",
 ): Promise<RouteResult> {
   const chain = await buildChain(requested);
   const attempts: RouteResult["attempts"] = [];
@@ -387,7 +405,7 @@ export async function routeChat(
     if (provider === "lovable" && !LOVABLE_KEY) continue;
     const t0 = Date.now();
     try {
-      const res = await callOnce(model, body);
+      const res = await callOnce(model, body, holder);
       const latency = Date.now() - t0;
       if (!res.ok && isConcurrencyLimit(res.text)) {
         lightOnlyUntil = Date.now() + 5 * 60_000;
@@ -413,6 +431,13 @@ export async function routeChat(
       attempts.push({ model, ok: false, status: res.status, error: res.text });
       lastErr = model + " → " + res.status + ": " + res.text;
     } catch (e) {
+      if (e instanceof TrafficBusyError) {
+        // The intersection was full — the model is innocent, so do not punish
+        // its health score. Fall through to the patient last-resort pass.
+        attempts.push({ model, ok: false, error: "concurrency_limit" });
+        lastErr = model + " → traffic organizer busy";
+        continue;
+      }
       await recordHealth(provider, model, false, Date.now() - t0, 0, (e as Error).message);
       attempts.push({ model, ok: false, error: (e as Error).message });
       lastErr = model + " → " + (e as Error).message;
@@ -429,7 +454,7 @@ export async function routeChat(
       for (let i = 0; i < 3; i++) {
         await sleep(8000 * (i + 1));
         const t0 = Date.now();
-        const res = await callOnce(lastResort, body);
+        const res = await callOnce(lastResort, body, holder);
         if (res.ok) {
           await recordHealth("featherless", lastResort, true, Date.now() - t0, res.status);
           sticky = { model: lastResort, at: Date.now() };
