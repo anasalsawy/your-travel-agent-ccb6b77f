@@ -119,8 +119,6 @@ export type GraphComment = {
   message: string;
   from_id: string | null;
   from_name: string;
-  function from_id: string | null;
-  from_name: string;
   created_time: string;
   permalink: string;
 };
