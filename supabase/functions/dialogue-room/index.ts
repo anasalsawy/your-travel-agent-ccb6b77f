@@ -242,6 +242,29 @@ Deno.serve(async (req) => {
 
     if (action === "agents") return json({ ok: true, agents: roster });
 
+    // Live war-room feed: roster + heartbeats + delegations + inter-agent chatter
+    if (action === "warroom") {
+      const s = sb();
+      const [beats, dels, chatter, rooms] = await Promise.all([
+        s.from("war_room_heartbeats").select("*").order("last_beat_at", { ascending: false }).limit(40),
+        s.from("ao_delegations").select("id,from_agent,to_agent,directive,status,attempts,result,created_at")
+          .order("created_at", { ascending: false }).limit(40),
+        s.from("ao_room_messages").select("id,room_id,speaker,role,content,mentions,kind,created_at")
+          .neq("role", "human").order("created_at", { ascending: false }).limit(60),
+        s.from("ao_rooms").select("id,title,participants,status,updated_at")
+          .order("updated_at", { ascending: false }).limit(30),
+      ]);
+      return json({
+        ok: true,
+        agents: roster,
+        heartbeats: beats.data ?? [],
+        delegations: dels.data ?? [],
+        chatter: chatter.data ?? [],
+        rooms: rooms.data ?? [],
+      });
+    }
+
+
     if (action === "rooms") {
       const { data } = await sb().from("ao_rooms").select("*").order("updated_at", { ascending: false }).limit(60);
       return json({ ok: true, rooms: data ?? [] });
