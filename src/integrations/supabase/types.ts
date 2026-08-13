@@ -1198,6 +1198,92 @@ export type Database = {
         }
         Relationships: []
       }
+      ao_room_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          kind: string
+          mentions: string[]
+          model: string | null
+          role: string
+          room_id: string
+          speaker: string
+          tool_calls: Json
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          mentions?: string[]
+          model?: string | null
+          role?: string
+          room_id: string
+          speaker: string
+          tool_calls?: Json
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          mentions?: string[]
+          model?: string | null
+          role?: string
+          room_id?: string
+          speaker?: string
+          tool_calls?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ao_room_messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "ao_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ao_rooms: {
+        Row: {
+          created_at: string
+          facilitator: string | null
+          goal: string
+          id: string
+          mode: string
+          participants: string[]
+          resolution: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          facilitator?: string | null
+          goal?: string
+          id?: string
+          mode?: string
+          participants?: string[]
+          resolution?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          facilitator?: string | null
+          goal?: string
+          id?: string
+          mode?: string
+          participants?: string[]
+          resolution?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ao_runner_beats: {
         Row: {
           beat_at: string
