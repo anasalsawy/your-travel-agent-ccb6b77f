@@ -8,6 +8,7 @@ import { fbDo, searchPosts, commentOnPost, browserAvailable, type FoundPost } fr
 import { routeChat } from "../_shared/model-router.ts";
 import { playbookBlock, INTENT_SIGNALS } from "../_shared/playbook.ts";
 import { reviewOutbound, recordReview } from "../_shared/supervisor.ts";
+import { runTask, skyvernAvailable } from "../_shared/skyvern.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -50,20 +51,50 @@ Deno.serve(async (req) => {
       : [QUERIES[new Date().getUTCMinutes() % QUERIES.length], QUERIES[(new Date().getUTCMinutes() + 3) % QUERIES.length]];
     const s = gsb();
 
-    // 1. Discover. Browser identity is required — no browser, no prospecting.
-    if (!browserAvailable()) return json({ ok: false, error: "browser_not_configured", queries });
-    const { data: sess } = await s.from("ao_channel_sessions")
-      .select("context_id,status").eq("channel", "facebook").eq("label", "primary").maybeSingle();
-    if (!sess?.context_id || sess.status !== "connected") {
-      return json({ ok: false, error: "facebook_session_not_connected", queries });
+    // 1. Discover. Capability ladder: persistent browser identity first, then
+    //    Skyvern (goal-driven browser) as the emergency path. Prospecting is
+    //    never blocked by a single vendor being down or out of minutes.
+    let posts: FoundPost[] = [];
+    let sess: { context_id?: string; status?: string } | null = null;
+    let discovery = "cdp";
+
+    if (browserAvailable()) {
+      const r = await s.from("ao_channel_sessions")
+        .select("context_id,status").eq("channel", "facebook").eq("label", "primary").maybeSingle();
+      sess = r.data as any;
     }
 
-    let posts: FoundPost[] = [];
-    await fbDo(sess.context_id, async (cdp) => {
-      for (const q of queries) {
-        try { posts = posts.concat(await searchPosts(cdp, q, Math.ceil(maxPosts / queries.length))); } catch { /* keep going */ }
+    if (sess?.context_id && sess.status === "connected") {
+      try {
+        await fbDo(sess.context_id, async (cdp) => {
+          for (const q of queries) {
+            try { posts = posts.concat(await searchPosts(cdp, q, Math.ceil(maxPosts / queries.length))); } catch { /* keep going */ }
+          }
+        });
+      } catch { /* fall through to Skyvern */ }
+    }
+
+    if (!posts.length && skyvernAvailable()) {
+      discovery = "skyvern";
+      for (const q of queries.slice(0, 2)) {
+        const r: any = await runTask({
+          url: "https://mbasic.facebook.com/search/posts/?q=" + encodeURIComponent(q),
+          goal: "Read the public post results on this page. Do not log in, do not comment, do not click anything that requires an account.",
+          extract: "For each visible post return the author name, the full post text, and the permalink URL.",
+          schema: { type: "object", properties: { posts: { type: "array", items: { type: "object", properties: { author: { type: "string" }, text: { type: "string" }, permalink: { type: "string" } } } } } },
+          maxSteps: 6,
+        }, 90_000);
+        for (const p of (r?.extracted?.posts ?? [])) {
+          if (!p?.text || !p?.permalink) continue;
+          posts.push({ text: String(p.text).slice(0, 600), permalink: String(p.permalink), author: String(p.author ?? ""), profile: "" });
+        }
       }
-    });
+    }
+
+    if (!posts.length && discovery === "cdp" && !sess?.context_id) {
+      return json({ ok: false, error: "no_discovery_channel", detail: "browser identity not connected and Skyvern unavailable", queries });
+    }
+
 
     // Drop anything we already admitted, and anything with no intent signal.
     const { data: known } = await s.from("ao_leads").select("external_url").not("external_url", "is", null).limit(500);
@@ -135,11 +166,20 @@ Deno.serve(async (req) => {
         });
         if (review.verdict === "block") {
           comment = { blocked: review.issues };
-        } else {
+        } else if (sess?.context_id && sess.status === "connected") {
           try {
             const r = await fbDo(sess.context_id, (cdp) => commentOnPost(cdp, post.permalink, review.final));
             comment = { ok: r.ok, text: review.final };
           } catch (e) { comment = { ok: false, error: (e as Error).message }; }
+        } else if (skyvernAvailable()) {
+          const r: any = await runTask({
+            url: post.permalink,
+            goal: "Post this reply as a public comment on the post: " + review.final,
+            maxSteps: 8,
+          }, 90_000);
+          comment = { ok: Boolean(r.ok), via: "skyvern", text: review.final, error: r.error ?? r.failure ?? null };
+        } else {
+          comment = { ok: false, error: "no_comment_channel", text: review.final };
         }
       }
 

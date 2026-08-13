@@ -4,6 +4,7 @@
 // runs the memory lifecycle (fill → finetune → free). Every beat is recorded,
 // so "is the agency awake?" is an evidence question, not a feeling.
 import { gsb } from "../_shared/governor.ts";
+import { notifyOwner, esc } from "../_shared/telegram-council.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -49,10 +50,15 @@ Deno.serve(async (req) => {
     jobs.session = { skipped: true, status: sess?.status ?? "none" };
   }
 
-  // 2. Outreach: contact and follow up every lead that is due.
+  // 2. Inbox: real humans who messaged the Page, commented, or filled a lead
+  //    ad. Application identity (Graph token) — works with no browser at all.
+  jobs.inbox = await call("inbox-tick", { mode, limit: 20, max: 8 }, 50000);
+
+  // 2a. Outreach: contact and follow up every lead that is due.
   const outreach = await call("outreach-tick", { limit: 6, mode });
   jobs.outreach = outreach;
-  const leadsTouched = Number((outreach as any)?.body?.processed ?? 0);
+  const leadsTouched = Number((outreach as any)?.body?.processed ?? 0)
+    + Number((jobs.inbox as any)?.body?.admitted ?? 0);
 
   // 2b. Prospecting: go FIND buyers (every 5th minute — search is expensive).
   if (new Date().getUTCMinutes() % 5 === 0) {
@@ -66,6 +72,13 @@ Deno.serve(async (req) => {
   jobs.council = new Date().getUTCMinutes() % 2 === 0
     ? await call("council", { action: "tick", mode, limit: 2 }, 55000)
     : { skipped: true };
+
+  // 2d. Engineering department: audit → vote → ship website changes.
+  //     Slowest lane of all: the site changes deliberately, not constantly.
+  jobs.dev = new Date().getUTCMinutes() % 20 === 0
+    ? await call("dev-council", { action: "tick" }, 55000)
+    : { skipped: true };
+
 
   // 3. Push missions through the pipeline.
   const agency = await call("agency-os", { action: "tick", mode, limit: 3, cycles: 2 });
@@ -89,10 +102,30 @@ Deno.serve(async (req) => {
     notes: ok ? null : "one or more jobs reported failure",
   });
 
+  // 5. Owner briefing over Telegram: new customers as they arrive, and an
+  //    hourly line on the board. The owner never has to open a dashboard.
+  try {
+    const admitted = Number((jobs.inbox as any)?.body?.admitted ?? 0);
+    if (admitted > 0) {
+      const names = ((jobs.inbox as any)?.body?.leads ?? [])
+        .map((l: any) => `• ${l.who}: ${l.headline}`).join("\n").slice(0, 1200);
+      await notifyOwner(`🟢 <b>${admitted} new customer(s)</b>\n${esc(names)}`);
+    }
+    const { data: esc10 } = await s.from("ao_missions")
+      .select("title").eq("needs_human", true).limit(3);
+    if (new Date().getUTCMinutes() === 0) {
+      await notifyOwner(
+        `⏱ <b>Hourly</b> — leads touched ${leadsTouched}, missions ${missionsTouched}` +
+        (esc10?.length ? `\n⚠️ needs human: ${esc10.map((m: any) => esc(m.title)).join(", ")}` : ""),
+      );
+    }
+  } catch { /* the heartbeat never dies for a notification */ }
+
   // Keep the beat log bounded (the same fill-then-free rule applied to telemetry).
   const { data: old } = await s.from("ao_runner_beats")
     .select("id").order("beat_at", { ascending: false }).range(5000, 5200);
   if (old?.length) await s.from("ao_runner_beats").delete().in("id", old.map((o: any) => o.id));
+
 
   return json({ ok, mode, duration_ms: Date.now() - started, jobs });
 });
