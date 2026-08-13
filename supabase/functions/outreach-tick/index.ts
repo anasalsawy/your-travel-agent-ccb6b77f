@@ -7,6 +7,8 @@ import { llm, safeParse } from "../_shared/lobe-runtime.ts";
 import { gsb, maySpeak, nextActionAt, recordSideEffect, GOVERNOR } from "../_shared/governor.ts";
 import { deliver, type Lead } from "../_shared/channels.ts";
 import { fbDo, readThread } from "../_shared/facebook.ts";
+import { playbookBlock } from "../_shared/playbook.ts";
+import { reviewOutbound, recordReview } from "../_shared/supervisor.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +18,7 @@ const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: 
 
 const STRATEGIST = [
   "You are the STRATEGIST lobe of the agency's outreach agent.",
+  playbookBlock(),
   "Goal: convert an inbound travel lead into a paying booking, without a human.",
   "You see the lead, the itinerary, the full conversation so far, and the cadence step.",
   "",
@@ -29,6 +32,7 @@ const STRATEGIST = [
 
 const WRITER = [
   "You are Maya, a senior human travel agent at Your Travel Agent.",
+  playbookBlock(),
   "Write the actual message that will be sent to this person right now.",
   "Voice: warm, concise, specific, zero corporate filler, no emojis, no markdown.",
   "2–5 short sentences. Reference their actual trip details. End with one clear question or next step.",
@@ -47,10 +51,13 @@ Deno.serve(async (req) => {
     const dry = body.dry_run === true;
     const s = gsb();
 
-    const { data: due } = await s.from("ao_leads")
+    let q = s.from("ao_leads")
       .select("*")
-      .not("status", "in", '("won","lost","archived","stopped")')
-      .lte("next_action_at", new Date().toISOString())
+      .not("status", "in", '("won","lost","archived","stopped")');
+    // A council delegation may target one specific lead; otherwise work the queue.
+    if (body.lead_id) q = q.eq("id", body.lead_id);
+    else q = q.lte("next_action_at", new Date().toISOString());
+    const { data: due } = await q
       .order("priority", { ascending: true })
       .order("next_action_at", { ascending: true })
       .limit(limit);
@@ -117,7 +124,7 @@ async function workLead(lead: any, dry: boolean) {
     value_usd: lead.estimated_value, last_reply_at: lead.last_reply_at,
   });
 
-  const strat = safeParse(await llm(STRATEGIST, [{ role: "user", content: `LEAD:\n${card}\n\nCONVERSATION:\n${transcript || "(no contact yet)"}` }], "google/gemini-2.5-flash", { max_tokens: 500 }));
+  const strat = safeParse(await llm(STRATEGIST, [{ role: "user", content: `LEAD:\n${card}\n\nCONVERSATION:\n${transcript || "(no contact yet)"}` }], "auto", { max_tokens: 500 }));
 
   await s.from("ao_dialogue").insert({
     mission_id: lead.mission_id, from_agent: "concierge", lobe: "strategist", kind: "plan",
@@ -139,9 +146,28 @@ async function workLead(lead: any, dry: boolean) {
   const writeOut = safeParse(await llm(WRITER, [{
     role: "user",
     content: `LEAD:\n${card}\n\nCONVERSATION:\n${transcript || "(first contact)"}\n\nINTENT: ${strat.intent}\nNEXT STEP TO ACHIEVE: ${strat.ask}`,
-  }], "google/gemini-2.5-flash", { max_tokens: 400 }));
-  const message = String(writeOut.message ?? "").trim();
-  if (!message) throw new Error("writer_produced_nothing");
+  }], "auto", { max_tokens: 500 }));
+  const draft = String(writeOut.message ?? "").trim();
+  if (!draft) throw new Error("writer_produced_nothing");
+
+  // 3b. SUPERVISION — nothing reaches a customer unreviewed.
+  const review = await reviewOutbound(draft, {
+    lead: { headline: lead.headline, itinerary: lead.itinerary, stage: lead.stage, value: lead.estimated_value },
+    stage: lead.stage, intent: strat.intent, transcript,
+  });
+  await recordReview(review, {
+    mission_id: lead.mission_id, lead_id: lead.id, agent_key: "concierge",
+    kind: "outbound_message", draft, delivered: review.verdict !== "block",
+  });
+  if (review.verdict === "block") {
+    await s.from("ao_leads").update({ next_action_at: nextActionAt(Math.max(1, lead.cadence_step)) }).eq("id", lead.id);
+    await s.from("ao_dialogue").insert({
+      mission_id: lead.mission_id, from_agent: "chief", lobe: "supervisor", kind: "blocker",
+      content: "Blocked outbound draft: " + JSON.stringify(review.issues).slice(0, 800),
+    });
+    return { lead_id: lead.id, ok: true, action: "blocked_by_supervisor", issues: review.issues };
+  }
+  const message = review.final;
 
   // 4. Communication Governor.
   const verdict = await maySpeak(lead.id, message);
@@ -149,7 +175,7 @@ async function workLead(lead: any, dry: boolean) {
     await s.from("ao_leads").update({ next_action_at: verdict.retryAt ?? nextActionAt(lead.cadence_step + 1) }).eq("id", lead.id);
     return { lead_id: lead.id, ok: true, action: "withheld", reason: verdict.reason };
   }
-  if (dry) return { lead_id: lead.id, ok: true, action: "dry_run", message };
+  if (dry) return { lead_id: lead.id, ok: true, action: "dry_run", message, supervision: review.verdict };
 
   // 5. Deliver down the ladder.
   const { delivery, attempts } = await deliver(lead as Lead, message);
@@ -188,5 +214,5 @@ async function workLead(lead: any, dry: boolean) {
     delivery.ok ? "outreach_sent" : "outreach_failed",
     `${lead.headline} via ${delivery.channel}`, { attempts });
 
-  return { lead_id: lead.id, ok: delivery.ok, channel: delivery.channel, intent: strat.intent, message };
+  return { lead_id: lead.id, ok: delivery.ok, channel: delivery.channel, intent: strat.intent, supervision: review.verdict, message };
 }

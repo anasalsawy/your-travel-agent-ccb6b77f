@@ -259,6 +259,33 @@ export type Database = {
           },
         ]
       }
+      ai_concurrency_leases: {
+        Row: {
+          acquired_at: string
+          expires_at: string
+          holder: string | null
+          id: string
+          model_id: string
+          units: number
+        }
+        Insert: {
+          acquired_at?: string
+          expires_at?: string
+          holder?: string | null
+          id?: string
+          model_id: string
+          units?: number
+        }
+        Update: {
+          acquired_at?: string
+          expires_at?: string
+          holder?: string | null
+          id?: string
+          model_id?: string
+          units?: number
+        }
+        Relationships: []
+      }
       ai_conversations: {
         Row: {
           admin_notes: string | null
@@ -735,6 +762,54 @@ export type Database = {
           },
         ]
       }
+      ao_delegations: {
+        Row: {
+          attempts: number
+          created_at: string
+          directive: string
+          escalation_reason: string | null
+          from_agent: string
+          id: string
+          lead_id: string | null
+          mission_id: string | null
+          rationale: string | null
+          result: Json
+          status: string
+          to_agent: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          directive: string
+          escalation_reason?: string | null
+          from_agent?: string
+          id?: string
+          lead_id?: string | null
+          mission_id?: string | null
+          rationale?: string | null
+          result?: Json
+          status?: string
+          to_agent: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          directive?: string
+          escalation_reason?: string | null
+          from_agent?: string
+          id?: string
+          lead_id?: string | null
+          mission_id?: string | null
+          rationale?: string | null
+          result?: Json
+          status?: string
+          to_agent?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ao_dialogue: {
         Row: {
           content: string
@@ -821,6 +896,7 @@ export type Database = {
           created_at: string
           estimated_value: number | null
           external_thread_id: string | null
+          external_url: string | null
           headline: string
           id: string
           itinerary: Json
@@ -845,6 +921,7 @@ export type Database = {
           created_at?: string
           estimated_value?: number | null
           external_thread_id?: string | null
+          external_url?: string | null
           headline: string
           id?: string
           itinerary?: Json
@@ -869,6 +946,7 @@ export type Database = {
           created_at?: string
           estimated_value?: number | null
           external_thread_id?: string | null
+          external_url?: string | null
           headline?: string
           id?: string
           itinerary?: Json
@@ -1123,6 +1201,54 @@ export type Database = {
           target_path?: string | null
           title?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      ao_supervision: {
+        Row: {
+          agent_key: string
+          created_at: string
+          delivered: boolean
+          draft: string
+          final_text: string | null
+          id: string
+          issues: Json
+          kind: string
+          lead_id: string | null
+          mission_id: string | null
+          reviewer_model: string | null
+          score: number | null
+          verdict: string
+        }
+        Insert: {
+          agent_key?: string
+          created_at?: string
+          delivered?: boolean
+          draft: string
+          final_text?: string | null
+          id?: string
+          issues?: Json
+          kind?: string
+          lead_id?: string | null
+          mission_id?: string | null
+          reviewer_model?: string | null
+          score?: number | null
+          verdict?: string
+        }
+        Update: {
+          agent_key?: string
+          created_at?: string
+          delivered?: boolean
+          draft?: string
+          final_text?: string | null
+          id?: string
+          issues?: Json
+          kind?: string
+          lead_id?: string | null
+          mission_id?: string | null
+          reviewer_model?: string | null
+          score?: number | null
+          verdict?: string
         }
         Relationships: []
       }
@@ -3625,6 +3751,15 @@ export type Database = {
         Args: { fn: string; job: string; payload?: Json }
         Returns: undefined
       }
+      acquire_ai_slot: {
+        Args: {
+          p_budget: number
+          p_holder: string
+          p_model: string
+          p_units: number
+        }
+        Returns: string
+      }
       get_customer_context: { Args: { p_customer_id: string }; Returns: Json }
       get_or_create_customer_by_phone: {
         Args: { p_phone: string }
@@ -3643,6 +3778,7 @@ export type Database = {
         Args: { p_conversation_id: string; p_customer_id: string }
         Returns: undefined
       }
+      release_ai_slot: { Args: { p_id: string }; Returns: undefined }
       search_documents: {
         Args: {
           match_count?: number

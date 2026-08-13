@@ -154,3 +154,7 @@ project_id = "wpwdxtyufpewdyffxlgo"
     verify_jwt = false
   [functions.marketing-os]
     verify_jwt = false
+  [functions.council]
+    verify_jwt = false
+  [functions.prospect-tick]
+    verify_jwt = false
