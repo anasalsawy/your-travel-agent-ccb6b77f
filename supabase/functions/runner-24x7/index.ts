@@ -49,10 +49,15 @@ Deno.serve(async (req) => {
     jobs.session = { skipped: true, status: sess?.status ?? "none" };
   }
 
-  // 2. Outreach: contact and follow up every lead that is due.
+  // 2. Inbox: real humans who messaged the Page, commented, or filled a lead
+  //    ad. Application identity (Graph token) — works with no browser at all.
+  jobs.inbox = await call("inbox-tick", { mode, limit: 20, max: 8 }, 50000);
+
+  // 2a. Outreach: contact and follow up every lead that is due.
   const outreach = await call("outreach-tick", { limit: 6, mode });
   jobs.outreach = outreach;
-  const leadsTouched = Number((outreach as any)?.body?.processed ?? 0);
+  const leadsTouched = Number((outreach as any)?.body?.processed ?? 0)
+    + Number((jobs.inbox as any)?.body?.admitted ?? 0);
 
   // 2b. Prospecting: go FIND buyers (every 5th minute — search is expensive).
   if (new Date().getUTCMinutes() % 5 === 0) {
@@ -66,6 +71,13 @@ Deno.serve(async (req) => {
   jobs.council = new Date().getUTCMinutes() % 2 === 0
     ? await call("council", { action: "tick", mode, limit: 2 }, 55000)
     : { skipped: true };
+
+  // 2d. Engineering department: audit → vote → ship website changes.
+  //     Slowest lane of all: the site changes deliberately, not constantly.
+  jobs.dev = new Date().getUTCMinutes() % 20 === 0
+    ? await call("dev-council", { action: "tick" }, 55000)
+    : { skipped: true };
+
 
   // 3. Push missions through the pipeline.
   const agency = await call("agency-os", { action: "tick", mode, limit: 3, cycles: 2 });
