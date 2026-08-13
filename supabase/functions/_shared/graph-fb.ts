@@ -82,11 +82,12 @@ export async function listConversations(limit = 25): Promise<GraphThread[]> {
 }
 
 export async function readConversation(conversationId: string, limit = 20) {
+  const pageId = getPageId();
   const res = await g(`/${conversationId}/messages`, {
     params: { limit: String(limit), fields: "message,from,created_time" },
   });
   return (res.data ?? []).reverse().map((m: any) => ({
-    who: m.from?.id === PAGE_ID ? "us" : (m.from?.name ?? "them"),
+    who: m.from?.id === pageId ? "us" : (m.from?.name ?? "them"),
     body: m.message ?? "",
     at: m.created_time,
   }));
@@ -100,7 +101,7 @@ export async function sendDm(psid: string, text: string, tag?: string) {
     messaging_type: tag ? "MESSAGE_TAG" : "RESPONSE",
   };
   if (tag) body.tag = tag;
-  const res = await g(`/${PAGE_ID}/messages`, { method: "POST", body: JSON.stringify(body) });
+  const res = await g(`/${getPageId()}/messages`, { method: "POST", body: JSON.stringify(body) });
   return { ok: true, message_id: res.message_id ?? null, recipient_id: res.recipient_id ?? psid };
 }
 
