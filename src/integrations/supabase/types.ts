@@ -4079,6 +4079,14 @@ export type Database = {
         }
         Returns: string
       }
+      agent_list_tables: {
+        Args: never
+        Returns: {
+          columns: string
+          table_name: string
+        }[]
+      }
+      agent_sql: { Args: { q: string }; Returns: Json }
       ai_traffic_claim: {
         Args: {
           p_budget: number
