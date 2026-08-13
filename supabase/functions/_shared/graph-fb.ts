@@ -39,7 +39,7 @@ async function g(path: string, init?: RequestInit & { params?: Record<string, st
 export async function whoami() {
   if (!graphConfigured()) return { ok: false, error: "meta_not_configured" };
   try {
-    const me = await g(`/${PAGE_ID}`, { params: { fields: "id,name,category,fan_count" } });
+    const me = await g(`/${getPageId()}`, { params: { fields: "id,name,category,fan_count" } });
     return { ok: true, page: me };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
