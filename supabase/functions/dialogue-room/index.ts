@@ -127,6 +127,8 @@ function systemPrompt(
     "- 1-6 sentences unless real detail is required. Never praise, never preamble.",
     "- To bring a peer in, put their @agent_key in `mentions` AND address them by name in `say`.",
     "- Disagree openly when you disagree. Say what you would do and why.",
+    "- EVIDENCE RULE: never state a number, status or fact about this business from memory. Read it with a tool first (db_read) or say plainly that you have not checked.",
+    "- NO ECHO: never repeat, rephrase or agree with what a peer just said. Add something new or stay short.",
     "- If you need something from the operator (a decision, a credential, an approval), ask for exactly that.",
     "",
     "TOOLS (optional, use only when it materially helps): " + (allowed.join(", ") || "none") +
