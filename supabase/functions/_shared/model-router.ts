@@ -201,6 +201,27 @@ function isSwitchLimit(text: string): boolean {
   return /model_switching_limit|switch models|too many model/i.test(text ?? "");
 }
 
+// Featherless plans also cap CONCURRENCY in "units", and a 70B request costs 4
+// units on the small plans — so two parallel agent lanes cannot both run a 70B.
+// Two defences: (a) serialize Featherless calls inside the isolate, (b) when the
+// provider says we are over the unit budget, drop to light models for a while.
+function isConcurrencyLimit(text: string): boolean {
+  return /concurrency limit|over limit by|concurrent requests/i.test(text ?? "");
+}
+
+const HEAVY = /(70b|72b|123b|235b|405b|480b|8x22b)/i;
+let lightOnlyUntil = 0;
+
+let fxQueue: Promise<unknown> = Promise.resolve();
+/** One Featherless request at a time per isolate. */
+function withFeatherlessSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const run = fxQueue.then(fn, fn);
+  fxQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** Last model that actually worked, recovered across isolates from health data. */
 async function stickyModel(): Promise<string | null> {
   if (sticky && Date.now() - sticky.at < STICKY_TTL_MS) return sticky.model;
@@ -235,8 +256,20 @@ async function callOnce(model: string, body: any): Promise<{ ok: boolean; status
     delete payload.temperature;
     delete payload.max_tokens;
   }
-  const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
-  const text = await r.text();
+  const doFetch = async () => {
+    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
+    return { res, body: await res.text() };
+  };
+  let out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
+  // A unit-budget rejection is transient: wait for the in-flight work to drain
+  // and try the same model twice before blaming it.
+  for (let i = 0; i < 2 && !out.res.ok && isConcurrencyLimit(out.body); i++) {
+    lightOnlyUntil = Date.now() + 5 * 60_000;
+    await sleep(2500 * (i + 1));
+    out = provider === "featherless" ? await withFeatherlessSlot(doFetch) : await doFetch();
+  }
+  const r = out.res;
+  const text = out.body;
   if (!r.ok) return { ok: false, status: r.status, text: text.slice(0, 400) };
   try {
     const j = JSON.parse(text);
@@ -259,12 +292,15 @@ export async function buildChain(requested?: string): Promise<string[]> {
   if (hasFeatherless() && !switchLocked) {
     if (!explicit) {
       push(settings.default_model);          // operator pin wins
-      push(await stickyModel());             // then: whatever is already working
+      const st = await stickyModel();        // then: whatever is already working
+      if (st && !(Date.now() < lightOnlyUntil && HEAVY.test(st))) push(st);
     }
     if (settings.auto_select) {
       // Only TWO exploratory candidates — switching is a rationed resource.
-      const ranked = await rankModels(2);
-      for (const r of ranked) push(r.model_id);
+      const ranked = await rankModels(8);
+      const light = Date.now() < lightOnlyUntil;
+      const pickable = light ? ranked.filter((r) => !HEAVY.test(r.model_id)) : ranked;
+      for (const r of pickable.slice(0, 2)) push(r.model_id);
     }
     for (const f of settings.fallback_models ?? []) push(f);
   }
@@ -300,6 +336,12 @@ export async function routeChat(
     try {
       const res = await callOnce(model, body);
       const latency = Date.now() - t0;
+      if (!res.ok && isConcurrencyLimit(res.text)) {
+        lightOnlyUntil = Date.now() + 5 * 60_000;
+        attempts.push({ model, ok: false, status: res.status, error: "concurrency_limit" });
+        lastErr = model + " → concurrency limit";
+        continue;
+      }
       if (!res.ok && isSwitchLimit(res.text)) {
         // Account-level throttle, NOT a bad model. Do not blame the model, do
         // not keep hopping: lock switching for a minute and take the fallback
