@@ -31,7 +31,8 @@ import AdminAgencyOS from "./pages/AdminAgencyOS";
 import AdminModels from "./pages/AdminModels";
 import AdminLeadEngine from "./pages/AdminLeadEngine";
 import AdminMarketing from "./pages/AdminMarketing";
-import AdminCouncil from "./pages/AdminCouncil";
+import AdminCallCenter from "./pages/AdminCallCenter";
+import AdminLoopAgent from "./pages/AdminLoopAgent";
 import AdminDialogue from "./pages/AdminDialogue";
 import AdminAgentRooms from "./pages/AdminAgentRooms";
 import AdminShopperProfile from "./pages/AdminShopperProfile";
@@ -104,7 +105,9 @@ const App = () => (
             <Route path="/admin/models" element={<AdminModels />} />
             <Route path="/admin/leads" element={<AdminLeadEngine />} />
             <Route path="/admin/marketing" element={<AdminMarketing />} />
-            <Route path="/admin/council" element={<AdminCouncil />} />
+            <Route path="/admin/call-center" element={<AdminCallCenter />} />
+            <Route path="/admin/agent" element={<AdminLoopAgent />} />
+            <Route path="/admin/council" element={<Navigate to="/admin/agent" replace />} />
             <Route path="/admin/dialogue" element={<AdminDialogue />} />
 
             <Route path="/admin/agent-rooms" element={<AdminAgentRooms />} />
