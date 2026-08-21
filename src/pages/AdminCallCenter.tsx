@@ -15,8 +15,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  AGENCY_DIRECTORY, CALL_STATES, buildCallScript, ivrPlanFor, type BookingBrief,
+  AGENCY_DIRECTORY, CALL_STATES, buildCallScript, extractPhone, ivrPlanFor, type BookingBrief,
 } from "@/lib/booking-call-script";
+
 
 type Call = {
   id: string;
