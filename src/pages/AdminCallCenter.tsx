@@ -65,13 +65,12 @@ export default function AdminCallCenter() {
     "Introduce Your Travel Agent, qualify the trip they want, and book a follow-up."
   );
   const [brief, setBrief] = useState<BookingBrief>({
-    agency: "Alaska Airlines",
-    travelers: "",
+    airline: "Alaska Airlines",
     trip: "",
-    cabin: "Economy",
-    special: "",
-    handoffPhone: "",
+    traveler: "",
+    payment: "",
   });
+
   const [calls, setCalls] = useState<Call[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
