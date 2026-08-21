@@ -153,13 +153,14 @@ export default function AdminCallCenter() {
   }
 
   function dialBooking() {
-    const n = AGENCY_DIRECTORY[brief.agency];
-    if (!n) return toast.error("Unknown agency");
-    if (!brief.travelers.trim() || !brief.trip.trim()) {
-      return toast.error("Travelers and trip details are required before dialing.");
+    const n = AGENCY_DIRECTORY[brief.airline];
+    if (!n) return toast.error("Unknown airline");
+    if (!brief.traveler.trim() || !brief.trip.trim()) {
+      return toast.error("Trip details and traveler details are required before dialing.");
     }
     dial(n, script, "booking-caller");
   }
+
 
   async function hangup(id: string) {
     await call("vapi-call-hangup", { call_id: id }, "Hangup sent");
