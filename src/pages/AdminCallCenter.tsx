@@ -15,8 +15,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  AGENCY_DIRECTORY, CALL_STATES, buildCallScript, ivrPlanFor, type BookingBrief,
+  AGENCY_DIRECTORY, CALL_STATES, buildCallScript, extractPhone, ivrPlanFor, type BookingBrief,
 } from "@/lib/booking-call-script";
+
 
 type Call = {
   id: string;
@@ -65,13 +66,12 @@ export default function AdminCallCenter() {
     "Introduce Your Travel Agent, qualify the trip they want, and book a follow-up."
   );
   const [brief, setBrief] = useState<BookingBrief>({
-    agency: "Alaska Airlines",
-    travelers: "",
+    airline: "Alaska Airlines",
     trip: "",
-    cabin: "Economy",
-    special: "",
-    handoffPhone: "",
+    traveler: "",
+    payment: "",
   });
+
   const [calls, setCalls] = useState<Call[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
@@ -154,13 +154,14 @@ export default function AdminCallCenter() {
   }
 
   function dialBooking() {
-    const n = AGENCY_DIRECTORY[brief.agency];
-    if (!n) return toast.error("Unknown agency");
-    if (!brief.travelers.trim() || !brief.trip.trim()) {
-      return toast.error("Travelers and trip details are required before dialing.");
+    const n = AGENCY_DIRECTORY[brief.airline];
+    if (!n) return toast.error("Unknown airline");
+    if (!brief.traveler.trim() || !brief.trip.trim()) {
+      return toast.error("Trip details and traveler details are required before dialing.");
     }
     dial(n, script, "booking-caller");
   }
+
 
   async function hangup(id: string) {
     await call("vapi-call-hangup", { call_id: id }, "Hangup sent");
@@ -184,13 +185,13 @@ export default function AdminCallCenter() {
 
   async function handoff() {
     if (!activeId) return toast.error("No live call selected");
-    if (!/^\+\d{7,15}$/.test(brief.handoffPhone)) {
-      return toast.error("Add the traveler handoff phone in E.164 first");
-    }
-    await call("vapi-call-transfer", { call_id: activeId, destination: brief.handoffPhone },
+    const dest = extractPhone(brief.traveler);
+    if (!dest) return toast.error("Add the traveler's phone number in Traveler details first");
+    await call("vapi-call-transfer", { call_id: activeId, destination: dest },
       "Transferring to traveler for secure payment");
     setState("SECURE_PAYMENT");
   }
+
 
   async function listenLive() {
     if (!activeId) return;
@@ -240,53 +241,34 @@ export default function AdminCallCenter() {
 
             <TabsContent value="booking" className="space-y-3 px-4 pb-4">
               <div className="space-y-1">
-                <Label className="text-xs">Agency / airline</Label>
-                <Select value={brief.agency} onValueChange={(v) => setBrief({ ...brief, agency: v })}>
+                <Label className="text-xs">Airline</Label>
+                <Select value={brief.airline} onValueChange={(v) => setBrief({ ...brief, airline: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-popover">
+                  <SelectContent className="max-h-72 bg-popover">
                     {Object.keys(AGENCY_DIRECTORY).map((a) => (
                       <SelectItem key={a} value={a}>{a}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-[10px] text-muted-foreground">{AGENCY_DIRECTORY[brief.agency]}</p>
+                <p className="text-[10px] text-muted-foreground">{AGENCY_DIRECTORY[brief.airline]}</p>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Travelers (full names, DOB)</Label>
-                <Textarea rows={2} className="text-xs" value={brief.travelers}
-                  onChange={(e) => setBrief({ ...brief, travelers: e.target.value })}
-                  placeholder="ANAS ALSAWY, 1985-04-02" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Trip</Label>
-                <Textarea rows={2} className="text-xs" value={brief.trip}
+                <Label className="text-xs">Trip details</Label>
+                <Textarea rows={3} className="text-xs" value={brief.trip}
                   onChange={(e) => setBrief({ ...brief, trip: e.target.value })}
-                  placeholder="IAH → CAI, depart Sep 12, return Sep 30" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">Cabin</Label>
-                  <Select value={brief.cabin} onValueChange={(v) => setBrief({ ...brief, cabin: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-popover">
-                      {["Economy", "Premium Economy", "Business", "First"].map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Handoff phone</Label>
-                  <Input className="text-xs" value={brief.handoffPhone}
-                    onChange={(e) => setBrief({ ...brief, handoffPhone: e.target.value })}
-                    placeholder="+1713..." />
-                </div>
+                  placeholder={"IAH → CAI, depart Sep 12 2026, return Sep 30 2026\n1 adult, economy, 2 checked bags, aisle seat"} />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Special requirements</Label>
-                <Input className="text-xs" value={brief.special}
-                  onChange={(e) => setBrief({ ...brief, special: e.target.value })}
-                  placeholder="Aisle seats, 2 checked bags" />
+                <Label className="text-xs">Traveler details</Label>
+                <Textarea rows={3} className="text-xs" value={brief.traveler}
+                  onChange={(e) => setBrief({ ...brief, traveler: e.target.value })}
+                  placeholder={"ANAS ALSAWY, DOB 1985-04-02, male\nPassport A1234567 (USA), +1 713 469 8336, anas@email.com"} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Payment details</Label>
+                <Textarea rows={3} className="text-xs" value={brief.payment}
+                  onChange={(e) => setBrief({ ...brief, payment: e.target.value })}
+                  placeholder={"Visa 4124 8821 9003 1174, exp 09/28, CVV 123\nName on card ANAS ALSAWY, billing ZIP 77002"} />
               </div>
 
               <div className="rounded-md border border-border/60 bg-muted/30 p-2">
@@ -294,9 +276,10 @@ export default function AdminCallCenter() {
                   <FileText className="h-3 w-3" /> IVR plan
                 </p>
                 <ol className="list-inside list-decimal space-y-0.5 text-[11px] text-muted-foreground">
-                  {ivrPlanFor(brief.agency).map((s) => <li key={s}>{s}</li>)}
+                  {ivrPlanFor(brief.airline).map((s) => <li key={s}>{s}</li>)}
                 </ol>
               </div>
+
 
               <Button className="w-full" disabled={busy} onClick={dialBooking}>
                 <Phone className="mr-2 h-4 w-4" /> Start booking call
