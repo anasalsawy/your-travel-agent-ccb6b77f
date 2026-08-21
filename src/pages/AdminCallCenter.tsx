@@ -184,13 +184,13 @@ export default function AdminCallCenter() {
 
   async function handoff() {
     if (!activeId) return toast.error("No live call selected");
-    if (!/^\+\d{7,15}$/.test(brief.handoffPhone)) {
-      return toast.error("Add the traveler handoff phone in E.164 first");
-    }
-    await call("vapi-call-transfer", { call_id: activeId, destination: brief.handoffPhone },
+    const dest = extractPhone(brief.traveler);
+    if (!dest) return toast.error("Add the traveler's phone number in Traveler details first");
+    await call("vapi-call-transfer", { call_id: activeId, destination: dest },
       "Transferring to traveler for secure payment");
     setState("SECURE_PAYMENT");
   }
+
 
   async function listenLive() {
     if (!activeId) return;
