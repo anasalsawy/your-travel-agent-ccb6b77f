@@ -21,6 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { AirportAutocomplete } from "@/components/flights/AirportAutocomplete";
+import { DealsSection } from "@/components/home/DealsSection";
 import { supabase } from "@/integrations/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import logo from "@/assets/logo-black-gold-shield.png";
@@ -728,6 +729,8 @@ const Index = () => {
             </div>
           </div>
         </section>
+
+        <DealsSection />
 
         <section className="border-t border-slate-800 py-8">
           <div className="container mx-auto px-4 text-center text-sm text-slate-300">
