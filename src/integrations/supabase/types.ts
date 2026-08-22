@@ -2227,6 +2227,81 @@ export type Database = {
         }
         Relationships: []
       }
+      flight_deals: {
+        Row: {
+          airline: string | null
+          airline_code: string | null
+          arrival_airport_code: string | null
+          country: string | null
+          created_at: string
+          currency: string
+          deal_key: string
+          departure_airport_code: string | null
+          departure_id: string
+          destination_name: string | null
+          fetched_at: string
+          flight_duration: number | null
+          flight_link: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean
+          our_price: number
+          outbound_date: string | null
+          return_date: string | null
+          source_price: number
+          stops: number | null
+          trip_type: string | null
+        }
+        Insert: {
+          airline?: string | null
+          airline_code?: string | null
+          arrival_airport_code?: string | null
+          country?: string | null
+          created_at?: string
+          currency?: string
+          deal_key: string
+          departure_airport_code?: string | null
+          departure_id: string
+          destination_name?: string | null
+          fetched_at?: string
+          flight_duration?: number | null
+          flight_link?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          our_price: number
+          outbound_date?: string | null
+          return_date?: string | null
+          source_price: number
+          stops?: number | null
+          trip_type?: string | null
+        }
+        Update: {
+          airline?: string | null
+          airline_code?: string | null
+          arrival_airport_code?: string | null
+          country?: string | null
+          created_at?: string
+          currency?: string
+          deal_key?: string
+          departure_airport_code?: string | null
+          departure_id?: string
+          destination_name?: string | null
+          fetched_at?: string
+          flight_duration?: number | null
+          flight_link?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          our_price?: number
+          outbound_date?: string | null
+          return_date?: string | null
+          source_price?: number
+          stops?: number | null
+          trip_type?: string | null
+        }
+        Relationships: []
+      }
       foundry_connection_backups: {
         Row: {
           agent_name: string | null
