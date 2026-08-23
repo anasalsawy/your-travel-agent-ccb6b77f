@@ -3,11 +3,25 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const VAPI_API_KEY = Deno.env.get("VAPI_API_KEY")!;
+const VAPI_API_KEY = Deno.env.get("VAPI_API_KEY") ?? Deno.env.get("VAPI_PRIVATE_KEY")!;
 const VAPI_ASSISTANT_ID_DEFAULT = Deno.env.get("VAPI_ASSISTANT_ID") ?? "b9b4545c-c322-4175-95ed-deda3f216c6c";
-const VAPI_PHONE_NUMBER_ID = Deno.env.get("VAPI_PHONE_NUMBER_ID") ?? "";
+const VAPI_PHONE_NUMBER_ID_ENV = Deno.env.get("VAPI_PHONE_NUMBER_ID") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Fall back to the first phone number on the Vapi account when no secret is set.
+async function resolvePhoneNumberId(): Promise<string> {
+  if (VAPI_PHONE_NUMBER_ID_ENV) return VAPI_PHONE_NUMBER_ID_ENV;
+  const res = await fetch("https://api.vapi.ai/phone-number", {
+    headers: { Authorization: "Bearer " + VAPI_API_KEY },
+  });
+  const list = await res.json();
+  if (!res.ok) throw new Error("Vapi phone-number lookup failed: " + JSON.stringify(list).slice(0, 300));
+  const first = Array.isArray(list) ? list.find((p: any) => p?.id) : null;
+  if (!first) throw new Error("No phone number found on your Vapi account — buy/import a number in Vapi, or set VAPI_PHONE_NUMBER_ID.");
+  return first.id as string;
+}
+
 
 function pickMonitorUrl(payload: any): string | null {
   const candidates = [
