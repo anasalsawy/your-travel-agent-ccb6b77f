@@ -3,11 +3,25 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const VAPI_API_KEY = Deno.env.get("VAPI_API_KEY")!;
+const VAPI_API_KEY = Deno.env.get("VAPI_API_KEY") ?? Deno.env.get("VAPI_PRIVATE_KEY")!;
 const VAPI_ASSISTANT_ID_DEFAULT = Deno.env.get("VAPI_ASSISTANT_ID") ?? "b9b4545c-c322-4175-95ed-deda3f216c6c";
-const VAPI_PHONE_NUMBER_ID = Deno.env.get("VAPI_PHONE_NUMBER_ID") ?? "";
+const VAPI_PHONE_NUMBER_ID_ENV = Deno.env.get("VAPI_PHONE_NUMBER_ID") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Fall back to the first phone number on the Vapi account when no secret is set.
+async function resolvePhoneNumberId(): Promise<string> {
+  if (VAPI_PHONE_NUMBER_ID_ENV) return VAPI_PHONE_NUMBER_ID_ENV;
+  const res = await fetch("https://api.vapi.ai/phone-number", {
+    headers: { Authorization: "Bearer " + VAPI_API_KEY },
+  });
+  const list = await res.json();
+  if (!res.ok) throw new Error("Vapi phone-number lookup failed: " + JSON.stringify(list).slice(0, 300));
+  const first = Array.isArray(list) ? list.find((p: any) => p?.id) : null;
+  if (!first) throw new Error("No phone number found on your Vapi account — buy/import a number in Vapi, or set VAPI_PHONE_NUMBER_ID.");
+  return first.id as string;
+}
+
 
 function pickMonitorUrl(payload: any): string | null {
   const candidates = [
@@ -36,9 +50,12 @@ Deno.serve(async (req) => {
     }).select().single();
     if (rowErr) throw rowErr;
 
-    if (!VAPI_PHONE_NUMBER_ID) {
-      await db.from("vapi_calls").update({ status: "failed", summary: "VAPI_PHONE_NUMBER_ID missing" }).eq("id", row.id);
-      throw new Error("VAPI_PHONE_NUMBER_ID not configured — add it in Cloud secrets");
+    let phoneNumberId: string;
+    try {
+      phoneNumberId = await resolvePhoneNumberId();
+    } catch (e) {
+      await db.from("vapi_calls").update({ status: "failed", summary: (e as Error).message.slice(0, 500) }).eq("id", row.id);
+      throw e;
     }
 
     const vapiRes = await fetch("https://api.vapi.ai/call", {
@@ -46,7 +63,7 @@ Deno.serve(async (req) => {
       headers: { "content-type": "application/json", Authorization: "Bearer " + VAPI_API_KEY },
       body: JSON.stringify({
         assistantId: assistantId ?? VAPI_ASSISTANT_ID_DEFAULT,
-        phoneNumberId: VAPI_PHONE_NUMBER_ID,
+        phoneNumberId,
         customer: { number },
         assistantOverrides: {
           variableValues: { mission_goal: goal ?? "", initiating_agent: agent },
