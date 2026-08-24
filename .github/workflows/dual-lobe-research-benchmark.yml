@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - research/full-dual-lobe-benchmark
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
