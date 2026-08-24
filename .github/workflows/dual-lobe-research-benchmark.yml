@@ -1,0 +1,43 @@
+name: Dual-Lobe Research Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/full-dual-lobe-benchmark
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout benchmark source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run complete research benchmark
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          BENCH_OUT: benchmark-results
+        run: node scripts/research-benchmark.mjs | tee benchmark-run.log
+
+      - name: Preserve benchmark data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dual-lobe-benchmark-${{ github.run_id }}
+          path: |
+            benchmark-results/
+            benchmark-run.log
+          if-no-files-found: warn
+          retention-days: 90
