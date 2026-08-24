@@ -195,6 +195,27 @@ export async function provenModels(limit = 4): Promise<string[]> {
   return [];
 }
 
+/**
+ * Vendor-neutral capability tier. Bench profiles want "a big brain" and "a
+ * cheap brain" — not a named vendor model — so they ask for a tier and the
+ * router resolves it against whatever is actually healthy today.
+ */
+export async function tierModel(tier: "heavy" | "light"): Promise<string> {
+  if (!hasFeatherless()) return "auto";
+  try {
+    const proven = await provenModels(8);
+    const pool = proven.length ? proven : (await rankModels(8)).map((r) => r.model_id);
+    if (!pool.length) return "auto";
+    const heavy = pool.filter((m) => HEAVY.test(m));
+    const light = pool.filter((m) => !HEAVY.test(m));
+    if (tier === "heavy") return (heavy[0] ?? pool[0]);
+    return (light[0] ?? pool[pool.length - 1]);
+  } catch {
+    return "auto";
+  }
+}
+
+
 // The plan also caps how many DIFFERENT models the account may switch between
 // per minute. Spreading 16 agents over 16 models therefore guarantees a
 // "model_switching_limit" rejection. The governor keeps the whole organization
