@@ -208,7 +208,7 @@ serve(async (req) => {
     if (!task) throw new Error("task is required");
     const runMode: "safe" | "full" = mode === "full" ? "full" : "safe";
     const runScope = scope === "sensory" || scope === "motor" ? scope : "all";
-    const result = await run(task, Math.min(max_turns ?? 12, 20), runMode, model || "google/gemini-2.5-flash", runScope);
+    const result = await run(task, Math.min(max_turns ?? 12, 20), runMode, model || "auto", runScope);
     return new Response(JSON.stringify(result, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

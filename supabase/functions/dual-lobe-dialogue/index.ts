@@ -37,7 +37,7 @@ const ALLOWLIST_TABLES = new Set([
 const SENSORY_TOOLS = ["db_read", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
 const MOTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_notification", "http_get"];
 
-const DEFAULT_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_MODEL = "auto";
 
 async function llm(system: string, messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
   const r = await routeChatSafe({

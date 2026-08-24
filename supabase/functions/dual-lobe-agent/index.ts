@@ -42,8 +42,8 @@ const EXECUTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_n
 // Executor tools that do NOT mutate state → skip strategist permit (fast-path).
 const READONLY_EXECUTOR_TOOLS = new Set(["http_get"]);
 
-const DEFAULT_STRATEGIST_MODEL = "google/gemini-2.5-flash-lite";
-const DEFAULT_EXECUTOR_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_STRATEGIST_MODEL = "auto";
+const DEFAULT_EXECUTOR_MODEL = "auto";
 
 // ── LLM call ──────────────────────────────────────────────────────
 async function llm(system: string, user: string, model: string): Promise<string> {
