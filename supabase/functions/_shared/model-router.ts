@@ -432,8 +432,16 @@ export async function buildChain(requested?: string): Promise<string[]> {
   const chain: string[] = [];
   const push = (m?: string | null) => { if (m && !chain.includes(m)) chain.push(m); };
 
-  const explicit = requested && requested !== "auto" ? requested : null;
+  let explicit = requested && requested !== "auto" ? requested : null;
+  // A caller may pin a vendor-gateway model (google/…, openai/…). When the
+  // primary provider is configured and gateway fallback is off by policy, that
+  // pin is not honoured as the HEAD of the chain — otherwise a single caller can
+  // drag the whole bench onto a metered gateway (402 payment_required).
+  if (explicit && providerOf(explicit) === "lovable" && hasFeatherless() && settings.allow_lovable_fallback !== true) {
+    explicit = null;
+  }
   if (explicit) push(explicit);
+
 
   const switchLocked = Date.now() < switchLockUntil;
   if (hasFeatherless()) {
