@@ -40,19 +40,12 @@ const MOTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_noti
 const DEFAULT_MODEL = "google/gemini-2.5-flash";
 
 async function llm(system: string, messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: system }, ...messages],
-      response_format: { type: "json_object" },
-      temperature: 0.4,
-    }),
-  });
-  if (!r.ok) throw new Error(`LLM ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const j = await r.json();
-  return j.choices?.[0]?.message?.content ?? "{}";
+  const r = await routeChatSafe({
+    messages: [{ role: "system", content: system }, ...messages],
+    response_format: { type: "json_object" },
+    temperature: 0.4,
+  }, model);
+  return r.content || "{}";
 }
 
 function safeParse(s: string): any {

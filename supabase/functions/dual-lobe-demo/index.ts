@@ -51,24 +51,11 @@ function mockToolCall(tool: string, args: any, owner: "executor" | "strategist")
 
 // ── LLM helper ────────────────────────────────────────────────────
 async function llm(system: string, user: string): Promise<string> {
-  const r = await fetch(GATEWAY, {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + LOVABLE_API_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
-  if (!r.ok) throw new Error("LLM " + r.status + ": " + (await r.text()));
-  const data = await r.json();
-  return data.choices?.[0]?.message?.content ?? "{}";
+  const r = await routeChatSafe({
+    messages: [{ role: "system", content: system }, { role: "user", content: user }],
+    response_format: { type: "json_object" },
+  }, MODEL);
+  return r.content || "{}";
 }
 
 function safeParse(s: string): any {
