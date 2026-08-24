@@ -18,6 +18,7 @@
 // can speak) while removing round-trip chatter that was pure overhead.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { routeChatSafe } from "../_shared/model-router.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,22 +37,15 @@ const ALLOWLIST_TABLES = new Set([
 const SENSORY_TOOLS = ["db_read", "list_tables", "list_edge_functions", "http_get", "tool_registry"];
 const MOTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_notification", "http_get"];
 
-const DEFAULT_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_MODEL = "auto";
 
 async function llm(system: string, messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: system }, ...messages],
-      response_format: { type: "json_object" },
-      temperature: 0.4,
-    }),
-  });
-  if (!r.ok) throw new Error(`LLM ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const j = await r.json();
-  return j.choices?.[0]?.message?.content ?? "{}";
+  const r = await routeChatSafe({
+    messages: [{ role: "system", content: system }, ...messages],
+    response_format: { type: "json_object" },
+    temperature: 0.4,
+  }, model);
+  return r.content || "{}";
 }
 
 function safeParse(s: string): any {

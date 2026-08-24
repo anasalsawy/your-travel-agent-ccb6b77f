@@ -6,6 +6,7 @@
 // tool allowlist.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { routeChatSafe } from "../_shared/model-router.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,19 +32,12 @@ function toolsFor(scope: string) {
 }
 
 async function llm(system: string, messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: system }, ...messages],
-      response_format: { type: "json_object" },
-      temperature: 0.4,
-    }),
-  });
-  if (!r.ok) throw new Error("LLM " + r.status + ": " + (await r.text()).slice(0, 300));
-  const j = await r.json();
-  return j.choices?.[0]?.message?.content ?? "{}";
+  const r = await routeChatSafe({
+    messages: [{ role: "system", content: system }, ...messages],
+    response_format: { type: "json_object" },
+    temperature: 0.4,
+  }, model);
+  return r.content || "{}";
 }
 
 function safeParse(s: string): any {
@@ -214,7 +208,7 @@ serve(async (req) => {
     if (!task) throw new Error("task is required");
     const runMode: "safe" | "full" = mode === "full" ? "full" : "safe";
     const runScope = scope === "sensory" || scope === "motor" ? scope : "all";
-    const result = await run(task, Math.min(max_turns ?? 12, 20), runMode, model || "google/gemini-2.5-flash", runScope);
+    const result = await run(task, Math.min(max_turns ?? 12, 20), runMode, model || "auto", runScope);
     return new Response(JSON.stringify(result, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

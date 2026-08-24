@@ -21,6 +21,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { preflight, postflight, buildAddonPrompt, type AddonFlags, type PreflightBundle } from "../_shared/lobe-addons.ts";
+import { routeChatSafe } from "../_shared/model-router.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,27 +42,17 @@ const EXECUTOR_TOOLS = ["db_write", "http_post", "invoke_edge_function", "send_n
 // Executor tools that do NOT mutate state → skip strategist permit (fast-path).
 const READONLY_EXECUTOR_TOOLS = new Set(["http_get"]);
 
-const DEFAULT_STRATEGIST_MODEL = "google/gemini-2.5-flash-lite";
-const DEFAULT_EXECUTOR_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_STRATEGIST_MODEL = "auto";
+const DEFAULT_EXECUTOR_MODEL = "auto";
 
 // ── LLM call ──────────────────────────────────────────────────────
 async function llm(system: string, user: string, model: string): Promise<string> {
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-    }),
-  });
-  if (!r.ok) throw new Error(`LLM ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const j = await r.json();
-  return j.choices?.[0]?.message?.content ?? "{}";
+  const r = await routeChatSafe({
+    messages: [{ role: "system", content: system }, { role: "user", content: user }],
+    response_format: { type: "json_object" },
+    temperature: 0.2,
+  }, model);
+  return r.content || "{}";
 }
 
 function safeParse(s: string): any {
