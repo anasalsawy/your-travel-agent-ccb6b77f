@@ -6,7 +6,7 @@
 // tool allowlist.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { routeChatSafe } from "../_shared/model-router.ts";
+import { routeChatSafe, tierModel } from "../_shared/model-router.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -208,7 +208,10 @@ serve(async (req) => {
     if (!task) throw new Error("task is required");
     const runMode: "safe" | "full" = mode === "full" ? "full" : "safe";
     const runScope = scope === "sensory" || scope === "motor" ? scope : "all";
-    const result = await run(task, Math.min(max_turns ?? 12, 20), runMode, model || "auto", runScope);
+    // Capability tiers keep the bench vendor-neutral.
+    const wanted = model || "auto";
+    const resolved = wanted === "heavy" || wanted === "light" ? await tierModel(wanted) : wanted;
+    const result = await run(task, Math.min(max_turns ?? 12, 20), runMode, resolved, runScope);
     return new Response(JSON.stringify(result, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

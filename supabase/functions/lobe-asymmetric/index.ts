@@ -5,6 +5,7 @@
 // Flip them for "motor-heavy" (careful hands, cheap eyes) — good for
 // booking/payment flows where the action matters more than the reasoning.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { tierModel } from "../_shared/model-router.ts";
 import {
   corsHeaders, SENSORY_TOOLS, MOTOR_TOOLS,
   llm, safeParse, execTool, sensorySys, motorSys, buildMessages, Turn, Lobe, Mode,
@@ -59,15 +60,19 @@ serve(async (req) => {
     const { task, max_turns, mode, sensory_model, motor_model, profile } = await req.json();
     if (!task) throw new Error("task is required");
     // Profiles for quick presets from the bench.
+    // Capability tiers, not vendor pins: the router resolves "heavy"/"light"
+    // against whatever provider/model is healthy right now.
+    const heavy = await tierModel("heavy");
+    const light = await tierModel("light");
     const preset: Record<string, [string, string]> = {
-      "sensory-heavy": ["openai/gpt-5.5", "google/gemini-2.5-flash-lite"],
-      "motor-heavy":   ["google/gemini-2.5-flash-lite", "openai/gpt-5.5"],
-      "balanced":      ["google/gemini-2.5-flash", "google/gemini-2.5-flash"],
+      "sensory-heavy": [heavy, light],
+      "motor-heavy":   [light, heavy],
+      "balanced":      [light, light],
     };
     let s = sensory_model, m = motor_model;
     if (profile && preset[profile]) { [s, m] = preset[profile]; }
-    if (!s) s = "openai/gpt-5.5";
-    if (!m) m = "google/gemini-2.5-flash-lite";
+    if (!s) s = heavy;
+    if (!m) m = light;
     const result = await run(task, Math.min(max_turns ?? 10, 20), mode === "full" ? "full" : "safe", s, m);
     return new Response(JSON.stringify(result, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
