@@ -21,6 +21,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { preflight, postflight, buildAddonPrompt, type AddonFlags, type PreflightBundle } from "../_shared/lobe-addons.ts";
+import { routeChatSafe } from "../_shared/model-router.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

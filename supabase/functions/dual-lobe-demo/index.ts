@@ -1,4 +1,5 @@
 /**
+import { routeChatSafe } from "../_shared/model-router.ts";
  * DUAL-LOBE DEMO ORCHESTRATOR
  *
  * Two real LLM calls per cycle (Strategist + Executor), shared ledger,
